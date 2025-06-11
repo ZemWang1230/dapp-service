@@ -1,18 +1,60 @@
 package types
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"time"
+	"timelocker-backend/pkg/logger"
 )
+
+// JSONB 自定义类型用于处理PostgreSQL的JSONB字段
+type JSONB map[string]interface{}
+
+// Value 实现 driver.Valuer 接口，用于将Go值转换为数据库值
+func (j JSONB) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
+}
+
+// Scan 实现 sql.Scanner 接口，用于将数据库值转换为Go值
+func (j *JSONB) Scan(value interface{}) error {
+	if value == nil {
+		*j = make(JSONB)
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		logger.Error("Scan JSONB Error: ", errors.New("cannot scan non-string/[]byte value into JSONB"))
+		return errors.New("cannot scan non-string/[]byte value into JSONB")
+	}
+
+	if len(bytes) == 0 {
+		*j = make(JSONB)
+		return nil
+	}
+
+	return json.Unmarshal(bytes, j)
+}
 
 // User 用户模型
 type User struct {
-	ID            int64                  `json:"id" gorm:"primaryKey;autoIncrement"`
-	WalletAddress string                 `json:"wallet_address" gorm:"uniqueIndex;size:42;not null"`
-	CreatedAt     time.Time              `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt     time.Time              `json:"updated_at" gorm:"autoUpdateTime"`
-	LastLogin     *time.Time             `json:"last_login"`
-	Preferences   map[string]interface{} `json:"preferences" gorm:"type:jsonb;default:'{}'"`
-	Status        int                    `json:"status" gorm:"default:1"`
+	ID            int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	WalletAddress string     `json:"wallet_address" gorm:"uniqueIndex:idx_users_wallet_address;size:42;not null"`
+	ChainID       int        `json:"chain_id" gorm:"not null;default:1"`
+	CreatedAt     time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	LastLogin     *time.Time `json:"last_login"`
+	Preferences   JSONB      `json:"preferences" gorm:"type:jsonb;default:'{}'"`
+	Status        int        `json:"status" gorm:"default:1"`
 }
 
 // TableName 设置表名
@@ -43,10 +85,11 @@ type RefreshTokenRequest struct {
 
 // UserProfile 用户资料
 type UserProfile struct {
-	WalletAddress string                 `json:"wallet_address"`
-	CreatedAt     time.Time              `json:"created_at"`
-	LastLogin     *time.Time             `json:"last_login"`
-	Preferences   map[string]interface{} `json:"preferences"`
+	WalletAddress string     `json:"wallet_address"`
+	ChainID       int        `json:"chain_id"`
+	CreatedAt     time.Time  `json:"created_at"`
+	LastLogin     *time.Time `json:"last_login"`
+	Preferences   JSONB      `json:"preferences"`
 }
 
 // JWTClaims JWT声明
@@ -68,4 +111,4 @@ type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Details string `json:"details,omitempty"`
-} 
+}

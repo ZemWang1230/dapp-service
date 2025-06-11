@@ -57,7 +57,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Router /api/v1/auth/wallet-connect [post]
 func (h *Handler) WalletConnect(c *gin.Context) {
 	var req types.WalletConnectRequest
-
+	// 绑定请求参数
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
@@ -71,7 +71,7 @@ func (h *Handler) WalletConnect(c *gin.Context) {
 		return
 	}
 
-	// 调用认证服务
+	// 调用认证服务，返回响应数据
 	response, err := h.authService.WalletConnect(c.Request.Context(), &req)
 	if err != nil {
 		var statusCode int
@@ -99,9 +99,10 @@ func (h *Handler) WalletConnect(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
+		logger.Error("WalletConnect Error: ", err, "errorCode: ", errorCode)
 		return
 	}
-
+	logger.Info("WalletConnect :", "User: ", response.User.WalletAddress, "ChainID: ", response.User.ChainID)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -121,7 +122,7 @@ func (h *Handler) WalletConnect(c *gin.Context) {
 // @Router /api/v1/auth/refresh [post]
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req types.RefreshTokenRequest
-
+	// 绑定请求参数
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
@@ -131,6 +132,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
+		logger.Error("RefreshToken Error: ", errors.New("invalid request parameters"), "error: ", err)
 		return
 	}
 
@@ -151,7 +153,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 			statusCode = http.StatusInternalServerError
 			errorCode = "INTERNAL_ERROR"
 		}
-
+		logger.Error("RefreshToken Error: ", err, "errorCode: ", errorCode)
 		c.JSON(statusCode, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
@@ -162,6 +164,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	logger.Info("RefreshToken :", "User: ", response.User.WalletAddress, "ChainID: ", response.User.ChainID)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -190,6 +193,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 				Message: "User not authenticated",
 			},
 		})
+		logger.Error("GetProfile Error: ", errors.New("user not authenticated"))
 		return
 	}
 
@@ -207,7 +211,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 			statusCode = http.StatusInternalServerError
 			errorCode = "INTERNAL_ERROR"
 		}
-
+		logger.Error("GetProfile Error: ", err, "errorCode: ", errorCode)
 		c.JSON(statusCode, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
@@ -218,6 +222,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		return
 	}
 
+	logger.Info("GetProfile :", "User: ", profile.WalletAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    profile,

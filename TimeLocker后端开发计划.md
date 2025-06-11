@@ -101,6 +101,7 @@ Backend API Gateway (Go Gin/Echo)
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
     wallet_address VARCHAR(42) UNIQUE NOT NULL,
+    chain_id INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     last_login TIMESTAMP,
@@ -898,4 +899,4 @@ volumes:
 - 错误追踪 (Sentry)
 - 性能监控 (APM)
 
-这个开发计划涵盖了TimeLocker项目的所有核心功能，按照优先级和依赖关系进行了合理的安排。建议采用敏捷开发方式，每个阶段结束后进行功能验证和代码审查。 
+这个开发计划涵盖了TimeLocker项目的所有核心功能，按照优先级和依赖关系进行了合理的安排。建议采用敏捷开发方式，每个阶段结束后进行功能验证和代码审查。

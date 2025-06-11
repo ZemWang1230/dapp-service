@@ -15,6 +15,7 @@ type Repository interface {
 	GetUserByWallet(ctx context.Context, walletAddress string) (*types.User, error)
 	GetUserByID(ctx context.Context, id int64) (*types.User, error)
 	UpdateLastLogin(ctx context.Context, id int64) error
+	UpdateChainID(ctx context.Context, id int64, chainID int) error
 	UpdateUser(ctx context.Context, user *types.User) error
 	DeleteUser(ctx context.Context, id int64) error
 }
@@ -73,6 +74,15 @@ func (r *repository) UpdateLastLogin(ctx context.Context, id int64) error {
 		Model(&types.User{}).
 		Where("id = ?", id).
 		Update("last_login", &now).Error
+}
+
+// UpdateChainID 更新用户链ID
+func (r *repository) UpdateChainID(ctx context.Context, id int64, chainID int) error {
+	logger.Info("UpdateChainID: ", "user_id: ", id, "chain_id: ", chainID)
+	return r.db.WithContext(ctx).
+		Model(&types.User{}).
+		Where("id = ?", id).
+		Update("chain_id", chainID).Error
 }
 
 // UpdateUser 更新用户信息

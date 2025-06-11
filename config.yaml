@@ -1,0 +1,22 @@
+server:
+  port: "8080"
+  mode: "debug"  # debug, release, test
+
+database:
+  host: "localhost"
+  port: 5432
+  user: "timelocker"
+  password: "timelocker"
+  dbname: "timelocker_db"
+  sslmode: "disable"
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: "timelocker-jwt-secret-v1"
+  access_expiry: "24h"   # 24小时
+  refresh_expiry: "168h" # 7天 

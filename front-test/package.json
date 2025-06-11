@@ -1,0 +1,21 @@
+{
+  "name": "timelocker-frontend-test",
+  "version": "1.0.0",
+  "description": "Frontend test project for TimeLocker wallet authentication",
+  "main": "index.html",
+  "scripts": {
+    "start": "live-server --port=3000 --host=localhost --open=index.html",
+    "build": "echo 'No build process needed for vanilla HTML/JS'",
+    "test": "echo 'No tests specified'"
+  },
+  "keywords": ["timelocker", "wallet", "ethereum", "authentication", "web3"],
+  "author": "TimeLocker Team",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.8.1",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+} 

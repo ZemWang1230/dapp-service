@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 
 	"timelocker-backend/internal/api/auth"
@@ -22,23 +21,23 @@ func main() {
 	// 1. 加载配置
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Error("Failed to load config: ", err)
 	}
 
 	// 2. 连接数据库
 	db, err := database.NewPostgresConnection(&cfg.Database)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Error("Failed to connect to database: ", err)
 	}
 
 	// 3. 自动迁移数据库
 	if err := database.AutoMigrate(db); err != nil {
-		log.Fatalf("Failed to migrate database: %v", err)
+		logger.Error("Failed to migrate database: ", err)
 	}
 
 	// 4. 创建索引
 	if err := database.CreateIndexes(db); err != nil {
-		log.Fatalf("Failed to create indexes: %v", err)
+		logger.Error("Failed to create indexes: ", err)
 	}
 
 	// 5. 初始化仓库层
@@ -93,9 +92,9 @@ func main() {
 
 	// 14. 启动服务器
 	addr := ":" + cfg.Server.Port
-	log.Printf("Starting server on %s", addr)
+	logger.Info("Starting server on ", addr)
 
 	if err := router.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		logger.Error("Failed to start server: ", err)
 	}
 }

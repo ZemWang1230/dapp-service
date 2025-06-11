@@ -87,8 +87,9 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 			// 创建新用户
 			newUser := &types.User{
 				WalletAddress: normalizedAddress,
+				ChainID:       req.ChainId,
 				Status:        1, // 1: 正常 0: 禁用
-				Preferences:   make(map[string]interface{}),
+				Preferences:   make(types.JSONB),
 			}
 
 			if err := s.userRepo.CreateUser(ctx, newUser); err != nil {
@@ -102,7 +103,15 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 			return nil, fmt.Errorf("database error: %w", err)
 		}
 	} else {
-		// 更新现有用户的最后登录时间
+		// 更新现有用户的最后登录时间和ChainID（如果有变化）
+		if existingUser.ChainID != req.ChainId {
+			if err := s.userRepo.UpdateChainID(ctx, existingUser.ID, req.ChainId); err != nil {
+				logger.Error("WalletConnect Error: ", errors.New("failed to update chain ID"), "error: ", err)
+				// 不阻止认证流程，只记录错误
+			} else {
+				existingUser.ChainID = req.ChainId
+			}
+		}
 		if err := s.userRepo.UpdateLastLogin(ctx, existingUser.ID); err != nil {
 			// 登录时间更新失败不应该阻止认证流程
 			logger.Error("WalletConnect Error: ", errors.New("failed to update last login"), "error: ", err)
@@ -120,6 +129,7 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 		return nil, fmt.Errorf("failed to generate jwt tokens: %w", err)
 	}
 
+	logger.Info("WalletConnect Response:", "User: ", currentUser.WalletAddress, "ChainID: ", currentUser.ChainID)
 	// 6. 返回认证响应
 	return &types.WalletConnectResponse{
 		AccessToken:  accessToken,
@@ -177,6 +187,7 @@ func (s *service) RefreshToken(ctx context.Context, req *types.RefreshTokenReque
 		logger.Error("RefreshToken Error: ", errors.New("failed to update last login"), "error: ", err)
 	}
 
+	logger.Info("RefreshToken Response:", "User: ", user.WalletAddress, "ChainID: ", user.ChainID)
 	return &types.WalletConnectResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -197,8 +208,10 @@ func (s *service) GetProfile(ctx context.Context, userID int64) (*types.UserProf
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
+	logger.Info("GetProfile :", "User: ", user.WalletAddress)
 	return &types.UserProfile{
 		WalletAddress: user.WalletAddress,
+		ChainID:       user.ChainID,
 		CreatedAt:     user.CreatedAt,
 		LastLogin:     user.LastLogin,
 		Preferences:   user.Preferences,

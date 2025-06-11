@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeLocker API 快速测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        
+        .section h2 {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #666;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+            font-family: monospace;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .response {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TimeLocker API 快速测试</h1>
+        
+        <!-- 配置区域 -->
+        <div class="section">
+            <h2>⚙️ 配置</h2>
+            <div class="form-group">
+                <label>后端API地址:</label>
+                <input type="text" id="apiUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+            </div>
+        </div>
+
+        <!-- 钱包连接区域 -->
+        <div class="section">
+            <h2>🔗 钱包连接测试</h2>
+            <div id="walletStatus" class="status info">
+                请先连接钱包
+            </div>
+            <button id="connectBtn">连接钱包</button>
+            <div class="form-group" style="margin-top: 15px;">
+                <label>钱包地址:</label>
+                <input type="text" id="walletAddress" readonly placeholder="未连接">
+            </div>
+        </div>
+
+        <!-- API测试区域 -->
+        <div class="section">
+            <h2>🔐 认证API测试</h2>
+            
+            <!-- 钱包认证 -->
+            <h3>1. 钱包连接认证</h3>
+            <button id="authBtn" disabled>开始认证</button>
+            <div class="form-group">
+                <label>认证响应:</label>
+                <textarea id="authResponse" readonly placeholder="等待认证..."></textarea>
+            </div>
+            
+            <!-- 刷新令牌 -->
+            <h3>2. 刷新令牌</h3>
+            <button id="refreshBtn" disabled>刷新Token</button>
+            <div class="form-group">
+                <label>刷新响应:</label>
+                <textarea id="refreshResponse" readonly placeholder="等待刷新..."></textarea>
+            </div>
+            
+            <!-- 获取用户资料 -->
+            <h3>3. 获取用户资料</h3>
+            <button id="profileBtn" disabled>获取资料</button>
+            <div class="form-group">
+                <label>用户资料:</label>
+                <textarea id="profileResponse" readonly placeholder="等待获取..."></textarea>
+            </div>
+        </div>
+
+        <!-- 令牌信息 -->
+        <div class="section">
+            <h2>🔑 令牌信息</h2>
+            <div class="form-group">
+                <label>Access Token:</label>
+                <textarea id="accessToken" readonly placeholder="暂无"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Refresh Token:</label>
+                <textarea id="refreshToken" readonly placeholder="暂无"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.8.1/dist/ethers.umd.min.js"></script>
+    <script>
+        class SimpleWalletTest {
+            constructor() {
+                this.provider = null;
+                this.signer = null;
+                this.walletAddress = null;
+                this.accessToken = null;
+                this.refreshToken = null;
+                this.apiBaseUrl = 'http://localhost:8080';
+                
+                this.init();
+            }
+
+            init() {
+                // 绑定事件
+                document.getElementById('connectBtn').addEventListener('click', () => this.connectWallet());
+                document.getElementById('authBtn').addEventListener('click', () => this.authenticate());
+                document.getElementById('refreshBtn').addEventListener('click', () => this.refreshToken());
+                document.getElementById('profileBtn').addEventListener('click', () => this.getProfile());
+                
+                document.getElementById('apiUrl').addEventListener('change', (e) => {
+                    this.apiBaseUrl = e.target.value;
+                });
+
+                this.updateStatus('请先连接钱包', 'info');
+            }
+
+            async connectWallet() {
+                try {
+                    if (typeof window.ethereum === 'undefined') {
+                        throw new Error('请安装MetaMask钱包');
+                    }
+
+                    this.updateStatus('正在连接钱包...', 'info');
+                    
+                    // 连接钱包
+                    this.provider = new ethers.BrowserProvider(window.ethereum);
+                    await this.provider.send("eth_requestAccounts", []);
+                    this.signer = await this.provider.getSigner();
+                    this.walletAddress = await this.signer.getAddress();
+
+                    // 更新UI
+                    document.getElementById('walletAddress').value = this.walletAddress;
+                    document.getElementById('authBtn').disabled = false;
+                    
+                    this.updateStatus(`钱包连接成功: ${this.walletAddress}`, 'success');
+
+                } catch (error) {
+                    console.error('连接钱包失败:', error);
+                    this.updateStatus(`连接失败: ${error.message}`, 'error');
+                }
+            }
+
+            async authenticate() {
+                try {
+                    if (!this.signer) {
+                        throw new Error('请先连接钱包');
+                    }
+
+                    this.updateStatus('正在请求签名...', 'info');
+
+                    // 生成签名消息
+                    const timestamp = Date.now();
+                    const message = `TimeLocker Login Nonce: ${timestamp}`;
+
+                    // 请求签名
+                    const signature = await this.signer.signMessage(message);
+                    
+                    // 获取链ID
+                    const network = await this.provider.getNetwork();
+                    const chainId = Number(network.chainId);
+
+                    // 构造请求
+                    const requestData = {
+                        wallet_address: this.walletAddress,
+                        signature: signature,
+                        message: message,
+                        chain_id: chainId
+                    };
+
+                    this.updateStatus('正在发送认证请求...', 'info');
+
+                    // 发送请求
+                    const response = await this.callAPI('/api/v1/auth/wallet-connect', 'POST', requestData);
+                    
+                    document.getElementById('authResponse').value = JSON.stringify(response, null, 2);
+
+                    if (response.success) {
+                        this.accessToken = response.data.access_token;
+                        this.refreshToken = response.data.refresh_token;
+                        
+                        document.getElementById('accessToken').value = this.accessToken;
+                        document.getElementById('refreshToken').value = this.refreshToken;
+                        document.getElementById('refreshBtn').disabled = false;
+                        document.getElementById('profileBtn').disabled = false;
+                        
+                        this.updateStatus('认证成功!', 'success');
+                    } else {
+                        throw new Error(response.error?.message || '认证失败');
+                    }
+
+                } catch (error) {
+                    console.error('认证失败:', error);
+                    this.updateStatus(`认证失败: ${error.message}`, 'error');
+                    document.getElementById('authResponse').value = JSON.stringify({
+                        error: error.message
+                    }, null, 2);
+                }
+            }
+
+            async refreshToken() {
+                try {
+                    if (!this.refreshToken) {
+                        throw new Error('没有刷新令牌');
+                    }
+
+                    this.updateStatus('正在刷新令牌...', 'info');
+
+                    const requestData = {
+                        refresh_token: this.refreshToken
+                    };
+
+                    const response = await this.callAPI('/api/v1/auth/refresh', 'POST', requestData);
+                    
+                    document.getElementById('refreshResponse').value = JSON.stringify(response, null, 2);
+
+                    if (response.success) {
+                        this.accessToken = response.data.access_token;
+                        this.refreshToken = response.data.refresh_token;
+                        
+                        document.getElementById('accessToken').value = this.accessToken;
+                        document.getElementById('refreshToken').value = this.refreshToken;
+                        
+                        this.updateStatus('令牌刷新成功!', 'success');
+                    } else {
+                        throw new Error(response.error?.message || '刷新失败');
+                    }
+
+                } catch (error) {
+                    console.error('刷新失败:', error);
+                    this.updateStatus(`刷新失败: ${error.message}`, 'error');
+                    document.getElementById('refreshResponse').value = JSON.stringify({
+                        error: error.message
+                    }, null, 2);
+                }
+            }
+
+            async getProfile() {
+                try {
+                    if (!this.accessToken) {
+                        throw new Error('没有访问令牌');
+                    }
+
+                    this.updateStatus('正在获取用户资料...', 'info');
+
+                    const response = await this.callAPI('/api/v1/auth/profile', 'GET', null, {
+                        'Authorization': `Bearer ${this.accessToken}`
+                    });
+                    
+                    document.getElementById('profileResponse').value = JSON.stringify(response, null, 2);
+
+                    if (response.success) {
+                        this.updateStatus('获取用户资料成功!', 'success');
+                    } else {
+                        throw new Error(response.error?.message || '获取失败');
+                    }
+
+                } catch (error) {
+                    console.error('获取资料失败:', error);
+                    this.updateStatus(`获取失败: ${error.message}`, 'error');
+                    document.getElementById('profileResponse').value = JSON.stringify({
+                        error: error.message
+                    }, null, 2);
+                }
+            }
+
+            async callAPI(endpoint, method = 'GET', data = null, headers = {}) {
+                const url = `${this.apiBaseUrl}${endpoint}`;
+                const config = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...headers
+                    }
+                };
+
+                if (data) {
+                    config.body = JSON.stringify(data);
+                }
+
+                const response = await fetch(url, config);
+                return await response.json();
+            }
+
+            updateStatus(message, type) {
+                const statusEl = document.getElementById('walletStatus');
+                statusEl.textContent = message;
+                statusEl.className = `status ${type}`;
+            }
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            window.walletTest = new SimpleWalletTest();
+        });
+    </script>
+</body>
+</html> 
