@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 
+	"timelocker-backend/docs"
 	"timelocker-backend/internal/api/auth"
 	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/user"
@@ -12,7 +13,36 @@ import (
 	"timelocker-backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+// http://localhost:8080/swagger/index.html
+// @title TimeLocker Backend API
+// @version 1.0
+// @description TimeLocker Backend API
+// @host localhost:8080
+// @BasePath /
+// @schemes http https
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
+
+// healthCheck 健康检查端点
+// @Summary 健康检查
+// @Description 检查服务健康状态
+// @Tags 系统
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /health [get]
+func healthCheck(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "ok",
+		"service": "timelocker-backend",
+	})
+}
 
 func main() {
 	logger.Init(logger.DefaultConfig())
@@ -82,13 +112,12 @@ func main() {
 		authHandler.RegisterRoutes(v1)
 	}
 
+	// Swagger API文档端点
+	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// 13. 健康检查端点
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "ok",
-			"service": "timelocker-backend",
-		})
-	})
+	router.GET("/health", healthCheck)
 
 	// 14. 启动服务器
 	addr := ":" + cfg.Server.Port

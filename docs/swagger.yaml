@@ -1,0 +1,222 @@
+basePath: /
+definitions:
+  types.APIError:
+    properties:
+      code:
+        type: string
+      details:
+        type: string
+      message:
+        type: string
+    type: object
+  types.APIResponse:
+    properties:
+      data: {}
+      error:
+        $ref: '#/definitions/types.APIError'
+      success:
+        type: boolean
+    type: object
+  types.JSONB:
+    additionalProperties: true
+    type: object
+  types.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  types.User:
+    properties:
+      chain_id:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: integer
+      last_login:
+        type: string
+      preferences:
+        $ref: '#/definitions/types.JSONB'
+      status:
+        type: integer
+      updated_at:
+        type: string
+      wallet_address:
+        type: string
+    type: object
+  types.UserProfile:
+    properties:
+      chain_id:
+        type: integer
+      created_at:
+        type: string
+      last_login:
+        type: string
+      preferences:
+        $ref: '#/definitions/types.JSONB'
+      wallet_address:
+        type: string
+    type: object
+  types.WalletConnectRequest:
+    properties:
+      chain_id:
+        type: integer
+      message:
+        type: string
+      signature:
+        type: string
+      wallet_address:
+        type: string
+    required:
+    - chain_id
+    - message
+    - signature
+    - wallet_address
+    type: object
+  types.WalletConnectResponse:
+    properties:
+      access_token:
+        type: string
+      expires_at:
+        type: string
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/types.User'
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: TimeLocker Backend API
+  title: TimeLocker Backend API
+  version: "1.0"
+paths:
+  /api/v1/auth/profile:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前认证用户的资料信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.UserProfile'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取用户资料
+      tags:
+      - 认证
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 使用刷新令牌获取新的访问令牌
+      parameters:
+      - description: 刷新令牌请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.WalletConnectResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      summary: 刷新访问令牌
+      tags:
+      - 认证
+  /api/v1/auth/wallet-connect:
+    post:
+      consumes:
+      - application/json
+      description: 通过钱包签名进行用户认证
+      parameters:
+      - description: 钱包连接请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.WalletConnectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.WalletConnectResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      summary: 钱包连接认证
+      tags:
+      - 认证
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: 检查服务健康状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: 健康检查
+      tags:
+      - 系统
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
