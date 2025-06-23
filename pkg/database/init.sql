@@ -11,13 +11,16 @@ DROP TABLE IF EXISTS users CASCADE;
 -- 1. 用户表 (users)
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
-    wallet_address VARCHAR(42) NOT NULL UNIQUE,
+    wallet_address VARCHAR(42) NOT NULL,
     chain_id INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_login TIMESTAMP WITH TIME ZONE,
     preferences JSONB DEFAULT '{}',
-    status INTEGER DEFAULT 1
+    status INTEGER DEFAULT 1,
+    
+    -- 组合唯一约束：同一个钱包地址在不同链上被视为不同用户
+    UNIQUE(wallet_address, chain_id)
 );
 
 -- 2. 支持的区块链表 (support_chains)
@@ -89,20 +92,26 @@ INSERT INTO support_chains (chain_id, name, symbol, rpc_provider, is_active) VAL
 (1, 'Ethereum', 'ETH', 'alchemy', true),
 (56, 'BSC', 'BNB', 'alchemy', true),
 (137, 'Polygon', 'MATIC', 'alchemy', true),
-(42161, 'Arbitrum One', 'ETH', 'alchemy', true);
+(42161, 'Arbitrum One', 'ETH', 'alchemy', true),
+(10, 'Optimism', 'ETH', 'alchemy', true),
+(11155, 'Base', 'ETH', 'alchemy', true),
+(11155111, 'Sepolia', 'ETH', 'alchemy', true);
 
 -- 插入初始代币数据
 INSERT INTO support_tokens (symbol, name, coingecko_id, decimals, is_active) VALUES
 ('ETH', 'Ethereum', 'ethereum', 18, true),
+('ARB_ETH', 'Arbitrum ETH', 'arbitrum', 18, true),
+('OP_ETH', 'Optimism ETH', 'optimism', 18, true),
+('BASE_ETH', 'Base ETH', 'base', 18, true),
 ('BNB', 'BNB', 'binancecoin', 18, true),
 ('MATIC', 'Polygon', 'matic-network', 18, true),
 ('USDC', 'USD Coin', 'usd-coin', 6, true),
 ('USDT', 'Tether', 'tether', 6, true),
 ('WETH', 'Wrapped Ethereum', 'weth', 18, true),
-('DAI', 'Dai Stablecoin', 'dai', 18, true),
-('UNI', 'Uniswap', 'uniswap', 18, true),
-('LINK', 'Chainlink', 'chainlink', 18, true),
-('AAVE', 'Aave', 'aave', 18, true);
+('ARB', 'Arbitrum', 'arbitrum', 18, true),
+('OP', 'Optimism', 'optimism', 18, true),
+('BASE', 'Base', 'base', 18, true),
+('SEPOLIA_ETH', 'Sepolia', 'sepolia', 18, true);
 
 -- 插入链代币关联数据
 -- Ethereum 主网 (chain_id = 1)
@@ -113,11 +122,7 @@ FROM support_chains sc
 CROSS JOIN (VALUES 
     ('ETH', '', true),
     ('USDC', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', false),
-    ('USDT', '0xdAC17F958D2ee523a2206206994597C13D831ec7', false),
-    ('DAI', '0x6B175474E89094C44Da98b954EedeAC495271d0F', false),
-    ('UNI', '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', false),
-    ('LINK', '0x514910771AF9Ca656af840dff83E8264EcF986CA', false),
-    ('AAVE', '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', false)
+    ('USDT', '0xdAC17F958D2ee523a2206206994597C13D831ec7', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
 WHERE sc.chain_id = 1;
@@ -129,9 +134,9 @@ SELECT
 FROM support_chains sc
 CROSS JOIN (VALUES 
     ('BNB', '', true),
-    ('USDC', '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', false),
-    ('USDT', '0x55d398326f99059fF775485246999027B3197955', false),
-    ('ETH', '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', false)
+    ('USDC', '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', false),
+    ('USDT', '0x55d398326f99059ff775485246999027b3197955', false),
+    ('ETH', '0x2170ed0880ac9a755fd29b2688956bd959f933f8', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
 WHERE sc.chain_id = 56;
@@ -142,12 +147,8 @@ SELECT
     sc.id, st.id, ct.contract_address, ct.is_native, true
 FROM support_chains sc
 CROSS JOIN (VALUES 
-    ('MATIC', '', true),
-    ('USDC', '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', false),
-    ('USDT', '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', false),
-    ('DAI', '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', false),
-    ('WETH', '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', false),
-    ('AAVE', '0xD6DF932A45C0f255f85145f286eA0b292B21C90B', false)
+    ('USDC', '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359', false),
+    ('USDT', '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
 WHERE sc.chain_id = 137;
@@ -158,12 +159,46 @@ SELECT
     sc.id, st.id, ct.contract_address, ct.is_native, true
 FROM support_chains sc
 CROSS JOIN (VALUES 
-    ('ETH', '', true),
-    ('USDC', '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8', false),
-    ('USDT', '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', false),
-    ('DAI', '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', false),
-    ('UNI', '0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0', false),
-    ('LINK', '0xf97f4df75117a78c1A5a0DBb814Af92458539FB4', false)
+    ('ARB_ETH', '', true),
+    ('USDC', '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', false),
+    ('USDT', '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
 WHERE sc.chain_id = 42161; 
+
+-- Optimism (chain_id = 10)
+INSERT INTO chain_tokens (chain_id, token_id, contract_address, is_native, is_active) 
+SELECT 
+    sc.id, st.id, ct.contract_address, ct.is_native, true
+FROM support_chains sc
+CROSS JOIN (VALUES 
+    ('OP_ETH', '', true),
+    ('USDC', '0x0b2c639c533813f4aa9d7837caf62653d097ff85', false),
+    ('USDT', '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', false)
+) ct(symbol, contract_address, is_native)
+JOIN support_tokens st ON st.symbol = ct.symbol
+WHERE sc.chain_id = 10;
+
+-- Base (chain_id = 11155)
+INSERT INTO chain_tokens (chain_id, token_id, contract_address, is_native, is_active) 
+SELECT 
+    sc.id, st.id, ct.contract_address, ct.is_native, true
+FROM support_chains sc
+CROSS JOIN (VALUES 
+    ('BASE_ETH', '', true),
+    ('USDC', '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', false),
+    ('USDT', '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2', false),
+) ct(symbol, contract_address, is_native)
+JOIN support_tokens st ON st.symbol = ct.symbol
+WHERE sc.chain_id = 11155;
+
+-- Sepolia (chain_id = 11155111)
+INSERT INTO chain_tokens (chain_id, token_id, contract_address, is_native, is_active) 
+SELECT 
+    sc.id, st.id, ct.contract_address, ct.is_native, true
+FROM support_chains sc
+CROSS JOIN (VALUES 
+    ('SEPOLIA_ETH', '', true),
+) ct(symbol, contract_address, is_native)
+JOIN support_tokens st ON st.symbol = ct.symbol
+WHERE sc.chain_id = 11155111;

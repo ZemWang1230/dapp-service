@@ -41,6 +41,9 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// 获取用户资料
 		// http://localhost:8080/api/v1/auth/profile
 		authGroup.GET("/profile", middleware.AuthMiddleware(h.authService), h.GetProfile)
+		// 切换链
+		// http://localhost:8080/api/v1/auth/switch-chain
+		authGroup.POST("/switch-chain", middleware.AuthMiddleware(h.authService), h.SwitchChain)
 	}
 }
 
@@ -226,5 +229,79 @@ func (h *Handler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    profile,
+	})
+}
+
+// SwitchChain 切换链
+// @Summary 切换链
+// @Description 切换到新的区块链
+// @Tags 认证
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body types.SwitchChainRequest true "切换链请求"
+// @Success 200 {object} types.APIResponse{data=types.SwitchChainResponse}
+// @Failure 400 {object} types.APIResponse
+// @Failure 401 {object} types.APIResponse
+// @Router /api/v1/auth/switch-chain [post]
+func (h *Handler) SwitchChain(c *gin.Context) {
+	// 从上下文获取用户ID
+	userID, _, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "UNAUTHORIZED",
+				Message: "User not authenticated",
+			},
+		})
+		logger.Error("SwitchChain Error: ", errors.New("user not authenticated"))
+		return
+	}
+
+	var req types.SwitchChainRequest
+	// 绑定请求参数
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request parameters",
+				Details: err.Error(),
+			},
+		})
+		logger.Error("SwitchChain Error: ", errors.New("invalid request parameters"), "error: ", err)
+		return
+	}
+
+	// 调用认证服务
+	response, err := h.authService.SwitchChain(c.Request.Context(), userID, &req)
+	if err != nil {
+		var statusCode int
+		var errorCode string
+
+		switch err {
+		case auth.ErrUserNotFound:
+			statusCode = http.StatusNotFound
+			errorCode = "USER_NOT_FOUND"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+		logger.Error("SwitchChain Error: ", err, "errorCode: ", errorCode)
+		c.JSON(statusCode, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    errorCode,
+				Message: err.Error(),
+			},
+		})
+		return
+	}
+
+	logger.Info("SwitchChain :", "User: ", response.User.WalletAddress, "ChainID: ", response.User.ChainID)
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    response,
 	})
 }

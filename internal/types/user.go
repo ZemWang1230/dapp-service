@@ -78,9 +78,23 @@ type WalletConnectResponse struct {
 	User         User      `json:"user"`
 }
 
-// RefreshTokenRequest 刷新Token请求
+// RefreshTokenRequest 刷新令牌请求
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
+}
+
+// SwitchChainRequest 切换链请求
+type SwitchChainRequest struct {
+	ChainID int `json:"chain_id" binding:"required"`
+}
+
+// SwitchChainResponse 切换链响应
+type SwitchChainResponse struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
+	User         User      `json:"user"`
+	Message      string    `json:"message"`
 }
 
 // UserProfile 用户资料

@@ -72,7 +72,7 @@ func NewService(
 	}, nil
 }
 
-// GetUserAssets 获取用户资产
+// GetUserAssets 获取用户资产（只返回指定链上的资产）
 func (s *service) GetUserAssets(walletAddress string, chainID int64, forceRefresh bool) (*types.UserAssetResponse, error) {
 	logger.Info("Getting user assets", "wallet_address", walletAddress, "chain_id", chainID, "force_refresh", forceRefresh)
 
@@ -83,30 +83,34 @@ func (s *service) GetUserAssets(walletAddress string, chainID int64, forceRefres
 		}
 	}
 
-	// 从数据库获取用户资产
-	assets, err := s.assetRepo.GetUserAssets(walletAddress)
+	// 从数据库获取用户在指定链上的资产
+	assets, err := s.assetRepo.GetUserAssetsByChain(walletAddress, chainID)
 	if err != nil {
-		logger.Error("Failed to get user assets from database", err, "wallet_address", walletAddress)
+		logger.Error("Failed to get user assets from database", err, "wallet_address", walletAddress, "chain_id", chainID)
 		return nil, fmt.Errorf("failed to get user assets: %w", err)
 	}
 
-	// 获取所有链信息
-	chains, err := s.chainRepo.GetAllActiveChains()
+	// 获取链信息
+	chainInfo, err := s.chainRepo.GetChainByChainID(chainID)
 	if err != nil {
-		logger.Error("Failed to get active chains", err)
-		return nil, fmt.Errorf("failed to get active chains: %w", err)
+		logger.Error("Failed to get chain info", err, "chain_id", chainID)
+		return nil, fmt.Errorf("failed to get chain info: %w", err)
+	}
+	if chainInfo == nil {
+		logger.Error("Chain not found", nil, "chain_id", chainID)
+		return nil, fmt.Errorf("chain not found: %d", chainID)
 	}
 
 	// 组织响应数据
 	response := &types.UserAssetResponse{
 		WalletAddress:  walletAddress,
 		PrimaryChainID: chainID,
-		OtherChains:    make([]types.ChainAssetInfo, 0),
+		OtherChains:    make([]types.ChainAssetInfo, 0), // 不返回其他链的数据
 		LastUpdated:    time.Now(),
 	}
 
-	// 按链分组资产
-	chainAssets := make(map[int64][]types.AssetInfo)
+	// 构建当前链的资产信息
+	var assetInfos []types.AssetInfo
 	totalUSDValue := 0.0
 
 	for _, asset := range assets {
@@ -138,42 +142,23 @@ func (s *service) GetUserAssets(walletAddress string, chainID int64, forceRefres
 			LastUpdated: asset.LastUpdated,
 		}
 
-		chainAssets[asset.ChainID] = append(chainAssets[asset.ChainID], assetInfo)
+		assetInfos = append(assetInfos, assetInfo)
 		totalUSDValue += usdValue
 	}
 
-	// 构建链资产信息
-	for _, chainInfo := range chains {
-		assets, exists := chainAssets[chainInfo.ChainID]
-		if !exists {
-			assets = []types.AssetInfo{}
-		}
-
-		// 计算该链的总价值
-		chainTotalValue := 0.0
-		for _, asset := range assets {
-			chainTotalValue += asset.USDValue
-		}
-
-		chainAssetInfo := types.ChainAssetInfo{
-			ChainID:       chainInfo.ChainID,
-			ChainName:     chainInfo.Name,
-			ChainSymbol:   chainInfo.Symbol,
-			Assets:        assets,
-			TotalUSDValue: chainTotalValue,
-			LastUpdated:   time.Now(),
-		}
-
-		if chainInfo.ChainID == chainID {
-			response.PrimaryChain = chainAssetInfo
-		} else {
-			response.OtherChains = append(response.OtherChains, chainAssetInfo)
-		}
+	// 构建主链资产信息
+	response.PrimaryChain = types.ChainAssetInfo{
+		ChainID:       chainInfo.ChainID,
+		ChainName:     chainInfo.Name,
+		ChainSymbol:   chainInfo.Symbol,
+		Assets:        assetInfos,
+		TotalUSDValue: totalUSDValue,
+		LastUpdated:   time.Now(),
 	}
 
 	response.TotalUSDValue = totalUSDValue
 
-	logger.Info("Got user assets", "wallet_address", walletAddress, "total_usd_value", totalUSDValue, "chains_count", len(response.OtherChains)+1)
+	logger.Info("Got user assets", "wallet_address", walletAddress, "chain_id", chainID, "total_usd_value", totalUSDValue, "assets_count", len(assetInfos))
 	return response, nil
 }
 
@@ -194,14 +179,14 @@ func (s *service) refreshUserAssetsInternal(walletAddress string, chainID int64)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// 获取用户信息
-	user, err := s.userRepo.GetByWalletAddress(walletAddress)
+	// 按钱包地址+链ID获取用户信息
+	user, err := s.userRepo.GetByWalletAndChain(walletAddress, int(chainID))
 	if err != nil {
-		logger.Error("Failed to get user", err, "wallet_address", walletAddress)
+		logger.Error("Failed to get user", err, "wallet_address", walletAddress, "chain_id", chainID)
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 	if user == nil {
-		return fmt.Errorf("user not found: %s", walletAddress)
+		return fmt.Errorf("user not found: %s on chain %d", walletAddress, chainID)
 	}
 
 	// 获取该链的代币配置
@@ -240,6 +225,12 @@ func (s *service) refreshUserAssetsInternal(walletAddress string, chainID int64)
 			continue
 		}
 
+		// 过滤余额为0的资产，不保存到数据库
+		if balance.Cmp(big.NewInt(0)) == 0 {
+			logger.Info("Skipping zero balance token", "chain_id", chainID, "token", chainToken.Token.Symbol, "wallet_address", walletAddress)
+			continue
+		}
+
 		// 创建或更新用户资产记录
 		asset := &types.UserAsset{
 			UserID:        user.ID,
@@ -261,7 +252,7 @@ func (s *service) refreshUserAssetsInternal(walletAddress string, chainID int64)
 		assets = append(assets, asset)
 	}
 
-	// 使用 UPSERT 逻辑批量保存到数据库
+	// 使用 UPSERT 逻辑批量保存到数据库（只保存余额>0的记录）
 	if len(assets) > 0 {
 		if err := s.assetRepo.BatchUpsertUserAssets(assets); err != nil {
 			logger.Error("Failed to upsert user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
@@ -275,7 +266,7 @@ func (s *service) refreshUserAssetsInternal(walletAddress string, chainID int64)
 		// 不返回错误，缓存失败不影响主要功能
 	}
 
-	logger.Info("Refreshed user assets", "wallet_address", walletAddress, "chain_id", chainID, "assets_count", len(assets))
+	logger.Info("Refreshed user assets", "wallet_address", walletAddress, "chain_id", chainID, "assets_count", len(assets), "user_id", user.ID)
 	return nil
 }
 

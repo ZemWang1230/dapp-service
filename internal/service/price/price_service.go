@@ -205,7 +205,71 @@ func (s *service) updatePricesFromCoinGecko(ctx context.Context, tokens []*types
 		return nil
 	}
 
-	// 使用随机数据替代网络请求（网络原因）
+	// 调用CoinGecko APIAdd commentMore actions
+	// url := fmt.Sprintf("%s/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true",
+	// 	s.config.BaseURL,
+	// 	strings.Join(ids, ","))
+
+	// logger.Info("Making price request", "url", url, "token_count", len(ids))
+
+	// req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	// if err != nil {
+	// 	logger.Error("Failed to create request", err)
+	// 	return fmt.Errorf("failed to create request: %w", err)
+	// }
+
+	// req.Header.Set("Accept", "application/json")
+
+	// // 添加API Key
+	// if s.config.APIKey != "" {
+	// 	req.Header.Set("X-CG-Demo-API-Key", s.config.APIKey)
+	// }
+
+	// resp, err := s.httpClient.Do(req)
+	// if err != nil {
+	// 	logger.Error("Failed to make request", err)
+	// 	return fmt.Errorf("failed to make request: %w", err)
+	// }
+	// defer resp.Body.Close()
+
+	// if resp.StatusCode != http.StatusOK {
+	// 	logger.Error("API request failed with status", fmt.Errorf("status: %d", resp.StatusCode))
+	// 	return fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+	// }
+
+	// var priceData types.CoinGeckoPriceResponse
+	// if err := json.NewDecoder(resp.Body).Decode(&priceData); err != nil {
+	// 	logger.Error("Failed to decode response", err)
+	// 	return fmt.Errorf("failed to decode response: %w", err)
+	// }
+
+	// // 更新Redis缓存
+	// now := time.Now()
+	// for coingeckoID, priceInfo := range priceData {
+	// 	token, exists := tokenMap[coingeckoID]
+	// 	if !exists {
+	// 		continue
+	// 	}
+
+	// 	tokenPrice := &types.TokenPrice{
+	// 		Symbol:      strings.ToUpper(token.Symbol),
+	// 		Name:        token.Name,
+	// 		Price:       priceInfo.USD,
+	// 		Change24h:   priceInfo.USD24hChange,
+	// 		LastUpdated: now,
+	// 	}
+
+	// 	// 保存到Redis
+	// 	if err := s.savePriceToCache(ctx, tokenPrice); err != nil {
+	// 		logger.Error("Failed to save price to cache", err, "symbol", tokenPrice.Symbol)
+	// 	} else {
+	// 		logger.Info("Price updated", "symbol", tokenPrice.Symbol, "price", tokenPrice.Price)
+	// 	}
+	// }
+
+	// logger.Info("Price update completed", "tokens_updated", len(priceData))
+
+	// 网络原因，此处利用随机数据替代，并更新redis缓存
 	now := time.Now()
 	for _, token := range tokens {
 		tokenPrice := &types.TokenPrice{
