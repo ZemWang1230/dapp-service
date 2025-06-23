@@ -66,13 +66,13 @@ func (j *JWTManager) GenerateTokens(userID int64, walletAddress string) (string,
 
 // VerifyAccessToken 验证访问令牌
 func (j *JWTManager) VerifyAccessToken(tokenString string) (*types.JWTClaims, error) {
-	logger.Info("VerifyAccessToken: ", "verify access token success", "token: ", tokenString)
+	logger.Info("VerifyAccessToken: ", "verifying access token")
 	return j.verifyToken(tokenString, "access")
 }
 
 // VerifyRefreshToken 验证刷新令牌
 func (j *JWTManager) VerifyRefreshToken(tokenString string) (*types.JWTClaims, error) {
-	logger.Info("VerifyRefreshToken: ", "verify refresh token success", "token: ", tokenString)
+	logger.Info("VerifyRefreshToken: ", "verifying refresh token")
 	return j.verifyToken(tokenString, "refresh")
 }
 
@@ -120,41 +120,10 @@ func (j *JWTManager) verifyToken(tokenString, expectedType string) (*types.JWTCl
 		return nil, errors.New("invalid wallet_address in token")
 	}
 
-	logger.Info("verifyToken Success: ", "verify token success", "user_id: ", userID, "wallet_address: ", walletAddress, "token_type: ", tokenType)
+	logger.Info("verifyToken Success: ", "token verified successfully", "user_id", userID, "wallet_address", walletAddress, "token_type", tokenType)
 	return &types.JWTClaims{
 		UserID:        int64(userID),
 		WalletAddress: walletAddress,
 		Type:          tokenType,
 	}, nil
-}
-
-// GetTokenExpiry 获取令牌过期时间
-func (j *JWTManager) GetTokenExpiry(tokenString string) (time.Time, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			logger.Error("GetTokenExpiry Error: ", errors.New("unexpected signing method"))
-			return nil, errors.New("unexpected signing method")
-		}
-		return j.secret, nil
-	})
-
-	if err != nil {
-		logger.Error("GetTokenExpiry Error: ", errors.New("failed to parse token"), "error: ", err)
-		return time.Time{}, err
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		logger.Error("GetTokenExpiry Error: ", errors.New("invalid token claims"))
-		return time.Time{}, errors.New("invalid token claims")
-	}
-
-	exp, ok := claims["exp"].(float64)
-	if !ok {
-		logger.Error("GetTokenExpiry Error: ", errors.New("invalid exp in token"))
-		return time.Time{}, errors.New("invalid exp in token")
-	}
-
-	logger.Info("GetTokenExpiry Success: ", "get token expiry success", "exp: ", exp)
-	return time.Unix(int64(exp), 0), nil
 }

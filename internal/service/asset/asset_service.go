@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
-	"sync"
 	"time"
 	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/asset"
@@ -23,11 +22,9 @@ import (
 
 // Service 资产服务接口
 type Service interface {
-	Start(ctx context.Context) error
-	Stop() error
 	GetUserAssets(walletAddress string, chainID int64, forceRefresh bool) (*types.UserAssetResponse, error)
 	RefreshUserAssets(walletAddress string, chainID int64) error
-	RefreshAllUserAssets() error
+	RefreshUserAssetsOnChainConnect(walletAddress string, chainID int64) error
 }
 
 // service 资产服务实现
@@ -41,9 +38,6 @@ type service struct {
 	priceService   priceService.Service
 	rpcClient      blockchain.RPCClient
 	redisClient    *redis.Client
-	ticker         *time.Ticker
-	stopCh         chan struct{}
-	wg             sync.WaitGroup
 }
 
 // NewService 创建新的资产服务
@@ -75,52 +69,7 @@ func NewService(
 		priceService:   priceService,
 		rpcClient:      rpcClient,
 		redisClient:    redisClient,
-		stopCh:         make(chan struct{}),
 	}, nil
-}
-
-// Start 启动资产服务
-func (s *service) Start(ctx context.Context) error {
-	logger.Info("Asset service starting", "update_interval", s.config.UpdateInterval)
-
-	// 启动定时更新
-	s.ticker = time.NewTicker(s.config.UpdateInterval)
-	s.wg.Add(1)
-
-	go func() {
-		defer s.wg.Done()
-		for {
-			select {
-			case <-s.ticker.C:
-				if err := s.RefreshAllUserAssets(); err != nil {
-					logger.Error("Failed to refresh all user assets", err)
-				}
-			case <-s.stopCh:
-				logger.Info("Asset service stopping")
-				return
-			}
-		}
-	}()
-
-	logger.Info("Asset service started successfully")
-	return nil
-}
-
-// Stop 停止资产服务
-func (s *service) Stop() error {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-
-	close(s.stopCh)
-	s.wg.Wait()
-
-	if s.rpcClient != nil {
-		s.rpcClient.Close()
-	}
-
-	logger.Info("Asset service stopped")
-	return nil
 }
 
 // GetUserAssets 获取用户资产
@@ -228,10 +177,20 @@ func (s *service) GetUserAssets(walletAddress string, chainID int64, forceRefres
 	return response, nil
 }
 
-// RefreshUserAssets 刷新用户资产
+// RefreshUserAssets 刷新用户资产（手动刷新）
 func (s *service) RefreshUserAssets(walletAddress string, chainID int64) error {
 	logger.Info("Refreshing user assets", "wallet_address", walletAddress, "chain_id", chainID)
+	return s.refreshUserAssetsInternal(walletAddress, chainID)
+}
 
+// RefreshUserAssetsOnChainConnect 用户连接钱包时刷新该链上的资产
+func (s *service) RefreshUserAssetsOnChainConnect(walletAddress string, chainID int64) error {
+	logger.Info("Refreshing user assets on chain connect", "wallet_address", walletAddress, "chain_id", chainID)
+	return s.refreshUserAssetsInternal(walletAddress, chainID)
+}
+
+// refreshUserAssetsInternal 内部资产刷新逻辑
+func (s *service) refreshUserAssetsInternal(walletAddress string, chainID int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -302,11 +261,11 @@ func (s *service) RefreshUserAssets(walletAddress string, chainID int64) error {
 		assets = append(assets, asset)
 	}
 
-	// 批量保存到数据库
+	// 使用 UPSERT 逻辑批量保存到数据库
 	if len(assets) > 0 {
-		if err := s.assetRepo.BatchCreateOrUpdateUserAssets(assets); err != nil {
-			logger.Error("Failed to save user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
-			return fmt.Errorf("failed to save user assets: %w", err)
+		if err := s.assetRepo.BatchUpsertUserAssets(assets); err != nil {
+			logger.Error("Failed to upsert user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
+			return fmt.Errorf("failed to upsert user assets: %w", err)
 		}
 	}
 
@@ -317,50 +276,6 @@ func (s *service) RefreshUserAssets(walletAddress string, chainID int64) error {
 	}
 
 	logger.Info("Refreshed user assets", "wallet_address", walletAddress, "chain_id", chainID, "assets_count", len(assets))
-	return nil
-}
-
-// RefreshAllUserAssets 刷新所有用户资产
-func (s *service) RefreshAllUserAssets() error {
-	logger.Info("Starting to refresh all user assets")
-
-	// 获取所有用户
-	users, err := s.userRepo.GetAllActiveUsers()
-	if err != nil {
-		logger.Error("Failed to get all active users", err)
-		return fmt.Errorf("failed to get all active users: %w", err)
-	}
-
-	// 获取所有活跃链
-	chains, err := s.chainRepo.GetAllActiveChains()
-	if err != nil {
-		logger.Error("Failed to get all active chains", err)
-		return fmt.Errorf("failed to get all active chains: %w", err)
-	}
-
-	logger.Info("Refreshing assets", "users_count", len(users), "chains_count", len(chains))
-
-	// 并发刷新用户资产，但限制并发数
-	semaphore := make(chan struct{}, 5) // 限制并发数为5
-	var wg sync.WaitGroup
-
-	for _, user := range users {
-		for _, chain := range chains {
-			wg.Add(1)
-			go func(walletAddress string, chainID int64) {
-				defer wg.Done()
-				semaphore <- struct{}{}        // 获取信号
-				defer func() { <-semaphore }() // 释放信号
-
-				if err := s.RefreshUserAssets(walletAddress, chainID); err != nil {
-					logger.Error("Failed to refresh user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
-				}
-			}(user.WalletAddress, chain.ChainID)
-		}
-	}
-
-	wg.Wait()
-	logger.Info("Finished refreshing all user assets")
 	return nil
 }
 

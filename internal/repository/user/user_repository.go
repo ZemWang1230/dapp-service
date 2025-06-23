@@ -19,7 +19,6 @@ type Repository interface {
 	UpdateUser(ctx context.Context, user *types.User) error
 	DeleteUser(ctx context.Context, id int64) error
 	GetByWalletAddress(walletAddress string) (*types.User, error)
-	GetAllActiveUsers() ([]*types.User, error)
 }
 
 type repository struct {
@@ -122,19 +121,4 @@ func (r *repository) GetByWalletAddress(walletAddress string) (*types.User, erro
 
 	logger.Info("GetByWalletAddress: ", "user_id", user.ID, "wallet_address", user.WalletAddress)
 	return &user, nil
-}
-
-// GetAllActiveUsers 获取所有激活的用户
-func (r *repository) GetAllActiveUsers() ([]*types.User, error) {
-	var users []*types.User
-	err := r.db.Where("status = ?", 1).
-		Find(&users).Error
-
-	if err != nil {
-		logger.Error("GetAllActiveUsers Error: ", err)
-		return nil, err
-	}
-
-	logger.Info("GetAllActiveUsers: ", "count", len(users))
-	return users, nil
 }

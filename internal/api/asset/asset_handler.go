@@ -44,9 +44,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// 	"force_refresh": true
 		// }
 		assetGroup.POST("/refresh", h.RefreshUserAssets)
-		// 刷新所有用户资产
-		// http://localhost:8080/api/v1/assets/refresh-all
-		assetGroup.POST("/refresh-all", h.RefreshAllUserAssets) // 管理员接口
 	}
 }
 
@@ -206,33 +203,5 @@ func (h *Handler) RefreshUserAssets(c *gin.Context) {
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    "Assets refreshed successfully",
-	})
-}
-
-// RefreshAllUserAssets 刷新所有用户资产（管理员接口）
-// @Summary 刷新所有用户资产
-// @Description 刷新所有用户在所有链上的资产信息（管理员接口）
-// @Tags 资产
-// @Security BearerAuth
-// @Accept json
-// @Produce json
-// @Success 200 {object} types.APIResponse{data=string}
-// @Failure 401 {object} types.APIResponse{error=types.APIError}
-// @Failure 500 {object} types.APIResponse{error=types.APIError}
-// @Router /api/v1/assets/refresh-all [post]
-func (h *Handler) RefreshAllUserAssets(c *gin.Context) {
-	// 这里可以添加管理员权限检查
-	// 暂时允许所有认证用户调用
-
-	// 异步执行刷新操作
-	go func() {
-		if err := h.assetService.RefreshAllUserAssets(); err != nil {
-			logger.Error("RefreshAllUserAssets: failed to refresh all assets", err)
-		}
-	}()
-
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    "All user assets have been refreshed",
 	})
 }

@@ -190,89 +190,22 @@ func (s *service) updatePrices(ctx context.Context) error {
 	}
 }
 
-// updatePricesFromCoinGecko 从CoinGecko更新价格
+// updatePricesFromCoinGecko 从CoinGecko更新价格（目前使用随机数据替代）
 func (s *service) updatePricesFromCoinGecko(ctx context.Context, tokens []*types.SupportToken) error {
-	// 构建CoinGecko ID列表
-	var ids []string
+	// 构建token映射
 	tokenMap := make(map[string]*types.SupportToken)
-
 	for _, token := range tokens {
 		if token.CoingeckoID != "" {
-			ids = append(ids, token.CoingeckoID)
 			tokenMap[token.CoingeckoID] = token
 		}
 	}
 
-	if len(ids) == 0 {
+	if len(tokenMap) == 0 {
 		logger.Info("No tokens with CoinGecko ID found")
 		return nil
 	}
 
-	// 调用CoinGecko API
-	// url := fmt.Sprintf("%s/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true",
-	// 	s.config.BaseURL,
-	// 	strings.Join(ids, ","))
-
-	// logger.Info("Making price request", "url", url, "token_count", len(ids))
-
-	// req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	// if err != nil {
-	// 	logger.Error("Failed to create request", err)
-	// 	return fmt.Errorf("failed to create request: %w", err)
-	// }
-
-	// req.Header.Set("Accept", "application/json")
-
-	// // 添加API Key
-	// if s.config.APIKey != "" {
-	// 	req.Header.Set("X-CG-Demo-API-Key", s.config.APIKey)
-	// }
-
-	// resp, err := s.httpClient.Do(req)
-	// if err != nil {
-	// 	logger.Error("Failed to make request", err)
-	// 	return fmt.Errorf("failed to make request: %w", err)
-	// }
-	// defer resp.Body.Close()
-
-	// if resp.StatusCode != http.StatusOK {
-	// 	logger.Error("API request failed with status", fmt.Errorf("status: %d", resp.StatusCode))
-	// 	return fmt.Errorf("API request failed with status: %d", resp.StatusCode)
-	// }
-
-	// var priceData types.CoinGeckoPriceResponse
-	// if err := json.NewDecoder(resp.Body).Decode(&priceData); err != nil {
-	// 	logger.Error("Failed to decode response", err)
-	// 	return fmt.Errorf("failed to decode response: %w", err)
-	// }
-
-	// // 更新Redis缓存
-	// now := time.Now()
-	// for coingeckoID, priceInfo := range priceData {
-	// 	token, exists := tokenMap[coingeckoID]
-	// 	if !exists {
-	// 		continue
-	// 	}
-
-	// 	tokenPrice := &types.TokenPrice{
-	// 		Symbol:      strings.ToUpper(token.Symbol),
-	// 		Name:        token.Name,
-	// 		Price:       priceInfo.USD,
-	// 		Change24h:   priceInfo.USD24hChange,
-	// 		LastUpdated: now,
-	// 	}
-
-	// 	// 保存到Redis
-	// 	if err := s.savePriceToCache(ctx, tokenPrice); err != nil {
-	// 		logger.Error("Failed to save price to cache", err, "symbol", tokenPrice.Symbol)
-	// 	} else {
-	// 		logger.Info("Price updated", "symbol", tokenPrice.Symbol, "price", tokenPrice.Price)
-	// 	}
-	// }
-
-	// logger.Info("Price update completed", "tokens_updated", len(priceData))
-
-	// 网络原因，此处利用随机数据替代，并更新redis缓存
+	// 使用随机数据替代网络请求（网络原因）
 	now := time.Now()
 	for _, token := range tokens {
 		tokenPrice := &types.TokenPrice{
@@ -289,7 +222,8 @@ func (s *service) updatePricesFromCoinGecko(ctx context.Context, tokens []*types
 			logger.Info("Price updated", "symbol", tokenPrice.Symbol, "price", tokenPrice.Price)
 		}
 	}
-	logger.Info("Random Price update completed", "tokens_updated", len(tokens))
+
+	logger.Info("Random price update completed", "tokens_updated", len(tokens))
 	return nil
 }
 

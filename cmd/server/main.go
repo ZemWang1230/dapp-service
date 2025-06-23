@@ -80,41 +80,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 4. 自动迁移数据库表结构
-	if err := database.AutoMigrate(db); err != nil {
-		logger.Error("Failed to migrate database: ", err)
-		os.Exit(1)
-	}
-
-	// 5. 创建数据库索引
-	if err := database.CreateIndexes(db); err != nil {
-		logger.Error("Failed to create indexes: ", err)
-		os.Exit(1)
-	}
-
-	// 6. 初始化预定义数据
-	if err := database.InitializePredefinedData(db); err != nil {
-		logger.Error("Failed to initialize predefined data: ", err)
-		os.Exit(1)
-	}
-
-	// 7. 清理重复数据
-	if err := database.CleanupDuplicateData(db); err != nil {
-		logger.Error("Failed to cleanup duplicate data: ", err)
-		// 不退出，继续运行
-	}
-
-	// 8. 初始化仓库层
+	// 4. 初始化仓库层
 	userRepo := userRepo.NewRepository(db)
 	tokenRepo := tokenRepo.NewRepository(db)
 	chainRepo := chainRepo.NewRepository(db)
 	chainTokenRepo := chainTokenRepo.NewRepository(db)
 	assetRepo := assetRepo.NewRepository(db)
 
-	// 9. 初始化价格服务
+	// 5. 初始化价格服务
 	priceSvc := priceService.NewService(&cfg.Price, tokenRepo, redisClient)
 
-	// 10. 启动价格服务
+	// 6. 启动价格服务
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -123,17 +99,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 11. 初始化JWT管理器
+	// 7. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
 		cfg.JWT.Secret,
 		cfg.JWT.AccessExpiry,
 		cfg.JWT.RefreshExpiry,
 	)
 
-	// 12. 初始化服务层
+	// 8. 初始化认证服务
 	authSvc := authService.NewService(userRepo, jwtManager)
 
-	// 13. 初始化资产服务
+	// 9. 初始化资产服务
 	assetSvc, err := assetService.NewService(
 		&cfg.Asset,
 		&cfg.RPC,
@@ -149,23 +125,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 14. 启动资产服务
-	if err := assetSvc.Start(ctx); err != nil {
-		logger.Error("Failed to start asset service: ", err)
-		os.Exit(1)
-	}
+	// 10. 设置服务依赖关系（避免循环依赖）
+	authSvc.SetAssetService(assetSvc)
 
-	// 15. 初始化处理器
+	// 11. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
 
-	// 16. 设置Gin模式
+	// 12. 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
-	// 17. 创建路由器
+	// 13. 创建路由器
 	router := gin.Default()
 
-	// 18. 添加CORS中间件
+	// 14. 添加CORS中间件
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -179,7 +152,7 @@ func main() {
 		c.Next()
 	})
 
-	// 19. 注册路由
+	// 15. 注册路由
 	v1 := router.Group("/api/v1")
 	{
 		authHandler.RegisterRoutes(v1)
@@ -190,21 +163,16 @@ func main() {
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 20. 健康检查端点
+	// 16. 健康检查端点
 	router.GET("/health", healthCheck)
 
-	// 21. 设置优雅关闭
+	// 17. 设置优雅关闭
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigCh
 		logger.Info("Received shutdown signal, stopping services...")
-
-		// 停止资产服务
-		if err := assetSvc.Stop(); err != nil {
-			logger.Error("Failed to stop asset service: ", err)
-		}
 
 		// 停止价格服务
 		if err := priceSvc.Stop(); err != nil {
@@ -215,7 +183,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// 22. 启动服务器
+	// 18. 启动服务器
 	addr := ":" + cfg.Server.Port
 	logger.Info("Starting server on ", addr)
 

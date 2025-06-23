@@ -46,14 +46,14 @@ func (ChainToken) TableName() string {
 // UserAsset 用户资产模型
 type UserAsset struct {
 	ID            int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserID        int64     `json:"user_id" gorm:"not null;index:idx_user_assets_user_id"`                       // 关联users表
-	WalletAddress string    `json:"wallet_address" gorm:"size:42;not null;index:idx_user_assets_wallet_address"` // 钱包地址
-	ChainID       int64     `json:"chain_id" gorm:"not null;index:idx_user_assets_chain_id"`                     // 区块链ID
-	TokenID       int64     `json:"token_id" gorm:"not null;index:idx_user_assets_token_id"`                     // 代币ID
-	Balance       string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                       // 余额，使用字符串存储避免精度问题
-	BalanceWei    string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                   // Wei单位余额
-	USDValue      float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                               // USD价值
-	LastUpdated   time.Time `json:"last_updated" gorm:"autoUpdateTime"`                                          // 最后更新时间
+	UserID        int64     `json:"user_id" gorm:"not null;index:idx_user_assets_user_id;uniqueIndex:idx_user_assets_unique,priority:1"`   // 关联users表
+	WalletAddress string    `json:"wallet_address" gorm:"size:42;not null;index:idx_user_assets_wallet_address"`                           // 钱包地址
+	ChainID       int64     `json:"chain_id" gorm:"not null;index:idx_user_assets_chain_id;uniqueIndex:idx_user_assets_unique,priority:2"` // 区块链ID
+	TokenID       int64     `json:"token_id" gorm:"not null;index:idx_user_assets_token_id;uniqueIndex:idx_user_assets_unique,priority:3"` // 代币ID
+	Balance       string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                                                 // 余额，使用字符串存储避免精度问题
+	BalanceWei    string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                                             // Wei单位余额
+	USDValue      float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                                                         // USD价值
+	LastUpdated   time.Time `json:"last_updated" gorm:"autoUpdateTime"`                                                                    // 最后更新时间
 	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt     time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 

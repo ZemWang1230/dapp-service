@@ -24,17 +24,24 @@ var (
 	ErrSignatureRecovery = errors.New("failed to recover address from signature")
 )
 
+// AssetService 资产服务接口（避免循环依赖）
+type AssetService interface {
+	RefreshUserAssetsOnChainConnect(walletAddress string, chainID int64) error
+}
+
 // Service 认证服务接口
 type Service interface {
 	WalletConnect(ctx context.Context, req *types.WalletConnectRequest) (*types.WalletConnectResponse, error)
 	RefreshToken(ctx context.Context, req *types.RefreshTokenRequest) (*types.WalletConnectResponse, error)
 	GetProfile(ctx context.Context, userID int64) (*types.UserProfile, error)
 	VerifyToken(ctx context.Context, tokenString string) (*types.JWTClaims, error)
+	SetAssetService(assetService AssetService)
 }
 
 type service struct {
-	userRepo   user.Repository
-	jwtManager *utils.JWTManager
+	userRepo     user.Repository
+	jwtManager   *utils.JWTManager
+	assetService AssetService
 }
 
 func NewService(userRepo user.Repository, jwtManager *utils.JWTManager) Service {
@@ -44,13 +51,19 @@ func NewService(userRepo user.Repository, jwtManager *utils.JWTManager) Service 
 	}
 }
 
+// SetAssetService 设置资产服务（避免循环依赖）
+func (s *service) SetAssetService(assetService AssetService) {
+	s.assetService = assetService
+}
+
 // WalletConnect 处理钱包连接认证
 // 1. 验证钱包地址格式
 // 2. 标准化地址格式
 // 3. 验证签名
 // 4. 查找或创建用户
 // 5. 生成JWT令牌
-// 6. 返回认证响应
+// 6. 触发资产更新
+// 7. 返回认证响应
 func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectRequest) (*types.WalletConnectResponse, error) {
 	// 1. 验证钱包地址格式
 	if !crypto.ValidateEthereumAddress(req.WalletAddress) {
@@ -129,8 +142,19 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 		return nil, fmt.Errorf("failed to generate jwt tokens: %w", err)
 	}
 
+	// 6. 异步触发资产更新（不阻塞认证流程）
+	if s.assetService != nil {
+		go func() {
+			if err := s.assetService.RefreshUserAssetsOnChainConnect(normalizedAddress, int64(req.ChainId)); err != nil {
+				logger.Error("WalletConnect: failed to refresh user assets on chain connect", err, "wallet_address", normalizedAddress, "chain_id", req.ChainId)
+			} else {
+				logger.Info("WalletConnect: successfully refreshed user assets on chain connect", "wallet_address", normalizedAddress, "chain_id", req.ChainId)
+			}
+		}()
+	}
+
 	logger.Info("WalletConnect Response:", "User: ", currentUser.WalletAddress, "ChainID: ", currentUser.ChainID)
-	// 6. 返回认证响应
+	// 7. 返回认证响应
 	return &types.WalletConnectResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

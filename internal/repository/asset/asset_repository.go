@@ -14,9 +14,8 @@ type Repository interface {
 	GetUserAssetsByChain(walletAddress string, chainID int64) ([]*types.UserAsset, error)
 	GetUserAsset(walletAddress string, chainID, tokenID int64) (*types.UserAsset, error)
 	CreateOrUpdateUserAsset(asset *types.UserAsset) error
-	BatchCreateOrUpdateUserAssets(assets []*types.UserAsset) error
+	BatchUpsertUserAssets(assets []*types.UserAsset) error
 	DeleteUserAsset(id int64) error
-	GetUserAssetsForUpdate(walletAddress string, chainID int64) ([]*types.UserAsset, error)
 }
 
 // repository 用户资产仓库实现
@@ -98,8 +97,8 @@ func (r *repository) CreateOrUpdateUserAsset(asset *types.UserAsset) error {
 	return nil
 }
 
-// BatchCreateOrUpdateUserAssets 批量创建或更新用户资产
-func (r *repository) BatchCreateOrUpdateUserAssets(assets []*types.UserAsset) error {
+// BatchUpsertUserAssets 批量UPSERT用户资产（支持PostgreSQL ON CONFLICT语法）
+func (r *repository) BatchUpsertUserAssets(assets []*types.UserAsset) error {
 	if len(assets) == 0 {
 		return nil
 	}
@@ -113,19 +112,40 @@ func (r *repository) BatchCreateOrUpdateUserAssets(assets []*types.UserAsset) er
 	}()
 
 	for _, asset := range assets {
-		if err := tx.Save(asset).Error; err != nil {
+		// 使用 PostgreSQL 的 ON CONFLICT 语法实现 UPSERT
+		sql := `
+			INSERT INTO user_assets (user_id, wallet_address, chain_id, token_id, balance, balance_wei, usd_value, last_updated, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+			ON CONFLICT (user_id, chain_id, token_id)
+			DO UPDATE SET
+				balance = EXCLUDED.balance,
+				balance_wei = EXCLUDED.balance_wei,
+				usd_value = EXCLUDED.usd_value,
+				last_updated = NOW(),
+				updated_at = NOW()
+		`
+
+		if err := tx.Exec(sql,
+			asset.UserID,
+			asset.WalletAddress,
+			asset.ChainID,
+			asset.TokenID,
+			asset.Balance,
+			asset.BalanceWei,
+			asset.USDValue,
+		).Error; err != nil {
 			tx.Rollback()
-			logger.Error("BatchCreateOrUpdateUserAssets Error: ", err, "wallet_address", asset.WalletAddress, "chain_id", asset.ChainID, "token_id", asset.TokenID)
+			logger.Error("BatchUpsertUserAssets Error: ", err, "wallet_address", asset.WalletAddress, "chain_id", asset.ChainID, "token_id", asset.TokenID)
 			return err
 		}
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		logger.Error("BatchCreateOrUpdateUserAssets Commit Error: ", err)
+		logger.Error("BatchUpsertUserAssets Commit Error: ", err)
 		return err
 	}
 
-	logger.Info("BatchCreateOrUpdateUserAssets: ", "assets_count", len(assets))
+	logger.Info("BatchUpsertUserAssets: ", "assets_count", len(assets))
 	return nil
 }
 
@@ -139,22 +159,4 @@ func (r *repository) DeleteUserAsset(id int64) error {
 
 	logger.Info("DeleteUserAsset: ", "id", id)
 	return nil
-}
-
-// GetUserAssetsForUpdate 获取用户资产并加锁（用于更新）
-func (r *repository) GetUserAssetsForUpdate(walletAddress string, chainID int64) ([]*types.UserAsset, error) {
-	var assets []*types.UserAsset
-
-	err := r.db.Set("gorm:query_option", "FOR UPDATE").
-		Preload("Token").
-		Where("wallet_address = ? AND chain_id = ?", walletAddress, chainID).
-		Order("token_id").
-		Find(&assets).Error
-	if err != nil {
-		logger.Error("GetUserAssetsForUpdate Error: ", err, "wallet_address", walletAddress, "chain_id", chainID)
-		return nil, err
-	}
-
-	logger.Info("GetUserAssetsForUpdate: ", "wallet_address", walletAddress, "chain_id", chainID, "count", len(assets))
-	return assets, nil
 }
