@@ -18,6 +18,8 @@ type Repository interface {
 	UpdateChainID(ctx context.Context, id int64, chainID int) error
 	UpdateUser(ctx context.Context, user *types.User) error
 	DeleteUser(ctx context.Context, id int64) error
+	GetByWalletAddress(walletAddress string) (*types.User, error)
+	GetAllActiveUsers() ([]*types.User, error)
 }
 
 type repository struct {
@@ -101,4 +103,38 @@ func (r *repository) DeleteUser(ctx context.Context, id int64) error {
 		Model(&types.User{}).
 		Where("id = ?", id).
 		Update("status", 0).Error
+}
+
+// GetByWalletAddress 根据钱包地址获取用户（简化版本，不需要context）
+func (r *repository) GetByWalletAddress(walletAddress string) (*types.User, error) {
+	var user types.User
+	err := r.db.Where("wallet_address = ?", walletAddress).
+		First(&user).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			logger.Info("GetByWalletAddress: user not found", "wallet_address", walletAddress)
+			return nil, nil
+		}
+		logger.Error("GetByWalletAddress Error: ", err, "wallet_address", walletAddress)
+		return nil, err
+	}
+
+	logger.Info("GetByWalletAddress: ", "user_id", user.ID, "wallet_address", user.WalletAddress)
+	return &user, nil
+}
+
+// GetAllActiveUsers 获取所有激活的用户
+func (r *repository) GetAllActiveUsers() ([]*types.User, error) {
+	var users []*types.User
+	err := r.db.Where("status = ?", 1).
+		Find(&users).Error
+
+	if err != nil {
+		logger.Error("GetAllActiveUsers Error: ", err)
+		return nil, err
+	}
+
+	logger.Info("GetAllActiveUsers: ", "count", len(users))
+	return users, nil
 }

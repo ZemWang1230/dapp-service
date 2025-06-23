@@ -27,4 +27,29 @@ price:
   base_url: "https://api.coingecko.com/api/v3"
   update_interval: "30s" # 价格更新间隔
   request_timeout: "10s" # 请求超时时间
-  cache_prefix: "price:" # Redis缓存前缀 
+  cache_prefix: "price:" # Redis缓存前缀
+
+# RPC节点配置
+rpc:
+  provider: "alchemy"  # RPC提供商：alchemy 或 infura
+  alchemy:
+    api_key: "7JGar3dcq0bHQa9vMk9zSS15hdFCmVHa"
+    ethereum: "https://eth-mainnet.g.alchemy.com/v2/"
+    bsc: "https://bnb-mainnet.g.alchemy.com/v2/"
+    polygon: "https://polygon-mainnet.g.alchemy.com/v2/"
+    arbitrum: "https://arb-mainnet.g.alchemy.com/v2/"
+  infura:
+    api_key: "31f7df93b3884e1f884c58c79d142e99"
+    ethereum: "https://mainnet.infura.io/v3/"
+    bsc: "https://bsc-dataseed.binance.org/"
+    polygon: "https://polygon-mainnet.infura.io/v3/"
+    arbitrum: "https://arbitrum-mainnet.infura.io/v3/"
+  request_timeout: "30s"
+
+# 资产查询配置
+asset:
+  update_interval: "30s"       # 资产更新间隔
+  batch_size: 10              # 批量查询大小
+  cache_prefix: "asset:"      # Redis缓存前缀
+  max_retry: 3                # 最大重试次数
+  retry_delay: "5s"           # 重试延迟 
