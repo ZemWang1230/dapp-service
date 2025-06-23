@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
+	Price    PriceConfig    `mapstructure:"price"`
 }
 
 type ServerConfig struct {
@@ -42,6 +43,15 @@ type JWTConfig struct {
 	RefreshExpiry time.Duration `mapstructure:"refresh_expiry"`
 }
 
+type PriceConfig struct {
+	Provider       string        `mapstructure:"provider"`
+	APIKey         string        `mapstructure:"api_key"`
+	BaseURL        string        `mapstructure:"base_url"`
+	UpdateInterval time.Duration `mapstructure:"update_interval"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+	CachePrefix    string        `mapstructure:"cache_prefix"`
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -64,6 +74,12 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("jwt.secret", "timelocker-jwt-secret-v1")
 	viper.SetDefault("jwt.access_expiry", time.Hour*24)
 	viper.SetDefault("jwt.refresh_expiry", time.Hour*24*7)
+	viper.SetDefault("price.provider", "coingecko")
+	viper.SetDefault("price.api_key", "")
+	viper.SetDefault("price.base_url", "https://api.coingecko.com/api/v3")
+	viper.SetDefault("price.update_interval", time.Second*30)
+	viper.SetDefault("price.request_timeout", time.Second*10)
+	viper.SetDefault("price.cache_prefix", "price:")
 
 	// Read environment variables
 	viper.AutomaticEnv()

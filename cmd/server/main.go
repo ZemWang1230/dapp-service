@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"timelocker-backend/docs"
 	"timelocker-backend/internal/api/auth"
 	"timelocker-backend/internal/config"
+	"timelocker-backend/internal/repository/token"
 	"timelocker-backend/internal/repository/user"
 	authService "timelocker-backend/internal/service/auth"
+	priceService "timelocker-backend/internal/service/price"
 	"timelocker-backend/pkg/database"
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
@@ -52,47 +58,71 @@ func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		logger.Error("Failed to load config: ", err)
+		os.Exit(1)
 	}
 
 	// 2. 连接数据库
 	db, err := database.NewPostgresConnection(&cfg.Database)
 	if err != nil {
 		logger.Error("Failed to connect to database: ", err)
+		os.Exit(1)
 	}
 
-	// 3. 自动迁移数据库
+	// 3. 连接Redis
+	redisClient, err := database.NewRedisConnection(&cfg.Redis)
+	if err != nil {
+		logger.Error("Failed to connect to Redis: ", err)
+		os.Exit(1)
+	}
+
+	// 4. 自动迁移数据库
 	if err := database.AutoMigrate(db); err != nil {
 		logger.Error("Failed to migrate database: ", err)
+		os.Exit(1)
 	}
 
-	// 4. 创建索引
+	// 5. 创建索引
 	if err := database.CreateIndexes(db); err != nil {
 		logger.Error("Failed to create indexes: ", err)
+		os.Exit(1)
 	}
 
-	// 5. 初始化仓库层
+	// 6. 初始化仓库层
 	userRepo := user.NewRepository(db)
+	tokenRepo := token.NewRepository(db)
 
-	// 6. 初始化JWT管理器
+	// 7. 初始化价格服务
+	priceSvc := priceService.NewService(&cfg.Price, tokenRepo, redisClient)
+
+	// 8. 启动价格服务
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := priceSvc.Start(ctx); err != nil {
+		logger.Error("Failed to start price service: ", err)
+		os.Exit(1)
+	}
+
+	// 9. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
 		cfg.JWT.Secret,
 		cfg.JWT.AccessExpiry,
 		cfg.JWT.RefreshExpiry,
 	)
 
-	// 7. 初始化服务层
+	// 10. 初始化服务层
 	authSvc := authService.NewService(userRepo, jwtManager)
 
-	// 8. 初始化处理器
+	// 11. 初始化处理器
 	authHandler := auth.NewHandler(authSvc)
 
-	// 9. 设置Gin模式
+	// 12. 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
-	// 10. 创建路由器
+	// 13. 创建路由器
 	router := gin.Default()
 
-	// 11. 添加CORS中间件
+	// 14. 添加CORS中间件
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -106,7 +136,7 @@ func main() {
 		c.Next()
 	})
 
-	// 12. 注册路由
+	// 15. 注册路由
 	v1 := router.Group("/api/v1")
 	{
 		authHandler.RegisterRoutes(v1)
@@ -116,14 +146,32 @@ func main() {
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 13. 健康检查端点
+	// 16. 健康检查端点
 	router.GET("/health", healthCheck)
 
-	// 14. 启动服务器
+	// 17. 设置优雅关闭
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigCh
+		logger.Info("Received shutdown signal, stopping services...")
+
+		// 停止价格服务
+		if err := priceSvc.Stop(); err != nil {
+			logger.Error("Failed to stop price service: ", err)
+		}
+
+		cancel()
+		os.Exit(0)
+	}()
+
+	// 18. 启动服务器
 	addr := ":" + cfg.Server.Port
 	logger.Info("Starting server on ", addr)
 
 	if err := router.Run(addr); err != nil {
 		logger.Error("Failed to start server: ", err)
+		os.Exit(1)
 	}
 }

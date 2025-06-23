@@ -55,6 +55,7 @@ func AutoMigrate(db *gorm.DB) error {
 
 	err := db.AutoMigrate(
 		&types.User{},
+		&types.SupportToken{},
 		// 未来会添加更多模型
 	)
 	if err != nil {
@@ -129,6 +130,22 @@ func CreateIndexes(db *gorm.DB) error {
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)").Error; err != nil {
 		tl_logger.Error("CreateIndexes Error: ", errors.New("failed to create status index"), "error: ", err)
 		return fmt.Errorf("failed to create status index: %w", err)
+	}
+
+	// 为支持代币表创建索引
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_support_tokens_symbol ON support_tokens(symbol)").Error; err != nil {
+		tl_logger.Error("CreateIndexes Error: ", errors.New("failed to create support_tokens symbol index"), "error: ", err)
+		return fmt.Errorf("failed to create support_tokens symbol index: %w", err)
+	}
+
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_support_tokens_coingecko_id ON support_tokens(coingecko_id)").Error; err != nil {
+		tl_logger.Error("CreateIndexes Error: ", errors.New("failed to create support_tokens coingecko_id index"), "error: ", err)
+		return fmt.Errorf("failed to create support_tokens coingecko_id index: %w", err)
+	}
+
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_support_tokens_is_active ON support_tokens(is_active)").Error; err != nil {
+		tl_logger.Error("CreateIndexes Error: ", errors.New("failed to create support_tokens is_active index"), "error: ", err)
+		return fmt.Errorf("failed to create support_tokens is_active index: %w", err)
 	}
 
 	tl_logger.Info("CreateIndexes: ", "database indexes created successfully")

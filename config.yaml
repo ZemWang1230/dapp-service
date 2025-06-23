@@ -19,4 +19,12 @@ redis:
 jwt:
   secret: "timelocker-jwt-secret-v1"
   access_expiry: "24h"   # 24小时
-  refresh_expiry: "168h" # 7天 
+  refresh_expiry: "168h" # 7天
+
+price:
+  provider: "coingecko"  # 价格源提供商
+  api_key: "CG-CJcpm8ARC7EKwwozw3pkSQZK"            # API密钥
+  base_url: "https://api.coingecko.com/api/v3"
+  update_interval: "30s" # 价格更新间隔
+  request_timeout: "10s" # 请求超时时间
+  cache_prefix: "price:" # Redis缓存前缀 
