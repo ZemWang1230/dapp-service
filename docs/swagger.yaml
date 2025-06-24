@@ -17,6 +17,44 @@ definitions:
       success:
         type: boolean
     type: object
+  types.AssetInfo:
+    properties:
+      balance:
+        type: string
+      balance_wei:
+        type: string
+      chain_id:
+        type: integer
+      chain_name:
+        type: string
+      chain_symbol:
+        type: string
+      change_24h:
+        type: number
+      contract_address:
+        type: string
+      is_native:
+        type: boolean
+      last_updated:
+        type: string
+      token_name:
+        type: string
+      token_price:
+        type: number
+      token_symbol:
+        type: string
+      usd_value:
+        type: number
+    type: object
+  types.AssetQueryRequest:
+    properties:
+      force_refresh:
+        type: boolean
+      wallet_address:
+        type: string
+    required:
+    - wallet_address
+    type: object
   types.JSONB:
     additionalProperties: true
     type: object
@@ -27,9 +65,36 @@ definitions:
     required:
     - refresh_token
     type: object
+  types.SwitchChainRequest:
+    properties:
+      chain_id:
+        type: integer
+      message:
+        type: string
+      signature:
+        type: string
+    required:
+    - chain_id
+    - message
+    - signature
+    type: object
+  types.SwitchChainResponse:
+    properties:
+      access_token:
+        type: string
+      expires_at:
+        type: string
+      message:
+        type: string
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/types.User'
+    type: object
   types.User:
     properties:
       chain_id:
+        description: 最后登录的链ID
         type: integer
       created_at:
         type: string
@@ -43,6 +108,21 @@ definitions:
         type: integer
       updated_at:
         type: string
+      wallet_address:
+        description: 钱包地址作为唯一标识
+        type: string
+    type: object
+  types.UserAssetResponse:
+    properties:
+      assets:
+        description: 所有支持链上的资产，按价值从高到低排序
+        items:
+          $ref: '#/definitions/types.AssetInfo'
+        type: array
+      last_updated:
+        type: string
+      total_usd_value:
+        type: number
       wallet_address:
         type: string
     type: object
@@ -93,6 +173,116 @@ info:
   title: TimeLocker Backend API
   version: "1.0"
 paths:
+  /api/v1/assets:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户在所有链上的资产信息
+      parameters:
+      - description: 是否强制刷新
+        in: query
+        name: force_refresh
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.UserAssetResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取用户资产
+      tags:
+      - 资产
+  /api/v1/assets/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 强制刷新用户在所有支持链上的资产信息
+      parameters:
+      - description: 刷新请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.AssetQueryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 刷新用户资产
+      tags:
+      - 资产
   /api/v1/auth/profile:
     get:
       consumes:
@@ -156,6 +346,43 @@ paths:
           schema:
             $ref: '#/definitions/types.APIResponse'
       summary: 刷新访问令牌
+      tags:
+      - 认证
+  /api/v1/auth/switch-chain:
+    post:
+      consumes:
+      - application/json
+      description: 切换到新的区块链
+      parameters:
+      - description: 切换链请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.SwitchChainRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.SwitchChainResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 切换链
       tags:
       - 认证
   /api/v1/auth/wallet-connect:

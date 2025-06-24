@@ -40,7 +40,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// 请求体：
 		// {
 		// 	"wallet_address": "0x1234567890123456789012345678901234567890",
-		// 	"chain_id": 1
 		// 	"force_refresh": true
 		// }
 		assetGroup.POST("/refresh", h.RefreshUserAssets)
@@ -54,7 +53,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Security BearerAuth
 // @Accept json
 // @Produce json
-// @Param chain_id query int false "主要显示的链ID"
 // @Param force_refresh query bool false "是否强制刷新"
 // @Success 200 {object} types.APIResponse{data=types.UserAssetResponse}
 // @Failure 400 {object} types.APIResponse{error=types.APIError}
@@ -63,7 +61,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Router /api/v1/assets [get]
 func (h *Handler) GetUserAssets(c *gin.Context) {
 	// 从JWT中获取用户信息
-	userID, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, walletAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		logger.Error("GetUserAssets: failed to get user from context", nil)
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
@@ -76,43 +74,14 @@ func (h *Handler) GetUserAssets(c *gin.Context) {
 		return
 	}
 
-	// 获取用户完整信息
-	userProfile, err := h.authService.GetProfile(c.Request.Context(), userID)
-	if err != nil {
-		logger.Error("GetUserAssets: failed to get user profile", err, "user_id", userID)
-		c.JSON(http.StatusInternalServerError, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: "Failed to get user information",
-			},
-		})
-		return
-	}
-
 	// 获取查询参数
-	chainIDStr := c.DefaultQuery("chain_id", strconv.FormatInt(int64(userProfile.ChainID), 10))
 	forceRefreshStr := c.DefaultQuery("force_refresh", "false")
-
-	chainID, err := strconv.ParseInt(chainIDStr, 10, 64)
-	if err != nil {
-		logger.Error("GetUserAssets: invalid chain_id", err, "chain_id", chainIDStr)
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_PARAMETER",
-				Message: "Invalid chain ID",
-			},
-		})
-		return
-	}
-
 	forceRefresh, _ := strconv.ParseBool(forceRefreshStr)
 
 	// 调用服务获取用户资产
-	assets, err := h.assetService.GetUserAssets(walletAddress, chainID, forceRefresh)
+	assets, err := h.assetService.GetUserAssets(walletAddress, forceRefresh)
 	if err != nil {
-		logger.Error("GetUserAssets: failed to get user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
+		logger.Error("GetUserAssets: failed to get user assets", err, "wallet_address", walletAddress)
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
@@ -132,7 +101,7 @@ func (h *Handler) GetUserAssets(c *gin.Context) {
 
 // RefreshUserAssets 刷新用户资产
 // @Summary 刷新用户资产
-// @Description 强制刷新用户在指定链上的资产信息
+// @Description 强制刷新用户在所有支持链上的资产信息
 // @Tags 资产
 // @Security BearerAuth
 // @Accept json
@@ -187,8 +156,8 @@ func (h *Handler) RefreshUserAssets(c *gin.Context) {
 	}
 
 	// 刷新用户资产
-	if err := h.assetService.RefreshUserAssets(request.WalletAddress, request.ChainID); err != nil {
-		logger.Error("RefreshUserAssets: failed to refresh assets", err, "wallet_address", request.WalletAddress, "chain_id", request.ChainID)
+	if err := h.assetService.RefreshUserAssets(request.WalletAddress); err != nil {
+		logger.Error("RefreshUserAssets: failed to refresh assets", err, "wallet_address", request.WalletAddress)
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{

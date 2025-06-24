@@ -45,11 +45,11 @@ func (j *JSONB) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, j)
 }
 
-// User 用户模型
+// User 用户模型 - 重构为以钱包地址为核心，ChainID为最后登录的链
 type User struct {
 	ID            int64      `json:"id" gorm:"primaryKey;autoIncrement"`
-	WalletAddress string     `json:"wallet_address" gorm:"uniqueIndex:idx_users_wallet_address;size:42;not null"`
-	ChainID       int        `json:"chain_id" gorm:"not null;default:1"`
+	WalletAddress string     `json:"wallet_address" gorm:"unique;size:42;not null"` // 钱包地址作为唯一标识
+	ChainID       int        `json:"chain_id" gorm:"not null;default:1"`            // 最后登录的链ID
 	CreatedAt     time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	LastLogin     *time.Time `json:"last_login"`
@@ -83,9 +83,11 @@ type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
-// SwitchChainRequest 切换链请求
+// SwitchChainRequest 切换链请求（需要重新签名）
 type SwitchChainRequest struct {
-	ChainID int `json:"chain_id" binding:"required"`
+	ChainID   int    `json:"chain_id" binding:"required"`
+	Signature string `json:"signature" binding:"required"`
+	Message   string `json:"message" binding:"required"`
 }
 
 // SwitchChainResponse 切换链响应

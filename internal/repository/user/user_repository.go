@@ -13,13 +13,12 @@ import (
 type Repository interface {
 	CreateUser(ctx context.Context, user *types.User) error
 	GetUserByWallet(ctx context.Context, walletAddress string) (*types.User, error)
-	GetUserByWalletAndChain(ctx context.Context, walletAddress string, chainID int) (*types.User, error)
 	GetUserByID(ctx context.Context, id int64) (*types.User, error)
-	UpdateLastLogin(ctx context.Context, id int64) error
+	UpdateLastLogin(ctx context.Context, walletAddress string) error
 	UpdateUser(ctx context.Context, user *types.User) error
+	UpdateUserChainID(ctx context.Context, walletAddress string, chainID int) error
 	DeleteUser(ctx context.Context, id int64) error
 	GetByWalletAddress(walletAddress string) (*types.User, error)
-	GetByWalletAndChain(walletAddress string, chainID int) (*types.User, error)
 }
 
 type repository struct {
@@ -69,12 +68,12 @@ func (r *repository) GetUserByID(ctx context.Context, id int64) (*types.User, er
 }
 
 // UpdateLastLogin 更新用户最后登录时间
-func (r *repository) UpdateLastLogin(ctx context.Context, id int64) error {
+func (r *repository) UpdateLastLogin(ctx context.Context, walletAddress string) error {
 	now := time.Now()
-	logger.Info("UpdateLastLogin: ", "user_id: ", id, "last_login: ", now)
+	logger.Info("UpdateLastLogin: ", "wallet_address: ", walletAddress, "last_login: ", now)
 	return r.db.WithContext(ctx).
 		Model(&types.User{}).
-		Where("id = ?", id).
+		Where("wallet_address = ?", walletAddress).
 		Update("last_login", &now).Error
 }
 
@@ -115,36 +114,11 @@ func (r *repository) GetByWalletAddress(walletAddress string) (*types.User, erro
 	return &user, nil
 }
 
-// GetUserByWalletAndChain 根据钱包地址和链ID获取用户
-func (r *repository) GetUserByWalletAndChain(ctx context.Context, walletAddress string, chainID int) (*types.User, error) {
-	var user types.User
-	err := r.db.WithContext(ctx).
-		Where("wallet_address = ? AND chain_id = ?", walletAddress, chainID).
-		First(&user).Error
-
-	if err != nil {
-		logger.Error("GetUserByWalletAndChain Error: ", err)
-		return nil, err
-	}
-	logger.Info("GetUserByWalletAndChain: ", "user_id: ", user.ID, "wallet_address: ", user.WalletAddress, "chain_id: ", user.ChainID)
-	return &user, nil
-}
-
-// GetByWalletAndChain 根据钱包地址和链ID获取用户（简化版本，不需要context）
-func (r *repository) GetByWalletAndChain(walletAddress string, chainID int) (*types.User, error) {
-	var user types.User
-	err := r.db.Where("wallet_address = ? AND chain_id = ?", walletAddress, chainID).
-		First(&user).Error
-
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			logger.Info("GetByWalletAndChain: user not found", "wallet_address", walletAddress, "chain_id", chainID)
-			return nil, nil
-		}
-		logger.Error("GetByWalletAndChain Error: ", err, "wallet_address", walletAddress, "chain_id", chainID)
-		return nil, err
-	}
-
-	logger.Info("GetByWalletAndChain: ", "user_id", user.ID, "wallet_address", user.WalletAddress, "chain_id", user.ChainID)
-	return &user, nil
+// UpdateUserChainID 更新用户的链ID（最后登录的链）
+func (r *repository) UpdateUserChainID(ctx context.Context, walletAddress string, chainID int) error {
+	logger.Info("UpdateUserChainID: ", "wallet_address: ", walletAddress, "chain_id: ", chainID)
+	return r.db.WithContext(ctx).
+		Model(&types.User{}).
+		Where("wallet_address = ?", walletAddress).
+		Update("chain_id", chainID).Error
 }

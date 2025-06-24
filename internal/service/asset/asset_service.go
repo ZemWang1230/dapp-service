@@ -22,9 +22,9 @@ import (
 
 // Service 资产服务接口
 type Service interface {
-	GetUserAssets(walletAddress string, chainID int64, forceRefresh bool) (*types.UserAssetResponse, error)
-	RefreshUserAssets(walletAddress string, chainID int64) error
-	RefreshUserAssetsOnChainConnect(walletAddress string, chainID int64) error
+	GetUserAssets(walletAddress string, forceRefresh bool) (*types.UserAssetResponse, error)
+	RefreshUserAssets(walletAddress string) error
+	RefreshUserAssetsOnChainConnect(walletAddress string) error
 }
 
 // service 资产服务实现
@@ -72,49 +72,36 @@ func NewService(
 	}, nil
 }
 
-// GetUserAssets 获取用户资产（只返回指定链上的资产）
-func (s *service) GetUserAssets(walletAddress string, chainID int64, forceRefresh bool) (*types.UserAssetResponse, error) {
-	logger.Info("Getting user assets", "wallet_address", walletAddress, "chain_id", chainID, "force_refresh", forceRefresh)
+// GetUserAssets 获取用户资产（所有支持链上的资产，按价值排序）
+func (s *service) GetUserAssets(walletAddress string, forceRefresh bool) (*types.UserAssetResponse, error) {
+	logger.Info("Getting user assets", "wallet_address", walletAddress, "force_refresh", forceRefresh)
 
 	// 如果强制刷新，先更新数据
 	if forceRefresh {
-		if err := s.RefreshUserAssets(walletAddress, chainID); err != nil {
-			logger.Error("Failed to refresh user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
+		if err := s.RefreshUserAssets(walletAddress); err != nil {
+			logger.Error("Failed to refresh user assets", err, "wallet_address", walletAddress)
 		}
 	}
 
-	// 从数据库获取用户在指定链上的资产
-	assets, err := s.assetRepo.GetUserAssetsByChain(walletAddress, chainID)
+	// 从数据库获取用户所有资产
+	assets, err := s.assetRepo.GetUserAssets(walletAddress)
 	if err != nil {
-		logger.Error("Failed to get user assets from database", err, "wallet_address", walletAddress, "chain_id", chainID)
+		logger.Error("Failed to get user assets from database", err, "wallet_address", walletAddress)
 		return nil, fmt.Errorf("failed to get user assets: %w", err)
-	}
-
-	// 获取链信息
-	chainInfo, err := s.chainRepo.GetChainByChainID(chainID)
-	if err != nil {
-		logger.Error("Failed to get chain info", err, "chain_id", chainID)
-		return nil, fmt.Errorf("failed to get chain info: %w", err)
-	}
-	if chainInfo == nil {
-		logger.Error("Chain not found", nil, "chain_id", chainID)
-		return nil, fmt.Errorf("chain not found: %d", chainID)
 	}
 
 	// 组织响应数据
 	response := &types.UserAssetResponse{
-		WalletAddress:  walletAddress,
-		PrimaryChainID: chainID,
-		OtherChains:    make([]types.ChainAssetInfo, 0), // 不返回其他链的数据
-		LastUpdated:    time.Now(),
+		WalletAddress: walletAddress,
+		Assets:        make([]types.AssetInfo, 0),
+		LastUpdated:   time.Now(),
 	}
 
-	// 构建当前链的资产信息
-	var assetInfos []types.AssetInfo
+	// 构建资产信息（已按价值排序）
 	totalUSDValue := 0.0
 
 	for _, asset := range assets {
-		if asset.Token == nil {
+		if asset.Token == nil || asset.Chain == nil {
 			continue
 		}
 
@@ -131,148 +118,164 @@ func (s *service) GetUserAssets(walletAddress string, chainID int64, forceRefres
 		balance, _ := strconv.ParseFloat(asset.Balance, 64)
 		usdValue := balance * tokenPrice
 
-		assetInfo := types.AssetInfo{
-			TokenSymbol: asset.Token.Symbol,
-			TokenName:   asset.Token.Name,
-			Balance:     asset.Balance,
-			BalanceWei:  asset.BalanceWei,
-			USDValue:    usdValue,
-			TokenPrice:  tokenPrice,
-			Change24h:   change24h,
-			LastUpdated: asset.LastUpdated,
+		// 获取链代币信息以确定合约地址和是否为原生代币
+		chainToken, err := s.chainTokenRepo.GetChainTokenByChainAndToken(asset.ChainID, asset.TokenID)
+		var contractAddr string
+		var isNative bool
+		if err == nil && chainToken != nil {
+			contractAddr = chainToken.ContractAddress
+			isNative = chainToken.IsNative
 		}
 
-		assetInfos = append(assetInfos, assetInfo)
-		totalUSDValue += usdValue
-	}
+		assetInfo := types.AssetInfo{
+			ChainID:      asset.ChainID,
+			ChainName:    asset.Chain.Name,
+			ChainSymbol:  asset.Chain.Symbol,
+			TokenSymbol:  asset.Token.Symbol,
+			TokenName:    asset.Token.Name,
+			ContractAddr: contractAddr,
+			Balance:      asset.Balance,
+			BalanceWei:   asset.BalanceWei,
+			USDValue:     usdValue,
+			TokenPrice:   tokenPrice,
+			Change24h:    change24h,
+			IsNative:     isNative,
+			LastUpdated:  asset.LastUpdated,
+		}
 
-	// 构建主链资产信息
-	response.PrimaryChain = types.ChainAssetInfo{
-		ChainID:       chainInfo.ChainID,
-		ChainName:     chainInfo.Name,
-		ChainSymbol:   chainInfo.Symbol,
-		Assets:        assetInfos,
-		TotalUSDValue: totalUSDValue,
-		LastUpdated:   time.Now(),
+		response.Assets = append(response.Assets, assetInfo)
+		totalUSDValue += usdValue
 	}
 
 	response.TotalUSDValue = totalUSDValue
 
-	logger.Info("Got user assets", "wallet_address", walletAddress, "chain_id", chainID, "total_usd_value", totalUSDValue, "assets_count", len(assetInfos))
+	logger.Info("Got user assets", "wallet_address", walletAddress, "total_usd_value", totalUSDValue, "assets_count", len(response.Assets))
 	return response, nil
 }
 
-// RefreshUserAssets 刷新用户资产（手动刷新）
-func (s *service) RefreshUserAssets(walletAddress string, chainID int64) error {
-	logger.Info("Refreshing user assets", "wallet_address", walletAddress, "chain_id", chainID)
-	return s.refreshUserAssetsInternal(walletAddress, chainID)
+// RefreshUserAssets 刷新用户资产（手动刷新所有支持链）
+func (s *service) RefreshUserAssets(walletAddress string) error {
+	logger.Info("Refreshing user assets", "wallet_address", walletAddress)
+	return s.refreshUserAssetsInternal(walletAddress)
 }
 
-// RefreshUserAssetsOnChainConnect 用户连接钱包时刷新该链上的资产
-func (s *service) RefreshUserAssetsOnChainConnect(walletAddress string, chainID int64) error {
-	logger.Info("Refreshing user assets on chain connect", "wallet_address", walletAddress, "chain_id", chainID)
-	return s.refreshUserAssetsInternal(walletAddress, chainID)
+// RefreshUserAssetsOnChainConnect 用户连接钱包时刷新所有支持链上的资产
+func (s *service) RefreshUserAssetsOnChainConnect(walletAddress string) error {
+	logger.Info("Refreshing user assets on chain connect", "wallet_address", walletAddress)
+	return s.refreshUserAssetsInternal(walletAddress)
 }
 
-// refreshUserAssetsInternal 内部资产刷新逻辑
-func (s *service) refreshUserAssetsInternal(walletAddress string, chainID int64) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+// refreshUserAssetsInternal 内部资产刷新逻辑（刷新所有支持链上的资产）
+func (s *service) refreshUserAssetsInternal(walletAddress string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second) // 5分钟超时，因为要查询多条链
 	defer cancel()
 
-	// 按钱包地址+链ID获取用户信息
-	user, err := s.userRepo.GetByWalletAndChain(walletAddress, int(chainID))
+	// 获取用户信息
+	user, err := s.userRepo.GetByWalletAddress(walletAddress)
 	if err != nil {
-		logger.Error("Failed to get user", err, "wallet_address", walletAddress, "chain_id", chainID)
+		logger.Error("Failed to get user", err, "wallet_address", walletAddress)
 		return fmt.Errorf("failed to get user: %w", err)
 	}
 	if user == nil {
-		return fmt.Errorf("user not found: %s on chain %d", walletAddress, chainID)
+		return fmt.Errorf("user not found: %s", walletAddress)
 	}
 
-	// 获取该链的代币配置
-	chainTokens, err := s.chainTokenRepo.GetTokensByChainID(chainID)
+	// 获取所有支持的链
+	chains, err := s.chainRepo.GetAllActiveChains()
 	if err != nil {
-		logger.Error("Failed to get chain tokens", err, "chain_id", chainID)
-		return fmt.Errorf("failed to get chain tokens: %w", err)
+		logger.Error("Failed to get active chains", err)
+		return fmt.Errorf("failed to get active chains: %w", err)
 	}
 
-	if len(chainTokens) == 0 {
-		logger.Info("No tokens configured for chain", "chain_id", chainID)
-		return nil
-	}
+	var allAssets []*types.UserAsset
 
-	// 查询各代币余额
-	var assets []*types.UserAsset
-	for _, chainToken := range chainTokens {
-		if chainToken.Token == nil {
-			continue
-		}
+	// 遍历每条链
+	for _, chain := range chains {
+		chainID := chain.ChainID
+		logger.Info("Refreshing assets for chain", "chain_id", chainID, "wallet_address", walletAddress)
 
-		var balance *big.Int
-		var err error
-
-		if chainToken.IsNative {
-			// 查询原生代币余额
-			balance, err = s.rpcClient.GetNativeBalance(ctx, chainID, walletAddress)
-		} else {
-			// 查询ERC-20代币余额
-			balance, err = s.rpcClient.GetTokenBalance(ctx, chainID, walletAddress, chainToken.ContractAddress)
-		}
-
+		// 获取该链的代币配置
+		chainTokens, err := s.chainTokenRepo.GetTokensByChainID(chainID)
 		if err != nil {
-			logger.Error("Failed to get token balance", err, "chain_id", chainID, "token", chainToken.Token.Symbol, "is_native", chainToken.IsNative)
-			// 不返回错误，继续查询其他代币
+			logger.Error("Failed to get chain tokens", err, "chain_id", chainID)
+			continue // 继续查询其他链
+		}
+
+		if len(chainTokens) == 0 {
+			logger.Info("No tokens configured for chain", "chain_id", chainID)
 			continue
 		}
 
-		// 过滤余额为0的资产，不保存到数据库
-		if balance.Cmp(big.NewInt(0)) == 0 {
-			logger.Info("Skipping zero balance token", "chain_id", chainID, "token", chainToken.Token.Symbol, "wallet_address", walletAddress)
-			continue
+		// 查询各代币余额
+		for _, chainToken := range chainTokens {
+			if chainToken.Token == nil {
+				continue
+			}
+
+			var balance *big.Int
+			var err error
+
+			if chainToken.IsNative {
+				// 查询原生代币余额
+				balance, err = s.rpcClient.GetNativeBalance(ctx, chainID, walletAddress)
+			} else {
+				// 查询ERC-20代币余额
+				balance, err = s.rpcClient.GetTokenBalance(ctx, chainID, walletAddress, chainToken.ContractAddress)
+			}
+
+			if err != nil {
+				logger.Error("Failed to get token balance", err, "chain_id", chainID, "token", chainToken.Token.Symbol, "is_native", chainToken.IsNative)
+				continue // 继续查询其他代币
+			}
+
+			// 过滤余额为0的资产，不保存到数据库
+			if balance.Cmp(big.NewInt(0)) == 0 {
+				logger.Info("Skipping zero balance token", "chain_id", chainID, "token", chainToken.Token.Symbol, "wallet_address", walletAddress)
+				continue
+			}
+
+			// 创建或更新用户资产记录
+			asset := &types.UserAsset{
+				WalletAddress: walletAddress,
+				ChainID:       chainID,
+				TokenID:       chainToken.TokenID,
+			}
+
+			// 设置余额
+			asset.SetBalanceFromBigInt(balance, chainToken.Token.Decimals)
+
+			// 计算USD价值
+			price, _ := s.priceService.GetPrice(chainToken.Token.Symbol)
+			if price != nil {
+				balanceFloat, _ := strconv.ParseFloat(asset.Balance, 64)
+				asset.USDValue = balanceFloat * price.Price
+			}
+
+			allAssets = append(allAssets, asset)
 		}
-
-		// 创建或更新用户资产记录
-		asset := &types.UserAsset{
-			UserID:        user.ID,
-			WalletAddress: walletAddress,
-			ChainID:       chainID,
-			TokenID:       chainToken.TokenID,
-		}
-
-		// 设置余额
-		asset.SetBalanceFromBigInt(balance, chainToken.Token.Decimals)
-
-		// 计算USD价值
-		price, _ := s.priceService.GetPrice(chainToken.Token.Symbol)
-		if price != nil {
-			balanceFloat, _ := strconv.ParseFloat(asset.Balance, 64)
-			asset.USDValue = balanceFloat * price.Price
-		}
-
-		assets = append(assets, asset)
 	}
 
 	// 使用 UPSERT 逻辑批量保存到数据库（只保存余额>0的记录）
-	if len(assets) > 0 {
-		if err := s.assetRepo.BatchUpsertUserAssets(assets); err != nil {
-			logger.Error("Failed to upsert user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
+	if len(allAssets) > 0 {
+		if err := s.assetRepo.BatchUpsertUserAssets(allAssets); err != nil {
+			logger.Error("Failed to upsert user assets", err, "wallet_address", walletAddress)
 			return fmt.Errorf("failed to upsert user assets: %w", err)
 		}
 	}
 
 	// 保存到缓存
-	if err := s.cacheUserAssets(walletAddress, chainID, assets); err != nil {
-		logger.Error("Failed to cache user assets", err, "wallet_address", walletAddress, "chain_id", chainID)
+	if err := s.cacheUserAssets(walletAddress, allAssets); err != nil {
+		logger.Error("Failed to cache user assets", err, "wallet_address", walletAddress)
 		// 不返回错误，缓存失败不影响主要功能
 	}
 
-	logger.Info("Refreshed user assets", "wallet_address", walletAddress, "chain_id", chainID, "assets_count", len(assets), "user_id", user.ID)
+	logger.Info("Refreshed user assets", "wallet_address", walletAddress, "total_assets_count", len(allAssets))
 	return nil
 }
 
 // cacheUserAssets 缓存用户资产
-func (s *service) cacheUserAssets(walletAddress string, chainID int64, assets []*types.UserAsset) error {
-	key := fmt.Sprintf("%s%s:%d", s.config.CachePrefix, walletAddress, chainID)
+func (s *service) cacheUserAssets(walletAddress string, assets []*types.UserAsset) error {
+	key := fmt.Sprintf("%s%s", s.config.CachePrefix, walletAddress)
 
 	data, err := json.Marshal(assets)
 	if err != nil {

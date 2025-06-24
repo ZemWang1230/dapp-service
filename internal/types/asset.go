@@ -43,23 +43,22 @@ func (ChainToken) TableName() string {
 	return "chain_tokens"
 }
 
-// UserAsset 用户资产模型
+// UserAsset 用户资产模型 - 重构为以wallet_address关联
 type UserAsset struct {
 	ID            int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserID        int64     `json:"user_id" gorm:"not null;index:idx_user_assets_user_id;uniqueIndex:idx_user_assets_unique,priority:1"`   // 关联users表
-	WalletAddress string    `json:"wallet_address" gorm:"size:42;not null;index:idx_user_assets_wallet_address"`                           // 钱包地址
-	ChainID       int64     `json:"chain_id" gorm:"not null;index:idx_user_assets_chain_id;uniqueIndex:idx_user_assets_unique,priority:2"` // 区块链ID
-	TokenID       int64     `json:"token_id" gorm:"not null;index:idx_user_assets_token_id;uniqueIndex:idx_user_assets_unique,priority:3"` // 代币ID
-	Balance       string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                                                 // 余额，使用字符串存储避免精度问题
-	BalanceWei    string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                                             // Wei单位余额
-	USDValue      float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                                                         // USD价值
-	LastUpdated   time.Time `json:"last_updated" gorm:"autoUpdateTime"`                                                                    // 最后更新时间
+	WalletAddress string    `json:"wallet_address" gorm:"size:42;not null;index:idx_user_assets_wallet_address;uniqueIndex:idx_user_assets_unique,priority:1"` // 钱包地址
+	ChainID       int64     `json:"chain_id" gorm:"not null;index:idx_user_assets_chain_id;uniqueIndex:idx_user_assets_unique,priority:2"`                     // 区块链ID
+	TokenID       int64     `json:"token_id" gorm:"not null;index:idx_user_assets_token_id;uniqueIndex:idx_user_assets_unique,priority:3"`                     // 代币ID
+	Balance       string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                                                                     // 余额，使用字符串存储避免精度问题
+	BalanceWei    string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                                                                 // Wei单位余额
+	USDValue      float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                                                                             // USD价值
+	LastUpdated   time.Time `json:"last_updated" gorm:"autoUpdateTime"`                                                                                        // 最后更新时间
 	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt     time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 
 	// 关联查询
-	User  *User         `json:"user,omitempty" gorm:"foreignKey:UserID;references:ID"`
 	Token *SupportToken `json:"token,omitempty" gorm:"foreignKey:TokenID;references:ID"`
+	Chain *SupportChain `json:"chain,omitempty" gorm:"foreignKey:ChainID;references:ID"`
 }
 
 // TableName 设置表名
@@ -97,15 +96,17 @@ func (ua *UserAsset) SetBalanceFromBigInt(balance *big.Int, decimals int) {
 	}
 }
 
-// AssetQueryRequest 资产查询请求
+// AssetQueryRequest 资产查询请求 - 简化为只需要钱包地址
 type AssetQueryRequest struct {
 	WalletAddress string `json:"wallet_address" binding:"required,len=42"`
-	ChainID       int64  `json:"chain_id" binding:"required"`
 	ForceRefresh  bool   `json:"force_refresh"`
 }
 
-// AssetInfo 资产信息
+// AssetInfo 资产信息 - 新增链信息
 type AssetInfo struct {
+	ChainID      int64     `json:"chain_id"`
+	ChainName    string    `json:"chain_name"`
+	ChainSymbol  string    `json:"chain_symbol"`
 	TokenSymbol  string    `json:"token_symbol"`
 	TokenName    string    `json:"token_name"`
 	ContractAddr string    `json:"contract_address,omitempty"`
@@ -118,22 +119,10 @@ type AssetInfo struct {
 	LastUpdated  time.Time `json:"last_updated"`
 }
 
-// ChainAssetInfo 链资产信息
-type ChainAssetInfo struct {
-	ChainID       int64       `json:"chain_id"`
-	ChainName     string      `json:"chain_name"`
-	ChainSymbol   string      `json:"chain_symbol"`
-	Assets        []AssetInfo `json:"assets"`
+// UserAssetResponse 用户资产查询响应 - 简化为直接返回资产列表，按价值排序
+type UserAssetResponse struct {
+	WalletAddress string      `json:"wallet_address"`
+	Assets        []AssetInfo `json:"assets"` // 所有支持链上的资产，按价值从高到低排序
 	TotalUSDValue float64     `json:"total_usd_value"`
 	LastUpdated   time.Time   `json:"last_updated"`
-}
-
-// UserAssetResponse 用户资产查询响应
-type UserAssetResponse struct {
-	WalletAddress  string           `json:"wallet_address"`
-	PrimaryChainID int64            `json:"primary_chain_id"`
-	PrimaryChain   ChainAssetInfo   `json:"primary_chain"`
-	OtherChains    []ChainAssetInfo `json:"other_chains"`
-	TotalUSDValue  float64          `json:"total_usd_value"`
-	LastUpdated    time.Time        `json:"last_updated"`
 }

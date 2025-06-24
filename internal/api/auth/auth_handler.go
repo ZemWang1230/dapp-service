@@ -186,8 +186,8 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 // @Failure 404 {object} types.APIResponse
 // @Router /api/v1/auth/profile [get]
 func (h *Handler) GetProfile(c *gin.Context) {
-	// 从上下文获取用户ID
-	userID, _, ok := middleware.GetUserFromContext(c)
+	// 从上下文获取用户信息
+	_, walletAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -201,7 +201,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 	}
 
 	// 获取用户资料
-	profile, err := h.authService.GetProfile(c.Request.Context(), userID)
+	profile, err := h.authService.GetProfile(c.Request.Context(), walletAddress)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -245,8 +245,8 @@ func (h *Handler) GetProfile(c *gin.Context) {
 // @Failure 401 {object} types.APIResponse
 // @Router /api/v1/auth/switch-chain [post]
 func (h *Handler) SwitchChain(c *gin.Context) {
-	// 从上下文获取用户ID
-	userID, _, ok := middleware.GetUserFromContext(c)
+	// 从上下文获取用户信息
+	_, walletAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -275,7 +275,7 @@ func (h *Handler) SwitchChain(c *gin.Context) {
 	}
 
 	// 调用认证服务
-	response, err := h.authService.SwitchChain(c.Request.Context(), userID, &req)
+	response, err := h.authService.SwitchChain(c.Request.Context(), walletAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string

@@ -8,19 +8,16 @@ DROP TABLE IF EXISTS support_tokens CASCADE;
 DROP TABLE IF EXISTS support_chains CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
--- 1. 用户表 (users)
+-- 1. 用户表 (users) - 重构为以钱包地址为核心，chain_id为最后登录的链
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
-    wallet_address VARCHAR(42) NOT NULL,
-    chain_id INTEGER NOT NULL DEFAULT 1,
+    wallet_address VARCHAR(42) NOT NULL UNIQUE, -- 钱包地址作为唯一标识
+    chain_id INTEGER NOT NULL DEFAULT 1, -- 最后登录的链ID
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_login TIMESTAMP WITH TIME ZONE,
     preferences JSONB DEFAULT '{}',
-    status INTEGER DEFAULT 1,
-    
-    -- 组合唯一约束：同一个钱包地址在不同链上被视为不同用户
-    UNIQUE(wallet_address, chain_id)
+    status INTEGER DEFAULT 1
 );
 
 -- 2. 支持的区块链表 (support_chains)
@@ -60,11 +57,10 @@ CREATE TABLE chain_tokens (
     UNIQUE(chain_id, token_id)
 );
 
--- 5. 用户资产表 (user_assets) - 唯一约束确保不重复
+-- 5. 用户资产表 (user_assets) - 重构为以wallet_address关联
 CREATE TABLE user_assets (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    wallet_address VARCHAR(42) NOT NULL,
+    wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
     chain_id BIGINT NOT NULL,
     token_id BIGINT NOT NULL REFERENCES support_tokens(id) ON DELETE CASCADE,
     balance VARCHAR(100) NOT NULL DEFAULT '0',
@@ -73,7 +69,7 @@ CREATE TABLE user_assets (
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(user_id, chain_id, token_id)  -- 确保用户在同一链上的同一代币只有一条记录
+    UNIQUE(wallet_address, chain_id, token_id)  -- 确保同一地址在同一链上的同一代币只有一条记录
 );
 
 -- 创建索引
@@ -83,7 +79,7 @@ CREATE INDEX idx_support_chains_chain_id ON support_chains(chain_id);
 CREATE INDEX idx_support_tokens_symbol ON support_tokens(symbol);
 CREATE INDEX idx_chain_tokens_chain_id ON chain_tokens(chain_id);
 CREATE INDEX idx_chain_tokens_token_id ON chain_tokens(token_id);
-CREATE INDEX idx_user_assets_user_id ON user_assets(user_id);
+CREATE INDEX idx_user_assets_token_id ON user_assets(token_id);
 CREATE INDEX idx_user_assets_wallet_address ON user_assets(wallet_address);
 CREATE INDEX idx_user_assets_chain_id ON user_assets(chain_id);
 
@@ -94,23 +90,19 @@ INSERT INTO support_chains (chain_id, name, symbol, rpc_provider, is_active) VAL
 (137, 'Polygon', 'MATIC', 'alchemy', true),
 (42161, 'Arbitrum One', 'ETH', 'alchemy', true),
 (10, 'Optimism', 'ETH', 'alchemy', true),
-(11155, 'Base', 'ETH', 'alchemy', true),
+(8453, 'Base', 'ETH', 'alchemy', true),
 (11155111, 'Sepolia', 'ETH', 'alchemy', true);
 
 -- 插入初始代币数据
 INSERT INTO support_tokens (symbol, name, coingecko_id, decimals, is_active) VALUES
 ('ETH', 'Ethereum', 'ethereum', 18, true),
-('ARB_ETH', 'Arbitrum ETH', 'arbitrum', 18, true),
-('OP_ETH', 'Optimism ETH', 'optimism', 18, true),
-('BASE_ETH', 'Base ETH', 'base', 18, true),
 ('BNB', 'BNB', 'binancecoin', 18, true),
 ('MATIC', 'Polygon', 'matic-network', 18, true),
 ('USDC', 'USD Coin', 'usd-coin', 6, true),
 ('USDT', 'Tether', 'tether', 6, true),
 ('WETH', 'Wrapped Ethereum', 'weth', 18, true),
 ('ARB', 'Arbitrum', 'arbitrum', 18, true),
-('OP', 'Optimism', 'optimism', 18, true),
-('BASE', 'Base', 'base', 18, true);
+('OP', 'Optimism', 'optimism', 18, true);
 
 -- 插入链代币关联数据
 -- Ethereum 主网 (chain_id = 1)
@@ -146,6 +138,7 @@ SELECT
     sc.id, st.id, ct.contract_address, ct.is_native, true
 FROM support_chains sc
 CROSS JOIN (VALUES 
+    ('MATIC', '', true),
     ('USDC', '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359', false),
     ('USDT', '0xc2132d05d31c914a87c6611c10748aeb04b58e8f', false)
 ) ct(symbol, contract_address, is_native)
@@ -158,9 +151,10 @@ SELECT
     sc.id, st.id, ct.contract_address, ct.is_native, true
 FROM support_chains sc
 CROSS JOIN (VALUES 
-    ('ARB_ETH', '', true),
+    ('ETH', '', true),
     ('USDC', '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', false),
-    ('USDT', '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', false)
+    ('USDT', '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9', false),
+    ('ARB', '0x912CE59144191C1204E64559FE8253a0e49E6548', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
 WHERE sc.chain_id = 42161; 
@@ -171,22 +165,23 @@ SELECT
     sc.id, st.id, ct.contract_address, ct.is_native, true
 FROM support_chains sc
 CROSS JOIN (VALUES 
-    ('OP_ETH', '', true),
+    ('ETH', '', true),
     ('USDC', '0x0b2c639c533813f4aa9d7837caf62653d097ff85', false),
-    ('USDT', '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', false)
+    ('USDT', '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', false),
+    ('OP', '0x4200000000000000000000000000000000000042', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
 WHERE sc.chain_id = 10;
 
--- Base (chain_id = 11155)
+-- Base (chain_id = 8453)
 INSERT INTO chain_tokens (chain_id, token_id, contract_address, is_native, is_active) 
 SELECT 
     sc.id, st.id, ct.contract_address, ct.is_native, true
 FROM support_chains sc
 CROSS JOIN (VALUES 
-    ('BASE_ETH', '', true),
+    ('ETH', '', true),
     ('USDC', '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', false),
     ('USDT', '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2', false)
 ) ct(symbol, contract_address, is_native)
 JOIN support_tokens st ON st.symbol = ct.symbol
-WHERE sc.chain_id = 11155;
+WHERE sc.chain_id = 8453;
