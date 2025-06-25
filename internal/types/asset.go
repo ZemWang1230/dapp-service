@@ -122,3 +122,25 @@ type CovalentLinks struct {
 	Next     *string `json:"next"`
 	Previous *string `json:"previous"`
 }
+
+// GetSupportChainsRequest 获取支持链列表请求
+type GetSupportChainsRequest struct {
+	IsTestnet *bool `json:"is_testnet" form:"is_testnet"` // 筛选测试网/主网
+	IsActive  *bool `json:"is_active" form:"is_active"`   // 筛选激活状态
+}
+
+// GetSupportChainsResponse 获取支持链列表响应
+type GetSupportChainsResponse struct {
+	Chains []SupportChain `json:"chains"`
+	Total  int64          `json:"total"`
+}
+
+// GetChainByIDRequest 根据ID获取链信息请求
+type GetChainByIDRequest struct {
+	ID int64 `json:"id" form:"id" binding:"required"`
+}
+
+// GetChainByChainIDRequest 根据ChainID获取链信息请求
+type GetChainByChainIDRequest struct {
+	ChainID int64 `json:"chain_id" form:"chain_id" binding:"required"`
+}

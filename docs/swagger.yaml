@@ -23,19 +23,28 @@ definitions:
         type: string
       balance_wei:
         type: string
+      chain_display_name:
+        type: string
       chain_id:
         type: integer
+      chain_logo_url:
+        type: string
       chain_name:
         type: string
-      chain_symbol:
-        type: string
-      change_24h:
-        type: number
       contract_address:
         type: string
       is_native:
         type: boolean
+      is_testnet:
+        type: boolean
       last_updated:
+        type: string
+      price_change_24h:
+        description: 24小时价格涨跌幅（%）
+        type: number
+      token_decimals:
+        type: integer
+      token_logo_url:
         type: string
       token_name:
         type: string
@@ -46,17 +55,99 @@ definitions:
       usd_value:
         type: number
     type: object
-  types.AssetQueryRequest:
+  types.CheckTimeLockStatusResponse:
     properties:
-      force_refresh:
+      has_timelocks:
         type: boolean
-      wallet_address:
+      timelocks:
+        items:
+          $ref: '#/definitions/types.TimeLock'
+        type: array
+    type: object
+  types.CreateTimeLockRequest:
+    properties:
+      admin:
+        description: Compound标准的参数
+        type: string
+      chain_id:
+        type: integer
+      chain_name:
+        type: string
+      contract_address:
+        type: string
+      creator_address:
+        type: string
+      executors:
+        description: Openzeppelin标准的参数
+        items:
+          type: string
+        type: array
+      min_delay:
+        description: Compound和Openzeppelin都有的参数
+        type: integer
+      proposers:
+        description: Openzeppelin标准的参数
+        items:
+          type: string
+        type: array
+      remark:
+        maxLength: 500
+        type: string
+      standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        enum:
+        - compound
+        - openzeppelin
+      tx_hash:
         type: string
     required:
-    - wallet_address
+    - chain_id
+    - chain_name
+    - contract_address
+    - creator_address
+    - standard
+    - tx_hash
     type: object
-  types.JSONB:
-    additionalProperties: true
+  types.GetTimeLockListResponse:
+    properties:
+      list:
+        items:
+          $ref: '#/definitions/types.TimeLock'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  types.ImportTimeLockRequest:
+    properties:
+      abi:
+        description: 用于验证合约
+        type: string
+      chain_id:
+        type: integer
+      chain_name:
+        type: string
+      contract_address:
+        type: string
+      remark:
+        maxLength: 500
+        type: string
+      standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        enum:
+        - compound
+        - openzeppelin
+    required:
+    - abi
+    - chain_id
+    - chain_name
+    - contract_address
+    - standard
     type: object
   types.RefreshTokenRequest:
     properties:
@@ -91,10 +182,152 @@ definitions:
       user:
         $ref: '#/definitions/types.User'
     type: object
+  types.TimeLock:
+    properties:
+      admin:
+        description: 管理员地址
+        type: string
+      chain_id:
+        description: 所在链ID
+        type: integer
+      chain_name:
+        description: 链名称（如eth-mainnet）
+        type: string
+      contract_address:
+        description: 合约地址
+        type: string
+      created_at:
+        type: string
+      creator_address:
+        description: 创建者地址（创建时使用）
+        type: string
+      executors:
+        description: 执行者地址列表（JSON格式）
+        type: string
+      id:
+        type: integer
+      min_delay:
+        description: 最小延迟时间（秒）
+        type: integer
+      proposers:
+        description: 提议者地址列表（JSON格式）
+        type: string
+      remark:
+        description: 备注
+        type: string
+      standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        description: 合约标准
+      status:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStatus'
+        description: 状态
+      tx_hash:
+        description: 创建交易hash（创建时使用）
+        type: string
+      updated_at:
+        type: string
+      wallet_address:
+        description: 钱包地址
+        type: string
+    type: object
+  types.TimeLockDetailResponse:
+    properties:
+      admin:
+        description: 管理员地址
+        type: string
+      chain_id:
+        description: 所在链ID
+        type: integer
+      chain_name:
+        description: 链名称（如eth-mainnet）
+        type: string
+      contract_address:
+        description: 合约地址
+        type: string
+      created_at:
+        type: string
+      creator_address:
+        description: 创建者地址（创建时使用）
+        type: string
+      executors:
+        description: 执行者地址列表（JSON格式）
+        type: string
+      executors_list:
+        description: 解析后的执行者列表
+        items:
+          type: string
+        type: array
+      id:
+        type: integer
+      min_delay:
+        description: 最小延迟时间（秒）
+        type: integer
+      proposers:
+        description: 提议者地址列表（JSON格式）
+        type: string
+      proposers_list:
+        description: 解析后的提议者列表
+        items:
+          type: string
+        type: array
+      remark:
+        description: 备注
+        type: string
+      standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        description: 合约标准
+      status:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStatus'
+        description: 状态
+      tx_hash:
+        description: 创建交易hash（创建时使用）
+        type: string
+      updated_at:
+        type: string
+      wallet_address:
+        description: 钱包地址
+        type: string
+    type: object
+  types.TimeLockStandard:
+    enum:
+    - compound
+    - openzeppelin
+    type: string
+    x-enum-varnames:
+    - CompoundStandard
+    - OpenzeppelinStandard
+  types.TimeLockStatus:
+    enum:
+    - active
+    - inactive
+    - deleted
+    type: string
+    x-enum-comments:
+      TimeLockActive: 激活状态
+      TimeLockDeleted: 已删除
+      TimeLockInactive: 非激活状态
+    x-enum-varnames:
+    - TimeLockActive
+    - TimeLockInactive
+    - TimeLockDeleted
+  types.UpdateTimeLockRequest:
+    properties:
+      id:
+        type: integer
+      remark:
+        maxLength: 500
+        type: string
+    required:
+    - id
+    type: object
   types.User:
     properties:
       chain_id:
-        description: 最后登录的链ID
+        description: 当前使用的链ID（用于timelock合约）
         type: integer
       created_at:
         type: string
@@ -102,8 +335,6 @@ definitions:
         type: integer
       last_login:
         type: string
-      preferences:
-        $ref: '#/definitions/types.JSONB'
       status:
         type: integer
       updated_at:
@@ -134,14 +365,13 @@ definitions:
         type: string
       last_login:
         type: string
-      preferences:
-        $ref: '#/definitions/types.JSONB'
       wallet_address:
         type: string
     type: object
   types.WalletConnectRequest:
     properties:
       chain_id:
+        description: 初始连接的链ID
         type: integer
       message:
         type: string
@@ -177,12 +407,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 获取用户在所有链上的资产信息
-      parameters:
-      - description: 是否强制刷新
-        in: query
-        name: force_refresh
-        type: boolean
+      description: 获取用户在所有支持链上的资产信息，如果数据库中没有数据会自动刷新
       produces:
       - application/json
       responses:
@@ -194,15 +419,6 @@ paths:
             - properties:
                 data:
                   $ref: '#/definitions/types.UserAssetResponse'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
               type: object
         "401":
           description: Unauthorized
@@ -232,13 +448,6 @@ paths:
       consumes:
       - application/json
       description: 强制刷新用户在所有支持链上的资产信息
-      parameters:
-      - description: 刷新请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.AssetQueryRequest'
       produces:
       - application/json
       responses:
@@ -250,15 +459,6 @@ paths:
             - properties:
                 data:
                   type: string
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
               type: object
         "401":
           description: Unauthorized
@@ -420,6 +620,436 @@ paths:
       summary: 钱包连接认证
       tags:
       - 认证
+  /api/v1/chain/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 根据链的ID获取具体的链信息
+      parameters:
+      - description: 链ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":200,"message":"success","data":{...}}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: '{"code":400,"message":"参数错误","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: '{"code":404,"message":"链信息不存在","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: '{"code":500,"message":"服务器内部错误","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 根据ID获取链信息
+      tags:
+      - chain
+  /api/v1/chain/chainid/{chain_id}:
+    get:
+      consumes:
+      - application/json
+      description: 根据区块链的ChainID获取具体的链信息
+      parameters:
+      - description: 区块链ID
+        in: path
+        name: chain_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":200,"message":"success","data":{...}}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: '{"code":400,"message":"参数错误","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: '{"code":404,"message":"链信息不存在","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: '{"code":500,"message":"服务器内部错误","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 根据ChainID获取链信息
+      tags:
+      - chain
+  /api/v1/chain/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有支持的区块链列表，可根据是否测试网和是否激活进行筛选
+      parameters:
+      - description: 是否测试网
+        in: query
+        name: is_testnet
+        type: boolean
+      - description: 是否激活
+        in: query
+        name: is_active
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":200,"message":"success","data":{"chains":[...],"total":10}}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: '{"code":400,"message":"参数错误","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: '{"code":500,"message":"服务器内部错误","data":null}'
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取支持链列表
+      tags:
+      - chain
+  /api/v1/timelock/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的timelock合约（软删除）
+      parameters:
+      - description: Timelock ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 删除timelock
+      tags:
+      - Timelock
+    get:
+      consumes:
+      - application/json
+      description: 获取指定timelock合约的详细信息
+      parameters:
+      - description: Timelock ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.TimeLockDetailResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取timelock详情
+      tags:
+      - Timelock
+    put:
+      consumes:
+      - application/json
+      description: 更新timelock合约的备注信息
+      parameters:
+      - description: Timelock ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新timelock请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.UpdateTimeLockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新timelock备注
+      tags:
+      - Timelock
+  /api/v1/timelock/create:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的timelock合约记录
+      parameters:
+      - description: 创建timelock请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.CreateTimeLockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.TimeLock'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建timelock合约
+      tags:
+      - Timelock
+  /api/v1/timelock/import:
+    post:
+      consumes:
+      - application/json
+      description: 导入已存在的timelock合约
+      parameters:
+      - description: 导入timelock请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.ImportTimeLockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.TimeLock'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 导入timelock合约
+      tags:
+      - Timelock
+  /api/v1/timelock/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户的timelock合约列表（分页）
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      - description: 链ID筛选
+        in: query
+        name: chain_id
+        type: integer
+      - description: 合约标准筛选
+        enum:
+        - compound
+        - openzeppelin
+        in: query
+        name: standard
+        type: string
+      - description: 状态筛选
+        enum:
+        - active
+        - inactive
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetTimeLockListResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取timelock列表
+      tags:
+      - Timelock
+  /api/v1/timelock/status:
+    get:
+      consumes:
+      - application/json
+      description: 检查用户是否有timelock合约，返回timelock状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.CheckTimeLockStatusResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: 检查timelock状态
+      tags:
+      - Timelock
   /health:
     get:
       consumes:

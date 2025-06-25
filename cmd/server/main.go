@@ -9,6 +9,7 @@ import (
 	"timelocker-backend/docs"
 	assetHandler "timelocker-backend/internal/api/asset"
 	authHandler "timelocker-backend/internal/api/auth"
+	chainHandler "timelocker-backend/internal/api/chain"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 	"timelocker-backend/internal/config"
 	assetRepo "timelocker-backend/internal/repository/asset"
@@ -17,6 +18,7 @@ import (
 	userRepo "timelocker-backend/internal/repository/user"
 	assetService "timelocker-backend/internal/service/asset"
 	authService "timelocker-backend/internal/service/auth"
+	chainService "timelocker-backend/internal/service/chain"
 	timelockService "timelocker-backend/internal/service/timelock"
 	"timelocker-backend/pkg/database"
 	"timelocker-backend/pkg/logger"
@@ -29,7 +31,7 @@ import (
 
 // @title TimeLocker Backend API
 // @version 1.0
-// @description TimeLocker Backend API - 基于Covalent API的区块链资产管理平台
+// @description TimeLocker Backend API
 // @host localhost:8080
 // @BasePath /
 // @schemes http https
@@ -101,11 +103,13 @@ func main() {
 		assetRepo,
 		redisClient,
 	)
+	chainSvc := chainService.NewService(chainRepo)
 	timelockSvc := timelockService.NewService(timelockRepository)
 
 	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
+	chainHandler := chainHandler.NewHandler(chainSvc)
 	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
 
 	// 8. 设置Gin模式
@@ -133,6 +137,7 @@ func main() {
 	{
 		authHandler.RegisterRoutes(v1)
 		assetHandler.RegisterRoutes(v1)
+		chainHandler.RegisterRoutes(v1)
 		timelockHandler.RegisterRoutes(v1)
 	}
 

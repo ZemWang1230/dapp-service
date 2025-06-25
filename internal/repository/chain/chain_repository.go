@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"context"
 	"errors"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
@@ -14,6 +15,11 @@ type Repository interface {
 	GetChainByChainName(chainName string) (*types.SupportChain, error)
 	GetActiveMainnetChains() ([]*types.SupportChain, error)
 	GetActiveTestnetChains() ([]*types.SupportChain, error)
+
+	// 新增的API方法
+	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) ([]types.SupportChain, int64, error)
+	GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error)
+	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error)
 }
 
 // repository 支持链仓库实现
@@ -86,4 +92,71 @@ func (r *repository) GetActiveTestnetChains() ([]*types.SupportChain, error) {
 
 	logger.Info("GetActiveTestnetChains: ", "count", len(chains))
 	return chains, nil
+}
+
+// GetSupportChains 根据条件获取支持链列表
+func (r *repository) GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) ([]types.SupportChain, int64, error) {
+	var chains []types.SupportChain
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&types.SupportChain{})
+
+	// 根据筛选条件构建查询
+	if req.IsTestnet != nil {
+		query = query.Where("is_testnet = ?", *req.IsTestnet)
+	}
+	if req.IsActive != nil {
+		query = query.Where("is_active = ?", *req.IsActive)
+	}
+
+	// 获取总数
+	if err := query.Count(&total).Error; err != nil {
+		logger.Error("GetSupportChains Count Error: ", err)
+		return nil, 0, err
+	}
+
+	// 获取数据，按创建时间倒序排列
+	if err := query.Order("created_at DESC").Find(&chains).Error; err != nil {
+		logger.Error("GetSupportChains Find Error: ", err)
+		return nil, 0, err
+	}
+
+	logger.Info("GetSupportChains: ", "count", len(chains), "total", total)
+	return chains, total, nil
+}
+
+// GetChainByID 根据ID获取链信息
+func (r *repository) GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error) {
+	var chain types.SupportChain
+
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&chain).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Info("GetChainByID: chain not found", "id", id)
+			return nil, nil
+		}
+		logger.Error("GetChainByID Error: ", err, "id", id)
+		return nil, err
+	}
+
+	logger.Info("GetChainByID: ", "id", id, "chain_name", chain.ChainName)
+	return &chain, nil
+}
+
+// GetChainByChainID 根据ChainID获取链信息
+func (r *repository) GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error) {
+	var chain types.SupportChain
+
+	err := r.db.WithContext(ctx).Where("chain_id = ?", chainID).First(&chain).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.Info("GetChainByChainID: chain not found", "chain_id", chainID)
+			return nil, nil
+		}
+		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainID)
+		return nil, err
+	}
+
+	logger.Info("GetChainByChainID: ", "chain_id", chainID, "chain_name", chain.ChainName)
+	return &chain, nil
 }
