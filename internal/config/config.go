@@ -13,9 +13,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
-	Price    PriceConfig    `mapstructure:"price"`
-	RPC      RPCConfig      `mapstructure:"rpc"`
-	Asset    AssetConfig    `mapstructure:"asset"`
+	Covalent CovalentConfig `mapstructure:"covalent"`
 }
 
 type ServerConfig struct {
@@ -45,36 +43,12 @@ type JWTConfig struct {
 	RefreshExpiry time.Duration `mapstructure:"refresh_expiry"`
 }
 
-type PriceConfig struct {
-	Provider       string        `mapstructure:"provider"`
+type CovalentConfig struct {
 	APIKey         string        `mapstructure:"api_key"`
 	BaseURL        string        `mapstructure:"base_url"`
-	UpdateInterval time.Duration `mapstructure:"update_interval"`
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 	CachePrefix    string        `mapstructure:"cache_prefix"`
-}
-
-type RPCProviderConfig struct {
-	APIKey   string `mapstructure:"api_key"`
-	Ethereum string `mapstructure:"ethereum"`
-	BSC      string `mapstructure:"bsc"`
-	Polygon  string `mapstructure:"polygon"`
-	Arbitrum string `mapstructure:"arbitrum"`
-}
-
-type RPCConfig struct {
-	Provider       string            `mapstructure:"provider"`
-	Alchemy        RPCProviderConfig `mapstructure:"alchemy"`
-	Infura         RPCProviderConfig `mapstructure:"infura"`
-	RequestTimeout time.Duration     `mapstructure:"request_timeout"`
-}
-
-type AssetConfig struct {
-	UpdateInterval time.Duration `mapstructure:"update_interval"`
-	BatchSize      int           `mapstructure:"batch_size"`
-	CachePrefix    string        `mapstructure:"cache_prefix"`
-	MaxRetry       int           `mapstructure:"max_retry"`
-	RetryDelay     time.Duration `mapstructure:"retry_delay"`
+	CacheExpiry    int           `mapstructure:"cache_expiry"` // seconds
 }
 
 func LoadConfig() (*Config, error) {
@@ -99,33 +73,13 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("jwt.secret", "timelocker-jwt-secret-v1")
 	viper.SetDefault("jwt.access_expiry", time.Hour*24)
 	viper.SetDefault("jwt.refresh_expiry", time.Hour*24*7)
-	viper.SetDefault("price.provider", "coingecko")
-	viper.SetDefault("price.api_key", "")
-	viper.SetDefault("price.base_url", "https://api.coingecko.com/api/v3")
-	viper.SetDefault("price.update_interval", time.Second*30)
-	viper.SetDefault("price.request_timeout", time.Second*10)
-	viper.SetDefault("price.cache_prefix", "price:")
 
-	// RPC defaults
-	viper.SetDefault("rpc.provider", "alchemy")
-	viper.SetDefault("rpc.request_timeout", time.Second*30)
-	viper.SetDefault("rpc.alchemy.api_key", "")
-	viper.SetDefault("rpc.alchemy.ethereum", "https://eth-mainnet.g.alchemy.com/v2/")
-	viper.SetDefault("rpc.alchemy.bsc", "https://bnb-mainnet.g.alchemy.com/v2/")
-	viper.SetDefault("rpc.alchemy.polygon", "https://polygon-mainnet.g.alchemy.com/v2/")
-	viper.SetDefault("rpc.alchemy.arbitrum", "https://arb-mainnet.g.alchemy.com/v2/")
-	viper.SetDefault("rpc.infura.api_key", "")
-	viper.SetDefault("rpc.infura.ethereum", "https://mainnet.infura.io/v3/")
-	viper.SetDefault("rpc.infura.bsc", "https://bsc-dataseed.binance.org/")
-	viper.SetDefault("rpc.infura.polygon", "https://polygon-mainnet.infura.io/v3/")
-	viper.SetDefault("rpc.infura.arbitrum", "https://arbitrum-mainnet.infura.io/v3/")
-
-	// Asset defaults
-	viper.SetDefault("asset.update_interval", time.Second*30)
-	viper.SetDefault("asset.batch_size", 10)
-	viper.SetDefault("asset.cache_prefix", "asset:")
-	viper.SetDefault("asset.max_retry", 3)
-	viper.SetDefault("asset.retry_delay", time.Second*5)
+	// Covalent defaults
+	viper.SetDefault("covalent.api_key", "")
+	viper.SetDefault("covalent.base_url", "https://api.covalenthq.com/v1")
+	viper.SetDefault("covalent.request_timeout", time.Second*30)
+	viper.SetDefault("covalent.cache_prefix", "asset:")
+	viper.SetDefault("covalent.cache_expiry", 300) // 5 minutes
 
 	// Read environment variables
 	viper.AutomaticEnv()

@@ -1,18 +1,19 @@
 package types
 
 import (
-	"math/big"
 	"time"
 )
 
-// SupportChain 支持的区块链模型
+// SupportChain 支持的区块链模型（简化版）
 type SupportChain struct {
 	ID          int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	ChainID     int64     `json:"chain_id" gorm:"not null;unique"`                        // 区块链ID，如 1(以太坊), 56(BSC)
-	Name        string    `json:"name" gorm:"size:50;not null"`                           // 链名称，如 Ethereum, BSC
-	Symbol      string    `json:"symbol" gorm:"size:10;not null"`                         // 原生代币符号，如 ETH, BNB
-	RpcProvider string    `json:"rpc_provider" gorm:"size:20;not null;default:'alchemy'"` // RPC提供商，如 alchemy, infura
-	IsActive    bool      `json:"is_active" gorm:"not null;default:true"`                 // 是否激活
+	ChainName   string    `json:"chain_name" gorm:"size:50;not null;unique"` // Covalent API的chainName
+	DisplayName string    `json:"display_name" gorm:"size:100;not null"`     // 显示名称
+	ChainID     int64     `json:"chain_id" gorm:"not null"`                  // 链ID
+	NativeToken string    `json:"native_token" gorm:"size:10;not null"`      // 原生代币符号
+	LogoURL     string    `json:"logo_url" gorm:"type:text"`                 // 链Logo URL
+	IsTestnet   bool      `json:"is_testnet" gorm:"not null;default:false"`  // 是否是测试网
+	IsActive    bool      `json:"is_active" gorm:"not null;default:true"`    // 是否激活
 	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -22,43 +23,26 @@ func (SupportChain) TableName() string {
 	return "support_chains"
 }
 
-// ChainToken 链上代币配置模型（关联链和代币，包含合约地址）
-type ChainToken struct {
+// UserAsset 用户资产模型 - 优化版
+type UserAsset struct {
 	ID              int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	ChainID         int64     `json:"chain_id" gorm:"not null;index:idx_chain_tokens_chain_id;uniqueIndex:idx_chain_tokens_unique"` // 关联support_chains表
-	TokenID         int64     `json:"token_id" gorm:"not null;index:idx_chain_tokens_token_id;uniqueIndex:idx_chain_tokens_unique"` // 关联support_tokens表
-	ContractAddress string    `json:"contract_address" gorm:"size:42"`                                                              // ERC-20合约地址，原生代币为空
-	IsNative        bool      `json:"is_native" gorm:"not null;default:false"`                                                      // 是否为原生代币
-	IsActive        bool      `json:"is_active" gorm:"not null;default:true"`                                                       // 是否在该链上激活
+	WalletAddress   string    `json:"wallet_address" gorm:"size:42;not null;index:idx_user_assets_wallet_address;uniqueIndex:idx_user_assets_unique,priority:1"` // 钱包地址
+	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index:idx_user_assets_chain_name;uniqueIndex:idx_user_assets_unique,priority:2"`         // Covalent chainName
+	ContractAddress string    `json:"contract_address" gorm:"size:42;uniqueIndex:idx_user_assets_unique,priority:3"`                                             // 合约地址
+	TokenSymbol     string    `json:"token_symbol" gorm:"size:20;not null"`                                                                                      // 代币符号
+	TokenName       string    `json:"token_name" gorm:"size:100;not null"`                                                                                       // 代币名称
+	TokenDecimals   int       `json:"token_decimals" gorm:"not null;default:18"`                                                                                 // 代币精度
+	Balance         string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                                                                     // 格式化余额
+	BalanceWei      string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                                                                 // Wei单位余额
+	USDValue        float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                                                                             // USD价值
+	TokenPrice      float64   `json:"token_price" gorm:"type:decimal(20,8);default:0"`                                                                           // 代币价格
+	PriceChange24h  float64   `json:"price_change_24h" gorm:"type:decimal(10,4);default:0"`                                                                      // 24小时价格涨跌幅（%）
+	IsNative        bool      `json:"is_native" gorm:"not null;default:false"`                                                                                   // 是否为原生代币
+	TokenLogoURL    string    `json:"token_logo_url" gorm:"type:text"`                                                                                           // 代币Logo URL
+	ChainLogoURL    string    `json:"chain_logo_url" gorm:"type:text"`                                                                                           // 链Logo URL
+	LastUpdated     time.Time `json:"last_updated" gorm:"autoUpdateTime"`                                                                                        // 最后更新时间
 	CreatedAt       time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time `json:"updated_at" gorm:"autoUpdateTime"`
-
-	// 关联查询
-	Chain *SupportChain `json:"chain,omitempty" gorm:"foreignKey:ChainID;references:ID"`
-	Token *SupportToken `json:"token,omitempty" gorm:"foreignKey:TokenID;references:ID"`
-}
-
-// TableName 设置表名
-func (ChainToken) TableName() string {
-	return "chain_tokens"
-}
-
-// UserAsset 用户资产模型 - 重构为以wallet_address关联
-type UserAsset struct {
-	ID            int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	WalletAddress string    `json:"wallet_address" gorm:"size:42;not null;index:idx_user_assets_wallet_address;uniqueIndex:idx_user_assets_unique,priority:1"` // 钱包地址
-	ChainID       int64     `json:"chain_id" gorm:"not null;index:idx_user_assets_chain_id;uniqueIndex:idx_user_assets_unique,priority:2"`                     // 区块链ID
-	TokenID       int64     `json:"token_id" gorm:"not null;index:idx_user_assets_token_id;uniqueIndex:idx_user_assets_unique,priority:3"`                     // 代币ID
-	Balance       string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                                                                     // 余额，使用字符串存储避免精度问题
-	BalanceWei    string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                                                                 // Wei单位余额
-	USDValue      float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                                                                             // USD价值
-	LastUpdated   time.Time `json:"last_updated" gorm:"autoUpdateTime"`                                                                                        // 最后更新时间
-	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt     time.Time `json:"updated_at" gorm:"autoUpdateTime"`
-
-	// 关联查询
-	Token *SupportToken `json:"token,omitempty" gorm:"foreignKey:TokenID;references:ID"`
-	Chain *SupportChain `json:"chain,omitempty" gorm:"foreignKey:ChainID;references:ID"`
 }
 
 // TableName 设置表名
@@ -66,63 +50,75 @@ func (UserAsset) TableName() string {
 	return "user_assets"
 }
 
-// GetBalanceBigInt 获取大整数格式的余额
-func (ua *UserAsset) GetBalanceBigInt() *big.Int {
-	balance := new(big.Int)
-	balance.SetString(ua.BalanceWei, 10)
-	return balance
-}
-
-// SetBalanceFromBigInt 从大整数设置余额
-func (ua *UserAsset) SetBalanceFromBigInt(balance *big.Int, decimals int) {
-	ua.BalanceWei = balance.String()
-
-	// 计算可读格式的余额
-	divisor := new(big.Int)
-	divisor.Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
-
-	quotient := new(big.Int)
-	quotient.Div(balance, divisor)
-
-	remainder := new(big.Int)
-	remainder.Mod(balance, divisor)
-
-	// 简单的格式化，避免浮点数精度问题
-	if remainder.Cmp(big.NewInt(0)) == 0 {
-		ua.Balance = quotient.String()
-	} else {
-		// 这里可以根据需要实现更精确的小数处理
-		ua.Balance = quotient.String() + "." + remainder.String()
-	}
-}
-
-// AssetQueryRequest 资产查询请求 - 简化为只需要钱包地址
-type AssetQueryRequest struct {
-	WalletAddress string `json:"wallet_address" binding:"required,len=42"`
-	ForceRefresh  bool   `json:"force_refresh"`
-}
-
-// AssetInfo 资产信息 - 新增链信息
+// AssetInfo 资产信息响应结构 - 优化版
 type AssetInfo struct {
-	ChainID      int64     `json:"chain_id"`
-	ChainName    string    `json:"chain_name"`
-	ChainSymbol  string    `json:"chain_symbol"`
-	TokenSymbol  string    `json:"token_symbol"`
-	TokenName    string    `json:"token_name"`
-	ContractAddr string    `json:"contract_address,omitempty"`
-	Balance      string    `json:"balance"`
-	BalanceWei   string    `json:"balance_wei"`
-	USDValue     float64   `json:"usd_value"`
-	TokenPrice   float64   `json:"token_price"`
-	Change24h    float64   `json:"change_24h"`
-	IsNative     bool      `json:"is_native"`
-	LastUpdated  time.Time `json:"last_updated"`
+	ChainName        string    `json:"chain_name"`
+	ChainDisplayName string    `json:"chain_display_name"`
+	ChainID          int64     `json:"chain_id"`
+	ContractAddress  string    `json:"contract_address,omitempty"`
+	TokenSymbol      string    `json:"token_symbol"`
+	TokenName        string    `json:"token_name"`
+	TokenDecimals    int       `json:"token_decimals"`
+	Balance          string    `json:"balance"`
+	BalanceWei       string    `json:"balance_wei"`
+	USDValue         float64   `json:"usd_value"`
+	TokenPrice       float64   `json:"token_price"`
+	PriceChange24h   float64   `json:"price_change_24h"` // 24小时价格涨跌幅（%）
+	IsNative         bool      `json:"is_native"`
+	IsTestnet        bool      `json:"is_testnet"`
+	TokenLogoURL     string    `json:"token_logo_url,omitempty"`
+	ChainLogoURL     string    `json:"chain_logo_url,omitempty"`
+	LastUpdated      time.Time `json:"last_updated"`
 }
 
-// UserAssetResponse 用户资产查询响应 - 简化为直接返回资产列表，按价值排序
+// UserAssetResponse 用户资产查询响应
 type UserAssetResponse struct {
 	WalletAddress string      `json:"wallet_address"`
 	Assets        []AssetInfo `json:"assets"` // 所有支持链上的资产，按价值从高到低排序
 	TotalUSDValue float64     `json:"total_usd_value"`
 	LastUpdated   time.Time   `json:"last_updated"`
+}
+
+// CovalentAssetResponse Covalent API响应结构
+type CovalentAssetResponse struct {
+	Data  CovalentAssetData `json:"data"`
+	Error bool              `json:"error"`
+}
+
+type CovalentAssetData struct {
+	Address       string              `json:"address"`
+	UpdatedAt     time.Time           `json:"updated_at"`
+	NextUpdateAt  time.Time           `json:"next_update_at"`
+	QuoteCurrency string              `json:"quote_currency"`
+	ChainID       int64               `json:"chain_id"`
+	ChainName     string              `json:"chain_name"`
+	Items         []CovalentAssetItem `json:"items"`
+	Links         CovalentLinks       `json:"links"`
+}
+
+type CovalentAssetItem struct {
+	ContractDecimals     int      `json:"contract_decimals"`
+	ContractName         string   `json:"contract_name"`
+	ContractTickerSymbol string   `json:"contract_ticker_symbol"`
+	ContractAddress      string   `json:"contract_address"`
+	LogoURL              string   `json:"logo_url"`
+	LogoURLs             LogoURLs `json:"logo_urls"`
+	NativeToken          bool     `json:"native_token"`
+	Type                 string   `json:"type"`
+	Balance              string   `json:"balance"`
+	Balance24h           string   `json:"balance_24h"`
+	QuoteRate            float64  `json:"quote_rate"`
+	QuoteRate24h         float64  `json:"quote_rate_24h"`
+	Quote                float64  `json:"quote"`
+	Quote24h             float64  `json:"quote_24h"`
+}
+
+type LogoURLs struct {
+	TokenLogoURL string `json:"token_logo_url"`
+	ChainLogoURL string `json:"chain_logo_url"`
+}
+
+type CovalentLinks struct {
+	Next     *string `json:"next"`
+	Previous *string `json:"previous"`
 }

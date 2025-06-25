@@ -86,6 +86,15 @@ func (r *repository) UpdateUser(ctx context.Context, user *types.User) error {
 		Updates(user).Error
 }
 
+// UpdateUserChainID 更新用户的链ID（用于timelock合约操作）
+func (r *repository) UpdateUserChainID(ctx context.Context, walletAddress string, chainID int) error {
+	logger.Info("UpdateUserChainID: ", "wallet_address: ", walletAddress, "chain_id: ", chainID)
+	return r.db.WithContext(ctx).
+		Model(&types.User{}).
+		Where("wallet_address = ?", walletAddress).
+		Update("chain_id", chainID).Error
+}
+
 // DeleteUser 删除用户（软删除）
 func (r *repository) DeleteUser(ctx context.Context, id int64) error {
 	logger.Info("DeleteUser: ", "user_id: ", id)
@@ -112,13 +121,4 @@ func (r *repository) GetByWalletAddress(walletAddress string) (*types.User, erro
 
 	logger.Info("GetByWalletAddress: ", "user_id", user.ID, "wallet_address", user.WalletAddress)
 	return &user, nil
-}
-
-// UpdateUserChainID 更新用户的链ID（最后登录的链）
-func (r *repository) UpdateUserChainID(ctx context.Context, walletAddress string, chainID int) error {
-	logger.Info("UpdateUserChainID: ", "wallet_address: ", walletAddress, "chain_id: ", chainID)
-	return r.db.WithContext(ctx).
-		Model(&types.User{}).
-		Where("wallet_address = ?", walletAddress).
-		Update("chain_id", chainID).Error
 }

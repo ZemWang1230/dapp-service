@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,12 +12,9 @@ import (
 	"timelocker-backend/internal/config"
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
-	chainTokenRepo "timelocker-backend/internal/repository/chaintoken"
-	tokenRepo "timelocker-backend/internal/repository/token"
 	userRepo "timelocker-backend/internal/repository/user"
 	assetService "timelocker-backend/internal/service/asset"
 	authService "timelocker-backend/internal/service/auth"
-	priceService "timelocker-backend/internal/service/price"
 	"timelocker-backend/pkg/database"
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
@@ -28,10 +24,9 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// http://localhost:8080/swagger/index.html
 // @title TimeLocker Backend API
 // @version 1.0
-// @description TimeLocker Backend API
+// @description TimeLocker Backend API - 基于Covalent API的区块链资产管理平台
 // @host localhost:8080
 // @BasePath /
 // @schemes http https
@@ -52,12 +47,13 @@ func healthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
 		"service": "timelocker-backend",
+		"version": "2.0.0",
 	})
 }
 
 func main() {
 	logger.Init(logger.DefaultConfig())
-	logger.Info("Starting Logger Success!")
+	logger.Info("Starting TimeLocker Backend v2.0.0")
 
 	// 1. 加载配置
 	cfg, err := config.LoadConfig()
@@ -82,63 +78,37 @@ func main() {
 
 	// 4. 初始化仓库层
 	userRepo := userRepo.NewRepository(db)
-	tokenRepo := tokenRepo.NewRepository(db)
 	chainRepo := chainRepo.NewRepository(db)
-	chainTokenRepo := chainTokenRepo.NewRepository(db)
 	assetRepo := assetRepo.NewRepository(db)
 
-	// 5. 初始化价格服务
-	priceSvc := priceService.NewService(&cfg.Price, tokenRepo, redisClient)
-
-	// 6. 启动价格服务
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	if err := priceSvc.Start(ctx); err != nil {
-		logger.Error("Failed to start price service: ", err)
-		os.Exit(1)
-	}
-
-	// 7. 初始化JWT管理器
+	// 5. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
 		cfg.JWT.Secret,
 		cfg.JWT.AccessExpiry,
 		cfg.JWT.RefreshExpiry,
 	)
 
-	// 8. 初始化认证服务
+	// 6. 初始化服务层
 	authSvc := authService.NewService(userRepo, jwtManager)
-
-	// 9. 初始化资产服务
-	assetSvc, err := assetService.NewService(
-		&cfg.Asset,
-		&cfg.RPC,
+	assetSvc := assetService.NewService(
+		&cfg.Covalent,
 		userRepo,
 		chainRepo,
-		chainTokenRepo,
 		assetRepo,
-		priceSvc,
 		redisClient,
 	)
-	if err != nil {
-		logger.Error("Failed to create asset service: ", err)
-		os.Exit(1)
-	}
 
-	// 10. 设置服务依赖关系（避免循环依赖）
-	authSvc.SetAssetService(assetSvc)
-
-	// 11. 初始化处理器
+	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
 
-	// 12. 设置Gin模式
+	// 8. 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
-	// 13. 创建路由器
+	// 9. 创建路由器
 	router := gin.Default()
 
-	// 14. 添加CORS中间件
+	// 10. 添加CORS中间件
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -152,40 +122,36 @@ func main() {
 		c.Next()
 	})
 
-	// 15. 注册路由
+	// 11. 注册路由
 	v1 := router.Group("/api/v1")
 	{
 		authHandler.RegisterRoutes(v1)
 		assetHandler.RegisterRoutes(v1)
 	}
 
-	// Swagger API文档端点
+	// 12. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
+	docs.SwaggerInfo.Title = "TimeLocker Backend API v2.0"
+	docs.SwaggerInfo.Description = "基于Covalent API的区块链资产管理平台"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 16. 健康检查端点
+	// 13. 健康检查端点
 	router.GET("/health", healthCheck)
 
-	// 17. 设置优雅关闭
+	// 14. 设置优雅关闭
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigCh
 		logger.Info("Received shutdown signal, stopping services...")
-
-		// 停止价格服务
-		if err := priceSvc.Stop(); err != nil {
-			logger.Error("Failed to stop price service: ", err)
-		}
-
-		cancel()
 		os.Exit(0)
 	}()
 
-	// 18. 启动服务器
+	// 15. 启动服务器
 	addr := ":" + cfg.Server.Port
 	logger.Info("Starting server on ", addr)
+	logger.Info("Swagger documentation available at: http://localhost:" + cfg.Server.Port + "/swagger/index.html")
 
 	if err := router.Run(addr); err != nil {
 		logger.Error("Failed to start server: ", err)

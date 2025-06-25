@@ -1,59 +1,17 @@
 package types
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"errors"
 	"time"
-	"timelocker-backend/pkg/logger"
 )
 
-// JSONB 自定义类型用于处理PostgreSQL的JSONB字段
-type JSONB map[string]interface{}
-
-// Value 实现 driver.Valuer 接口，用于将Go值转换为数据库值
-func (j JSONB) Value() (driver.Value, error) {
-	if j == nil {
-		return nil, nil
-	}
-	return json.Marshal(j)
-}
-
-// Scan 实现 sql.Scanner 接口，用于将数据库值转换为Go值
-func (j *JSONB) Scan(value interface{}) error {
-	if value == nil {
-		*j = make(JSONB)
-		return nil
-	}
-
-	var bytes []byte
-	switch v := value.(type) {
-	case []byte:
-		bytes = v
-	case string:
-		bytes = []byte(v)
-	default:
-		logger.Error("Scan JSONB Error: ", errors.New("cannot scan non-string/[]byte value into JSONB"))
-		return errors.New("cannot scan non-string/[]byte value into JSONB")
-	}
-
-	if len(bytes) == 0 {
-		*j = make(JSONB)
-		return nil
-	}
-
-	return json.Unmarshal(bytes, j)
-}
-
-// User 用户模型 - 重构为以钱包地址为核心，ChainID为最后登录的链
+// User 用户模型 - 支持链切换功能
 type User struct {
 	ID            int64      `json:"id" gorm:"primaryKey;autoIncrement"`
 	WalletAddress string     `json:"wallet_address" gorm:"unique;size:42;not null"` // 钱包地址作为唯一标识
-	ChainID       int        `json:"chain_id" gorm:"not null;default:1"`            // 最后登录的链ID
+	ChainID       int        `json:"chain_id" gorm:"not null;default:1"`            // 当前使用的链ID（用于timelock合约）
 	CreatedAt     time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	LastLogin     *time.Time `json:"last_login"`
-	Preferences   JSONB      `json:"preferences" gorm:"type:jsonb;default:'{}'"`
 	Status        int        `json:"status" gorm:"default:1"`
 }
 
@@ -67,7 +25,7 @@ type WalletConnectRequest struct {
 	WalletAddress string `json:"wallet_address" binding:"required,len=42"`
 	Signature     string `json:"signature" binding:"required"`
 	Message       string `json:"message" binding:"required"`
-	ChainId       int    `json:"chain_id" binding:"required"`
+	ChainID       int    `json:"chain_id" binding:"required"` // 初始连接的链ID
 }
 
 // WalletConnectResponse 钱包连接响应
@@ -105,7 +63,6 @@ type UserProfile struct {
 	ChainID       int        `json:"chain_id"`
 	CreatedAt     time.Time  `json:"created_at"`
 	LastLogin     *time.Time `json:"last_login"`
-	Preferences   JSONB      `json:"preferences"`
 }
 
 // JWTClaims JWT声明
