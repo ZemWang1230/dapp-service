@@ -9,12 +9,15 @@ import (
 	"timelocker-backend/docs"
 	assetHandler "timelocker-backend/internal/api/asset"
 	authHandler "timelocker-backend/internal/api/auth"
+	timelockHandler "timelocker-backend/internal/api/timelock"
 	"timelocker-backend/internal/config"
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
+	timelockRepo "timelocker-backend/internal/repository/timelock"
 	userRepo "timelocker-backend/internal/repository/user"
 	assetService "timelocker-backend/internal/service/asset"
 	authService "timelocker-backend/internal/service/auth"
+	timelockService "timelocker-backend/internal/service/timelock"
 	"timelocker-backend/pkg/database"
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
@@ -80,6 +83,7 @@ func main() {
 	userRepo := userRepo.NewRepository(db)
 	chainRepo := chainRepo.NewRepository(db)
 	assetRepo := assetRepo.NewRepository(db)
+	timelockRepository := timelockRepo.NewRepository(db)
 
 	// 5. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
@@ -97,10 +101,12 @@ func main() {
 		assetRepo,
 		redisClient,
 	)
+	timelockSvc := timelockService.NewService(timelockRepository)
 
 	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
+	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
 
 	// 8. 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
@@ -127,12 +133,13 @@ func main() {
 	{
 		authHandler.RegisterRoutes(v1)
 		assetHandler.RegisterRoutes(v1)
+		timelockHandler.RegisterRoutes(v1)
 	}
 
 	// 12. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
-	docs.SwaggerInfo.Title = "TimeLocker Backend API v2.0"
-	docs.SwaggerInfo.Description = "基于Covalent API的区块链资产管理平台"
+	docs.SwaggerInfo.Title = "TimeLocker Backend API v1.0"
+	docs.SwaggerInfo.Description = "TimeLocker Backend API"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// 13. 健康检查端点

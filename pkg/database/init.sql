@@ -2,6 +2,7 @@
 -- 执行前请确保数据库已创建
 
 -- 删除已存在的表（按依赖关系逆序）
+DROP TABLE IF EXISTS timelocks CASCADE;
 DROP TABLE IF EXISTS user_assets CASCADE;
 DROP TABLE IF EXISTS support_chains CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -54,6 +55,27 @@ CREATE TABLE user_assets (
     UNIQUE(wallet_address, chain_name, contract_address)  -- 确保唯一性
 );
 
+-- 4. Timelock合约表 (timelocks)
+CREATE TABLE timelocks (
+    id BIGSERIAL PRIMARY KEY,
+    wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+    chain_id INTEGER NOT NULL,
+    chain_name VARCHAR(50) NOT NULL,
+    contract_address VARCHAR(42) NOT NULL,
+    standard VARCHAR(20) NOT NULL CHECK (standard IN ('compound', 'openzeppelin')),
+    creator_address VARCHAR(42),                -- 创建者地址（创建时使用）
+    tx_hash VARCHAR(66),                        -- 创建交易hash（创建时使用）
+    min_delay BIGINT,                           -- 最小延迟时间（秒）
+    proposers TEXT,                             -- 提议者地址列表（JSON格式）
+    executors TEXT,                             -- 执行者地址列表（JSON格式）
+    admin VARCHAR(42),                          -- 管理员地址
+    remark VARCHAR(500) DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(wallet_address, chain_id, contract_address)  -- 确保同一钱包地址、链和合约地址的唯一性
+);
+
 -- 创建索引
 CREATE INDEX idx_users_wallet_address ON users(wallet_address);
 CREATE INDEX idx_users_chain_id ON users(chain_id);
@@ -64,6 +86,12 @@ CREATE INDEX idx_support_chains_is_testnet ON support_chains(is_testnet);
 CREATE INDEX idx_user_assets_wallet_address ON user_assets(wallet_address);
 CREATE INDEX idx_user_assets_chain_name ON user_assets(chain_name);
 CREATE INDEX idx_user_assets_usd_value ON user_assets(usd_value DESC);
+CREATE INDEX idx_timelocks_wallet_address ON timelocks(wallet_address);
+CREATE INDEX idx_timelocks_chain_id ON timelocks(chain_id);
+CREATE INDEX idx_timelocks_chain_name ON timelocks(chain_name);
+CREATE INDEX idx_timelocks_contract_address ON timelocks(contract_address);
+CREATE INDEX idx_timelocks_standard ON timelocks(standard);
+CREATE INDEX idx_timelocks_status ON timelocks(status);
 
 -- 插入支持的链数据（包含主网和测试网）
 INSERT INTO support_chains (chain_name, display_name, chain_id, native_token, is_testnet, is_active) VALUES
