@@ -46,16 +46,16 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 // GetSupportChains 获取支持链列表
-// @Summary 获取支持链列表
-// @Description 获取所有支持的区块链列表，可根据是否测试网和是否激活进行筛选
-// @Tags chain
+// @Summary 获取支持的区块链列表
+// @Description 获取所有支持的区块链列表，可根据是否测试网和是否激活状态进行筛选。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。
+// @Tags Chain
 // @Accept json
 // @Produce json
-// @Param is_testnet query bool false "是否测试网"
-// @Param is_active query bool false "是否激活"
-// @Success 200 {object} map[string]interface{} "{"code":200,"message":"success","data":{"chains":[...],"total":10}}"
-// @Failure 400 {object} map[string]interface{} "{"code":400,"message":"参数错误","data":null}"
-// @Failure 500 {object} map[string]interface{} "{"code":500,"message":"服务器内部错误","data":null}"
+// @Param is_testnet query bool false "是否筛选测试网" example(false)
+// @Param is_active query bool false "是否筛选激活状态" example(true)
+// @Success 200 {object} types.APIResponse{data=types.GetSupportChainsResponse} "成功获取支持链列表"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/chain/list [get]
 func (h *Handler) GetSupportChains(c *gin.Context) {
 	var req types.GetSupportChainsRequest
@@ -63,10 +63,13 @@ func (h *Handler) GetSupportChains(c *gin.Context) {
 	// 绑定查询参数
 	if err := c.ShouldBindQuery(&req); err != nil {
 		logger.Error("GetSupportChains BindQuery Error: ", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误",
-			"data":    nil,
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid query parameters",
+				Details: err.Error(),
+			},
 		})
 		return
 	}
@@ -75,42 +78,47 @@ func (h *Handler) GetSupportChains(c *gin.Context) {
 	response, err := h.chainService.GetSupportChains(c.Request.Context(), &req)
 	if err != nil {
 		logger.Error("GetSupportChains Service Error: ", err)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "服务器内部错误",
-			"data":    nil,
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INTERNAL_ERROR",
+				Message: "Failed to get support chains",
+				Details: err.Error(),
+			},
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data":    response,
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    response,
 	})
 }
 
 // GetChainByID 根据ID获取链信息
-// @Summary 根据ID获取链信息
-// @Description 根据链的ID获取具体的链信息
-// @Tags chain
+// @Summary 根据数据库ID获取链信息
+// @Description 根据链在数据库中的ID获取具体的链信息，包括链名称、链ID、原生代币、Logo等详细信息。
+// @Tags Chain
 // @Accept json
 // @Produce json
-// @Param id path int true "链ID"
-// @Success 200 {object} map[string]interface{} "{"code":200,"message":"success","data":{...}}"
-// @Failure 400 {object} map[string]interface{} "{"code":400,"message":"参数错误","data":null}"
-// @Failure 404 {object} map[string]interface{} "{"code":404,"message":"链信息不存在","data":null}"
-// @Failure 500 {object} map[string]interface{} "{"code":500,"message":"服务器内部错误","data":null}"
+// @Param id path int true "链在数据库中的ID" example(1)
+// @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "链信息不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/chain/{id} [get]
 func (h *Handler) GetChainByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		logger.Error("GetChainByID ParseInt Error: ", err, "id", idStr)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误",
-			"data":    nil,
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_ID",
+				Message: "Invalid chain ID",
+				Details: err.Error(),
+			},
 		})
 		return
 	}
@@ -123,51 +131,58 @@ func (h *Handler) GetChainByID(c *gin.Context) {
 	chain, err := h.chainService.GetChainByID(c.Request.Context(), req)
 	if err != nil {
 		logger.Error("GetChainByID Service Error: ", err, "id", id)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "服务器内部错误",
-			"data":    nil,
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INTERNAL_ERROR",
+				Message: "Failed to get chain information",
+				Details: err.Error(),
+			},
 		})
 		return
 	}
 
 	if chain == nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "链信息不存在",
-			"data":    nil,
+		c.JSON(http.StatusNotFound, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "CHAIN_NOT_FOUND",
+				Message: "Chain not found",
+			},
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data":    chain,
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    chain,
 	})
 }
 
 // GetChainByChainID 根据ChainID获取链信息
-// @Summary 根据ChainID获取链信息
-// @Description 根据区块链的ChainID获取具体的链信息
-// @Tags chain
+// @Summary 根据区块链ChainID获取链信息
+// @Description 根据区块链网络的ChainID（如以太坊主网为1）获取具体的链信息，包括链名称、原生代币、Logo等详细信息。
+// @Tags Chain
 // @Accept json
 // @Produce json
-// @Param chain_id path int true "区块链ID"
-// @Success 200 {object} map[string]interface{} "{"code":200,"message":"success","data":{...}}"
-// @Failure 400 {object} map[string]interface{} "{"code":400,"message":"参数错误","data":null}"
-// @Failure 404 {object} map[string]interface{} "{"code":404,"message":"链信息不存在","data":null}"
-// @Failure 500 {object} map[string]interface{} "{"code":500,"message":"服务器内部错误","data":null}"
+// @Param chain_id path int true "区块链网络的ChainID" example(1)
+// @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "链信息不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/chain/chainid/{chain_id} [get]
 func (h *Handler) GetChainByChainID(c *gin.Context) {
 	chainIDStr := c.Param("chain_id")
 	chainID, err := strconv.ParseInt(chainIDStr, 10, 64)
 	if err != nil {
 		logger.Error("GetChainByChainID ParseInt Error: ", err, "chain_id", chainIDStr)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    400,
-			"message": "参数错误",
-			"data":    nil,
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_CHAIN_ID",
+				Message: "Invalid chain ID",
+				Details: err.Error(),
+			},
 		})
 		return
 	}
@@ -180,26 +195,30 @@ func (h *Handler) GetChainByChainID(c *gin.Context) {
 	chain, err := h.chainService.GetChainByChainID(c.Request.Context(), req)
 	if err != nil {
 		logger.Error("GetChainByChainID Service Error: ", err, "chain_id", chainID)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "服务器内部错误",
-			"data":    nil,
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INTERNAL_ERROR",
+				Message: "Failed to get chain information",
+				Details: err.Error(),
+			},
 		})
 		return
 	}
 
 	if chain == nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"code":    404,
-			"message": "链信息不存在",
-			"data":    nil,
+		c.JSON(http.StatusNotFound, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "CHAIN_NOT_FOUND",
+				Message: "Chain not found",
+			},
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    200,
-		"message": "success",
-		"data":    chain,
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    chain,
 	})
 }

@@ -49,14 +49,15 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 // WalletConnect 钱包连接认证
 // @Summary 钱包连接认证
-// @Description 通过钱包签名进行用户认证
-// @Tags 认证
+// @Description 通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。
+// @Tags Authentication
 // @Accept json
 // @Produce json
-// @Param request body types.WalletConnectRequest true "钱包连接请求"
-// @Success 200 {object} types.APIResponse{data=types.WalletConnectResponse}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
+// @Param request body types.WalletConnectRequest true "钱包连接认证请求体"
+// @Success 200 {object} types.APIResponse{data=types.WalletConnectResponse} "认证成功，返回访问令牌和用户信息"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是钱包地址格式不正确"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "认证失败，可能是签名无效或地址恢复失败"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/auth/wallet-connect [post]
 func (h *Handler) WalletConnect(c *gin.Context) {
 	var req types.WalletConnectRequest
@@ -114,14 +115,16 @@ func (h *Handler) WalletConnect(c *gin.Context) {
 
 // RefreshToken 刷新访问令牌
 // @Summary 刷新访问令牌
-// @Description 使用刷新令牌获取新的访问令牌
-// @Tags 认证
+// @Description 使用刷新令牌获取新的访问令牌。当访问令牌过期时，前端可以使用此接口通过刷新令牌重新获取新的访问令牌和刷新令牌，无需重新进行钱包签名认证。
+// @Tags Authentication
 // @Accept json
 // @Produce json
-// @Param request body types.RefreshTokenRequest true "刷新令牌请求"
-// @Success 200 {object} types.APIResponse{data=types.WalletConnectResponse}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
+// @Param request body types.RefreshTokenRequest true "刷新令牌请求体"
+// @Success 200 {object} types.APIResponse{data=types.WalletConnectResponse} "刷新成功，返回新的访问令牌和刷新令牌"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "刷新令牌无效或已过期"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "用户不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/auth/refresh [post]
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req types.RefreshTokenRequest
@@ -176,14 +179,15 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 // GetProfile 获取用户资料
 // @Summary 获取用户资料
-// @Description 获取当前认证用户的资料信息
-// @Tags 认证
+// @Description 获取当前认证用户的资料信息，包括钱包地址、当前选择的链ID、注册时间和最后登录时间等。此接口需要在请求头中携带有效的JWT访问令牌。
+// @Tags Authentication
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} types.APIResponse{data=types.UserProfile}
-// @Failure 401 {object} types.APIResponse
-// @Failure 404 {object} types.APIResponse
+// @Success 200 {object} types.APIResponse{data=types.UserProfile} "成功获取用户资料"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "用户不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/auth/profile [get]
 func (h *Handler) GetProfile(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -233,16 +237,18 @@ func (h *Handler) GetProfile(c *gin.Context) {
 }
 
 // SwitchChain 切换链
-// @Summary 切换链
-// @Description 切换到新的区块链
-// @Tags 认证
+// @Summary 切换区块链网络
+// @Description 用户切换到新的区块链网络。由于不同链的安全性考虑，切换链需要重新进行钱包签名验证。成功后会更新用户的当前链ID，并返回新的访问令牌。
+// @Tags Authentication
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.SwitchChainRequest true "切换链请求"
-// @Success 200 {object} types.APIResponse{data=types.SwitchChainResponse}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
+// @Param request body types.SwitchChainRequest true "切换链请求体，包含新的链ID和签名信息"
+// @Success 200 {object} types.APIResponse{data=types.SwitchChainResponse} "切换成功，返回新的访问令牌和用户信息"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "用户不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/auth/switch-chain [post]
 func (h *Handler) SwitchChain(c *gin.Context) {
 	// 从上下文获取用户信息

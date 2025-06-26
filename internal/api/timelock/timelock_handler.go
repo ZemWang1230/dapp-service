@@ -72,15 +72,15 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 }
 
 // CheckTimeLockStatus 检查timelock状态
-// @Summary 检查timelock状态
-// @Description 检查用户是否有timelock合约，返回timelock状态
+// @Summary 检查用户timelock合约状态
+// @Description 检查当前用户是否拥有timelock合约，返回用户的timelock合约状态信息。如果用户有timelock合约，会返回合约列表的基本信息。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} types.APIResponse{data=types.CheckTimeLockStatusResponse}
-// @Failure 401 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Success 200 {object} types.APIResponse{data=types.CheckTimeLockStatusResponse} "成功获取timelock状态信息"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/status [get]
 func (h *Handler) CheckTimeLockStatus(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -119,18 +119,18 @@ func (h *Handler) CheckTimeLockStatus(c *gin.Context) {
 }
 
 // CreateTimeLock 创建timelock合约
-// @Summary 创建timelock合约
-// @Description 创建新的timelock合约记录
+// @Summary 创建timelock合约记录
+// @Description 创建新的timelock合约记录。用户需要提供合约的详细信息，包括链ID、合约地址、标准类型（compound或openzeppelin）、创建者信息、交易哈希以及相关的治理参数。系统支持Compound和OpenZeppelin两种timelock标准。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.CreateTimeLockRequest true "创建timelock请求"
-// @Success 200 {object} types.APIResponse{data=types.TimeLock}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
-// @Failure 409 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Param request body types.CreateTimeLockRequest true "创建timelock合约的请求体"
+// @Success 200 {object} types.APIResponse{data=types.TimeLock} "成功创建timelock合约记录"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是合约参数无效、标准类型错误或备注过长"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 409 {object} types.APIResponse{error=types.APIError} "timelock合约已存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/create [post]
 func (h *Handler) CreateTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -205,18 +205,18 @@ func (h *Handler) CreateTimeLock(c *gin.Context) {
 }
 
 // ImportTimeLock 导入timelock合约
-// @Summary 导入timelock合约
-// @Description 导入已存在的timelock合约
+// @Summary 导入已存在的timelock合约
+// @Description 导入已在区块链上部署的timelock合约。系统会通过提供的ABI信息验证合约的有效性，然后将合约信息添加到用户的timelock合约列表中。支持导入Compound和OpenZeppelin两种标准的timelock合约。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.ImportTimeLockRequest true "导入timelock请求"
-// @Success 200 {object} types.APIResponse{data=types.TimeLock}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
-// @Failure 409 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Param request body types.ImportTimeLockRequest true "导入timelock合约的请求体，包含合约地址、ABI等信息"
+// @Success 200 {object} types.APIResponse{data=types.TimeLock} "成功导入timelock合约"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是合约地址无效、ABI格式错误、标准类型错误或备注过长"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 409 {object} types.APIResponse{error=types.APIError} "timelock合约已存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误或合约验证失败"
 // @Router /api/v1/timelock/import [post]
 func (h *Handler) ImportTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -294,21 +294,21 @@ func (h *Handler) ImportTimeLock(c *gin.Context) {
 }
 
 // GetTimeLockList 获取timelock列表
-// @Summary 获取timelock列表
-// @Description 获取用户的timelock合约列表（分页）
+// @Summary 获取用户timelock合约列表
+// @Description 分页获取当前用户的timelock合约列表。支持按链ID、合约标准和状态进行筛选。返回的列表包含合约的基本信息，如合约地址、标准类型、状态、备注等。默认按创建时间倒序排列。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param page query int false "页码" default(1)
-// @Param page_size query int false "每页数量" default(10)
-// @Param chain_id query int false "链ID筛选"
-// @Param standard query string false "合约标准筛选" Enums(compound,openzeppelin)
-// @Param status query string false "状态筛选" Enums(active,inactive)
-// @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Param page query int false "页码，从1开始" default(1) minimum(1)
+// @Param page_size query int false "每页数量" default(10) minimum(1) maximum(100)
+// @Param chain_id query int false "按链ID筛选" example(1)
+// @Param standard query string false "按合约标准筛选" Enums(compound,openzeppelin) example(openzeppelin)
+// @Param status query string false "按状态筛选" Enums(active,inactive) example(active)
+// @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse} "成功获取timelock合约列表"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/list [get]
 func (h *Handler) GetTimeLockList(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -370,19 +370,19 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 }
 
 // GetTimeLockDetail 获取timelock详情
-// @Summary 获取timelock详情
-// @Description 获取指定timelock合约的详细信息
+// @Summary 获取timelock合约详细信息
+// @Description 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数（如提议者列表、执行者列表、管理员地址等）。只有合约的拥有者才能查看详细信息。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Timelock ID"
-// @Success 200 {object} types.APIResponse{data=types.TimeLockDetailResponse}
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
-// @Failure 403 {object} types.APIResponse
-// @Failure 404 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Param id path int true "Timelock合约的数据库ID" example(1)
+// @Success 200 {object} types.APIResponse{data=types.TimeLockDetailResponse} "成功获取timelock合约详情"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，timelock ID无效"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/{id} [get]
 func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -452,20 +452,20 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 }
 
 // UpdateTimeLock 更新timelock
-// @Summary 更新timelock备注
-// @Description 更新timelock合约的备注信息
+// @Summary 更新timelock合约备注
+// @Description 更新指定timelock合约的备注信息。只有合约的拥有者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Timelock ID"
-// @Param request body types.UpdateTimeLockRequest true "更新timelock请求"
-// @Success 200 {object} types.APIResponse
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
-// @Failure 403 {object} types.APIResponse
-// @Failure 404 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Param id path int true "Timelock合约的数据库ID" example(1)
+// @Param request body types.UpdateTimeLockRequest true "更新请求体，包含新的备注信息"
+// @Success 200 {object} types.APIResponse{data=object} "成功更新timelock合约备注"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是ID无效或备注过长"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/{id} [put]
 func (h *Handler) UpdateTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -556,19 +556,19 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 }
 
 // DeleteTimeLock 删除timelock
-// @Summary 删除timelock
-// @Description 删除指定的timelock合约（软删除）
+// @Summary 删除timelock合约记录
+// @Description 删除指定的timelock合约记录（软删除）。只有合约的拥有者才能删除。删除操作是软删除，合约记录会被标记为已删除状态，但不会从数据库中物理删除，以保证数据的完整性和可追溯性。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Timelock ID"
-// @Success 200 {object} types.APIResponse
-// @Failure 400 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse
-// @Failure 403 {object} types.APIResponse
-// @Failure 404 {object} types.APIResponse
-// @Failure 500 {object} types.APIResponse
+// @Param id path int true "Timelock合约的数据库ID" example(1)
+// @Success 200 {object} types.APIResponse{data=object} "成功删除timelock合约记录"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，timelock ID无效"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/{id} [delete]
 func (h *Handler) DeleteTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
