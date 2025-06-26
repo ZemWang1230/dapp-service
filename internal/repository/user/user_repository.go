@@ -2,6 +2,8 @@ package user
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"timelocker-backend/internal/types"
@@ -111,9 +113,8 @@ func (r *repository) GetByWalletAddress(walletAddress string) (*types.User, erro
 		First(&user).Error
 
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			logger.Info("GetByWalletAddress: user not found", "wallet_address", walletAddress)
-			return nil, nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("user not found")
 		}
 		logger.Error("GetByWalletAddress Error: ", err, "wallet_address", walletAddress)
 		return nil, err

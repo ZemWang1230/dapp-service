@@ -34,11 +34,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	timeLockGroup := router.Group("/timelock")
 	timeLockGroup.Use(middleware.AuthMiddleware(h.authService))
 	{
-		// 检查timelock状态
-		// GET /api/v1/timelock/status
-		// http://localhost:8080/api/v1/timelock/status
-		timeLockGroup.GET("/status", h.CheckTimeLockStatus)
-
 		// 创建timelock合约
 		// POST /api/v1/timelock/create
 		// http://localhost:8080/api/v1/timelock/create
@@ -49,92 +44,60 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// http://localhost:8080/api/v1/timelock/import
 		timeLockGroup.POST("/import", h.ImportTimeLock)
 
-		// 获取timelock列表
+		// 获取timelock列表（根据用户权限筛选）
 		// GET /api/v1/timelock/list
 		// http://localhost:8080/api/v1/timelock/list
 		timeLockGroup.GET("/list", h.GetTimeLockList)
 
+		// Compound特有功能 - 设置pending admin
+		// POST /api/v1/timelock/compound/:id/set-pending-admin
+		// http://localhost:8080/api/v1/timelock/compound/1/set-pending-admin
+		timeLockGroup.POST("/compound/:id/set-pending-admin", h.SetPendingAdmin)
+
+		// Compound特有功能 - 接受admin权限
+		// POST /api/v1/timelock/compound/:id/accept-admin
+		// http://localhost:8080/api/v1/timelock/compound/1/accept-admin
+		timeLockGroup.POST("/compound/:id/accept-admin", h.AcceptAdmin)
+
+		// 检查用户对compound timelock的admin权限
+		// GET /api/v1/timelock/compound/:id/admin-permissions
+		// http://localhost:8080/api/v1/timelock/compound/1/admin-permissions
+		timeLockGroup.GET("/compound/:id/admin-permissions", h.CheckAdminPermissions)
+
 		// 获取timelock详情
-		// GET /api/v1/timelock/:id
-		// http://localhost:8080/api/v1/timelock/1
-		timeLockGroup.GET("/:id", h.GetTimeLockDetail)
+		// GET /api/v1/timelock/detail/:standard/:id
+		// http://localhost:8080/api/v1/timelock/detail/compound/1
+		timeLockGroup.GET("/detail/:standard/:id", h.GetTimeLockDetail)
 
 		// 更新timelock备注
-		// PUT /api/v1/timelock/:id
-		// http://localhost:8080/api/v1/timelock/1
-		timeLockGroup.PUT("/:id", h.UpdateTimeLock)
+		// PUT /api/v1/timelock/:standard/:id
+		// http://localhost:8080/api/v1/timelock/compound/1
+		timeLockGroup.PUT("/:standard/:id", h.UpdateTimeLock)
 
 		// 删除timelock
-		// DELETE /api/v1/timelock/:id
-		// http://localhost:8080/api/v1/timelock/1
-		timeLockGroup.DELETE("/:id", h.DeleteTimeLock)
+		// DELETE /api/v1/timelock/:standard/:id
+		// http://localhost:8080/api/v1/timelock/compound/1
+		timeLockGroup.DELETE("/:standard/:id", h.DeleteTimeLock)
 	}
-}
-
-// CheckTimeLockStatus 检查timelock状态
-// @Summary 检查用户timelock合约状态
-// @Description 检查当前用户是否拥有timelock合约，返回用户的timelock合约状态信息。如果用户有timelock合约，会返回合约列表的基本信息。
-// @Tags Timelock
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} types.APIResponse{data=types.CheckTimeLockStatusResponse} "成功获取timelock状态信息"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/status [get]
-func (h *Handler) CheckTimeLockStatus(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("CheckTimeLockStatus Error: ", errors.New("user not authenticated"))
-		return
-	}
-
-	// 调用service层
-	response, err := h.timeLockService.CheckTimeLockStatus(c.Request.Context(), walletAddress)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: err.Error(),
-			},
-		})
-		logger.Error("CheckTimeLockStatus Error: ", err, "wallet_address", walletAddress)
-		return
-	}
-
-	logger.Info("CheckTimeLockStatus Success: ", "wallet_address", walletAddress, "has_timelocks", response.HasTimeLocks)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    response,
-	})
 }
 
 // CreateTimeLock 创建timelock合约
 // @Summary 创建timelock合约记录
-// @Description 创建新的timelock合约记录。用户需要提供合约的详细信息，包括链ID、合约地址、标准类型（compound或openzeppelin）、创建者信息、交易哈希以及相关的治理参数。系统支持Compound和OpenZeppelin两种timelock标准。
+// @Description 创建新的timelock合约记录。支持Compound和OpenZeppelin两种标准。前端需要提供合约的详细信息，包括链ID、合约地址、标准类型、创建交易哈希以及相关的治理参数。(Compound标准需要提供admin, pendingAdmin需要为空; OpenZeppelin标准需要提供proposers, executors, cancellers, admin需要为全0地址, proposers就是cancellers)
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body types.CreateTimeLockRequest true "创建timelock合约的请求体"
-// @Success 200 {object} types.APIResponse{data=types.TimeLock} "成功创建timelock合约记录"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是合约参数无效、标准类型错误或备注过长"
+// @Success 200 {object} types.APIResponse{data=object} "成功创建timelock合约记录"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "timelock合约已存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/create [post]
 func (h *Handler) CreateTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -158,12 +121,12 @@ func (h *Handler) CreateTimeLock(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("CreateTimeLock Error: ", errors.New("invalid request parameters"), "error", err, "wallet_address", walletAddress)
+		logger.Error("CreateTimeLock Error: ", errors.New("invalid request parameters"), "error", err, "user_address", userAddress)
 		return
 	}
 
 	// 调用service层
-	timeLock, err := h.timeLockService.CreateTimeLock(c.Request.Context(), walletAddress, &req)
+	result, err := h.timeLockService.CreateTimeLock(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -193,34 +156,34 @@ func (h *Handler) CreateTimeLock(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("CreateTimeLock Error: ", err, "wallet_address", walletAddress, "error_code", errorCode)
+		logger.Error("CreateTimeLock Error: ", err, "user_address", userAddress, "error_code", errorCode)
 		return
 	}
 
-	logger.Info("CreateTimeLock Success: ", "wallet_address", walletAddress, "timelock_id", timeLock.ID, "contract_address", timeLock.ContractAddress)
+	logger.Info("CreateTimeLock Success: ", "user_address", userAddress, "standard", req.Standard, "contract_address", req.ContractAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
-		Data:    timeLock,
+		Data:    result,
 	})
 }
 
 // ImportTimeLock 导入timelock合约
 // @Summary 导入已存在的timelock合约
-// @Description 导入已在区块链上部署的timelock合约。系统会通过提供的ABI信息验证合约的有效性，然后将合约信息添加到用户的timelock合约列表中。支持导入Compound和OpenZeppelin两种标准的timelock合约。
+// @Description 导入已在区块链上部署的timelock合约。前端需要从区块链读取合约的创建参数(Compound标准需要提供admin, pendingAdmin有则传入, 没有则传空; OpenZeppelin标准需要提供proposers, executors, cancellers, admin需要为全0地址, proposers就是cancellers)并提供给后端，或者用户自己提供，用于精细化权限管理。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.ImportTimeLockRequest true "导入timelock合约的请求体，包含合约地址、ABI等信息"
-// @Success 200 {object} types.APIResponse{data=types.TimeLock} "成功导入timelock合约"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是合约地址无效、ABI格式错误、标准类型错误或备注过长"
+// @Param request body types.ImportTimeLockRequest true "导入timelock合约的请求体"
+// @Success 200 {object} types.APIResponse{data=object} "成功导入timelock合约"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "timelock合约已存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误或合约验证失败"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/import [post]
 func (h *Handler) ImportTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -244,12 +207,12 @@ func (h *Handler) ImportTimeLock(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("ImportTimeLock Error: ", errors.New("invalid request parameters"), "error", err, "wallet_address", walletAddress)
+		logger.Error("ImportTimeLock Error: ", errors.New("invalid request parameters"), "error", err, "user_address", userAddress)
 		return
 	}
 
 	// 调用service层
-	timeLock, err := h.timeLockService.ImportTimeLock(c.Request.Context(), walletAddress, &req)
+	result, err := h.timeLockService.ImportTimeLock(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -258,9 +221,6 @@ func (h *Handler) ImportTimeLock(c *gin.Context) {
 		case timelock.ErrTimeLockExists:
 			statusCode = http.StatusConflict
 			errorCode = "TIMELOCK_EXISTS"
-		case timelock.ErrInvalidContract:
-			statusCode = http.StatusBadRequest
-			errorCode = "INVALID_CONTRACT"
 		case timelock.ErrInvalidStandard:
 			statusCode = http.StatusBadRequest
 			errorCode = "INVALID_STANDARD"
@@ -282,27 +242,24 @@ func (h *Handler) ImportTimeLock(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("ImportTimeLock Error: ", err, "wallet_address", walletAddress, "error_code", errorCode)
+		logger.Error("ImportTimeLock Error: ", err, "user_address", userAddress, "error_code", errorCode)
 		return
 	}
 
-	logger.Info("ImportTimeLock Success: ", "wallet_address", walletAddress, "timelock_id", timeLock.ID, "contract_address", timeLock.ContractAddress)
+	logger.Info("ImportTimeLock Success: ", "user_address", userAddress, "standard", req.Standard, "contract_address", req.ContractAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
-		Data:    timeLock,
+		Data:    result,
 	})
 }
 
 // GetTimeLockList 获取timelock列表
-// @Summary 获取用户timelock合约列表
-// @Description 分页获取当前用户的timelock合约列表。支持按链ID、合约标准和状态进行筛选。返回的列表包含合约的基本信息，如合约地址、标准类型、状态、备注等。默认按创建时间倒序排列。
+// @Summary 获取用户timelock合约列表（按权限筛选，所有链）
+// @Description 获取当前用户在所有链上有权限访问的timelock合约列表。支持按合约标准和状态进行筛选。返回的列表根据用户权限进行精细控制，只显示用户作为创建者、管理员、提议者、执行者或取消者的合约。前端自行实现分页功能。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param page query int false "页码，从1开始" default(1) minimum(1)
-// @Param page_size query int false "每页数量" default(10) minimum(1) maximum(100)
-// @Param chain_id query int false "按链ID筛选" example(1)
 // @Param standard query string false "按合约标准筛选" Enums(compound,openzeppelin) example(openzeppelin)
 // @Param status query string false "按状态筛选" Enums(active,inactive) example(active)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse} "成功获取timelock合约列表"
@@ -312,7 +269,7 @@ func (h *Handler) ImportTimeLock(c *gin.Context) {
 // @Router /api/v1/timelock/list [get]
 func (h *Handler) GetTimeLockList(c *gin.Context) {
 	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -336,33 +293,37 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("GetTimeLockList Error: ", errors.New("invalid query parameters"), "error", err, "wallet_address", walletAddress)
+		logger.Error("GetTimeLockList Error: ", errors.New("invalid query parameters"), "error", err, "user_address", userAddress)
 		return
-	}
-
-	// 设置默认值
-	if req.Page == 0 {
-		req.Page = 1
-	}
-	if req.PageSize == 0 {
-		req.PageSize = 10
 	}
 
 	// 调用service层
-	response, err := h.timeLockService.GetTimeLockList(c.Request.Context(), walletAddress, &req)
+	response, err := h.timeLockService.GetTimeLockList(c.Request.Context(), userAddress, &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, types.APIResponse{
+		var statusCode int
+		var errorCode string
+
+		switch err {
+		case timelock.ErrInvalidStandard:
+			statusCode = http.StatusBadRequest
+			errorCode = "INVALID_STANDARD"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INTERNAL_ERROR",
+				Code:    errorCode,
 				Message: err.Error(),
 			},
 		})
-		logger.Error("GetTimeLockList Error: ", err, "wallet_address", walletAddress)
+		logger.Error("GetTimeLockList Error: ", err, "user_address", userAddress)
 		return
 	}
 
-	logger.Info("GetTimeLockList Success: ", "wallet_address", walletAddress, "total", response.Total, "page", response.Page)
+	logger.Info("GetTimeLockList Success: ", "user_address", userAddress, "total", response.Total, "compound_count", len(response.CompoundTimeLocks), "openzeppelin_count", len(response.OpenzeppelinTimeLocks))
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -371,22 +332,23 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 
 // GetTimeLockDetail 获取timelock详情
 // @Summary 获取timelock合约详细信息
-// @Description 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数（如提议者列表、执行者列表、管理员地址等）。只有合约的拥有者才能查看详细信息。
+// @Description 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param standard path string true "合约标准" Enums(compound,openzeppelin) example(compound)
 // @Param id path int true "Timelock合约的数据库ID" example(1)
 // @Success 200 {object} types.APIResponse{data=types.TimeLockDetailResponse} "成功获取timelock合约详情"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，timelock ID无效"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/{id} [get]
+// @Router /api/v1/timelock/detail/{standard}/{id} [get]
 func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -400,7 +362,11 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 	}
 
 	// 获取路径参数
+	standardStr := c.Param("standard")
+	standard := types.TimeLockStandard(standardStr)
+
 	idStr := c.Param("id")
+
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -411,12 +377,25 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("GetTimeLockDetail Error: ", errors.New("invalid timelock ID"), "id", idStr, "wallet_address", walletAddress)
+		logger.Error("GetTimeLockDetail Error: ", errors.New("invalid timelock ID"), "id", idStr, "user_address", userAddress)
+		return
+	}
+
+	// 验证标准
+	if standard != types.CompoundStandard && standard != types.OpenzeppelinStandard {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_STANDARD",
+				Message: "Invalid timelock standard",
+			},
+		})
+		logger.Error("GetTimeLockDetail Error: ", errors.New("invalid timelock standard"), "standard", standardStr, "user_address", userAddress)
 		return
 	}
 
 	// 调用service层
-	response, err := h.timeLockService.GetTimeLockDetail(c.Request.Context(), walletAddress, id)
+	response, err := h.timeLockService.GetTimeLockDetail(c.Request.Context(), userAddress, standard, id)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -428,6 +407,9 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 		case timelock.ErrUnauthorized:
 			statusCode = http.StatusForbidden
 			errorCode = "UNAUTHORIZED_ACCESS"
+		case timelock.ErrInvalidStandard:
+			statusCode = http.StatusBadRequest
+			errorCode = "INVALID_STANDARD"
 		default:
 			statusCode = http.StatusInternalServerError
 			errorCode = "INTERNAL_ERROR"
@@ -440,36 +422,37 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("GetTimeLockDetail Error: ", err, "wallet_address", walletAddress, "timelock_id", id, "error_code", errorCode)
+		logger.Error("GetTimeLockDetail Error: ", err, "user_address", userAddress, "timelock_id", id, "standard", standard, "error_code", errorCode)
 		return
 	}
 
-	logger.Info("GetTimeLockDetail Success: ", "wallet_address", walletAddress, "timelock_id", id)
+	logger.Info("GetTimeLockDetail Success: ", "user_address", userAddress, "timelock_id", id, "standard", standard)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
 	})
 }
 
-// UpdateTimeLock 更新timelock
+// UpdateTimeLock 更新timelock备注
 // @Summary 更新timelock合约备注
-// @Description 更新指定timelock合约的备注信息。只有合约的拥有者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。
+// @Description 更新指定timelock合约的备注信息。只有合约的创建者/导入者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param standard path string true "合约标准" Enums(compound,openzeppelin) example(compound)
 // @Param id path int true "Timelock合约的数据库ID" example(1)
-// @Param request body types.UpdateTimeLockRequest true "更新请求体，包含新的备注信息"
+// @Param request body types.UpdateTimeLockRequest true "更新请求体"
 // @Success 200 {object} types.APIResponse{data=object} "成功更新timelock合约备注"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是ID无效或备注过长"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/{id} [put]
+// @Router /api/v1/timelock/{standard}/{id} [put]
 func (h *Handler) UpdateTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -483,6 +466,9 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 	}
 
 	// 获取路径参数
+	standardStr := c.Param("standard")
+	standard := types.TimeLockStandard(standardStr)
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -494,7 +480,20 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("UpdateTimeLock Error: ", errors.New("invalid timelock ID"), "id", idStr, "wallet_address", walletAddress)
+		logger.Error("UpdateTimeLock Error: ", errors.New("invalid timelock ID"), "id", idStr, "user_address", userAddress)
+		return
+	}
+
+	// 验证标准
+	if standard != types.CompoundStandard && standard != types.OpenzeppelinStandard {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_STANDARD",
+				Message: "Invalid timelock standard",
+			},
+		})
+		logger.Error("UpdateTimeLock Error: ", errors.New("invalid timelock standard"), "standard", standardStr, "user_address", userAddress)
 		return
 	}
 
@@ -509,15 +508,16 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("UpdateTimeLock Error: ", errors.New("invalid request parameters"), "error", err, "wallet_address", walletAddress)
+		logger.Error("UpdateTimeLock Error: ", errors.New("invalid request parameters"), "error", err, "user_address", userAddress)
 		return
 	}
 
-	// 设置ID
+	// 设置从路径获取的参数
 	req.ID = id
+	req.Standard = standard
 
 	// 调用service层
-	err = h.timeLockService.UpdateTimeLock(c.Request.Context(), walletAddress, &req)
+	err = h.timeLockService.UpdateTimeLock(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -529,6 +529,9 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 		case timelock.ErrUnauthorized:
 			statusCode = http.StatusForbidden
 			errorCode = "UNAUTHORIZED_ACCESS"
+		case timelock.ErrInvalidStandard:
+			statusCode = http.StatusBadRequest
+			errorCode = "INVALID_STANDARD"
 		case timelock.ErrInvalidRemark:
 			statusCode = http.StatusBadRequest
 			errorCode = "INVALID_REMARK"
@@ -544,11 +547,11 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("UpdateTimeLock Error: ", err, "wallet_address", walletAddress, "timelock_id", id, "error_code", errorCode)
+		logger.Error("UpdateTimeLock Error: ", err, "user_address", userAddress, "timelock_id", id, "standard", standard, "error_code", errorCode)
 		return
 	}
 
-	logger.Info("UpdateTimeLock Success: ", "wallet_address", walletAddress, "timelock_id", id)
+	logger.Info("UpdateTimeLock Success: ", "user_address", userAddress, "timelock_id", id, "standard", standard)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    gin.H{"message": "Timelock updated successfully"},
@@ -557,22 +560,23 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 
 // DeleteTimeLock 删除timelock
 // @Summary 删除timelock合约记录
-// @Description 删除指定的timelock合约记录（软删除）。只有合约的拥有者才能删除。删除操作是软删除，合约记录会被标记为已删除状态，但不会从数据库中物理删除，以保证数据的完整性和可追溯性。
+// @Description 软删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是软删除，数据仍保留在数据库中但标记为已删除状态。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param standard path string true "合约标准" Enums(compound,openzeppelin) example(compound)
 // @Param id path int true "Timelock合约的数据库ID" example(1)
 // @Success 200 {object} types.APIResponse{data=object} "成功删除timelock合约记录"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，timelock ID无效"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/{id} [delete]
+// @Router /api/v1/timelock/{standard}/{id} [delete]
 func (h *Handler) DeleteTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
+	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
@@ -582,6 +586,114 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 			},
 		})
 		logger.Error("DeleteTimeLock Error: ", errors.New("user not authenticated"))
+		return
+	}
+
+	// 获取路径参数
+	standardStr := c.Param("standard")
+	standard := types.TimeLockStandard(standardStr)
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_ID",
+				Message: "Invalid timelock ID",
+				Details: err.Error(),
+			},
+		})
+		logger.Error("DeleteTimeLock Error: ", errors.New("invalid timelock ID"), "id", idStr, "user_address", userAddress)
+		return
+	}
+
+	// 验证标准
+	if standard != types.CompoundStandard && standard != types.OpenzeppelinStandard {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_STANDARD",
+				Message: "Invalid timelock standard",
+			},
+		})
+		logger.Error("DeleteTimeLock Error: ", errors.New("invalid timelock standard"), "standard", standardStr, "user_address", userAddress)
+		return
+	}
+
+	// 构建请求
+	req := &types.DeleteTimeLockRequest{
+		ID:       id,
+		Standard: standard,
+	}
+
+	// 调用service层
+	err = h.timeLockService.DeleteTimeLock(c.Request.Context(), userAddress, req)
+	if err != nil {
+		var statusCode int
+		var errorCode string
+
+		switch err {
+		case timelock.ErrTimeLockNotFound:
+			statusCode = http.StatusNotFound
+			errorCode = "TIMELOCK_NOT_FOUND"
+		case timelock.ErrUnauthorized:
+			statusCode = http.StatusForbidden
+			errorCode = "UNAUTHORIZED_ACCESS"
+		case timelock.ErrInvalidStandard:
+			statusCode = http.StatusBadRequest
+			errorCode = "INVALID_STANDARD"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    errorCode,
+				Message: err.Error(),
+			},
+		})
+		logger.Error("DeleteTimeLock Error: ", err, "user_address", userAddress, "timelock_id", id, "standard", standard, "error_code", errorCode)
+		return
+	}
+
+	logger.Info("DeleteTimeLock Success: ", "user_address", userAddress, "timelock_id", id, "standard", standard)
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    gin.H{"message": "Timelock deleted successfully"},
+	})
+}
+
+// SetPendingAdmin 设置pending admin
+// @Summary 设置Compound timelock的pending admin
+// @Description 为Compound标准的timelock合约设置pending admin，需要前端调用钱包实现，通过该timelock合约执行setPendingAdmin函数。只有当前admin才能执行此操作。这是Compound timelock权限转移流程的第一步。
+// @Tags Timelock
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Compound timelock合约的数据库ID" example(1)
+// @Param request body types.SetPendingAdminRequest true "设置pending admin的请求体"
+// @Success 200 {object} types.APIResponse{data=object} "成功设置pending admin"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 403 {object} types.APIResponse{error=types.APIError} "权限不足"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
+// @Router /api/v1/timelock/compound/{id}/set-pending-admin [post]
+func (h *Handler) SetPendingAdmin(c *gin.Context) {
+	// 从上下文获取用户信息
+	_, userAddress, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "UNAUTHORIZED",
+				Message: "User not authenticated",
+			},
+		})
+		logger.Error("SetPendingAdmin Error: ", errors.New("user not authenticated"))
 		return
 	}
 
@@ -597,17 +709,30 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("DeleteTimeLock Error: ", errors.New("invalid timelock ID"), "id", idStr, "wallet_address", walletAddress)
+		logger.Error("SetPendingAdmin Error: ", errors.New("invalid timelock ID"), "id", idStr, "user_address", userAddress)
 		return
 	}
 
-	// 构建请求
-	req := &types.DeleteTimeLockRequest{
-		ID: id,
+	var req types.SetPendingAdminRequest
+	// 绑定请求参数
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request parameters",
+				Details: err.Error(),
+			},
+		})
+		logger.Error("SetPendingAdmin Error: ", errors.New("invalid request parameters"), "error", err, "user_address", userAddress)
+		return
 	}
 
+	// 设置ID
+	req.ID = id
+
 	// 调用service层
-	err = h.timeLockService.DeleteTimeLock(c.Request.Context(), walletAddress, req)
+	err = h.timeLockService.SetPendingAdmin(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -616,9 +741,12 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 		case timelock.ErrTimeLockNotFound:
 			statusCode = http.StatusNotFound
 			errorCode = "TIMELOCK_NOT_FOUND"
-		case timelock.ErrUnauthorized:
+		case timelock.ErrInvalidPermissions:
 			statusCode = http.StatusForbidden
-			errorCode = "UNAUTHORIZED_ACCESS"
+			errorCode = "INSUFFICIENT_PERMISSIONS"
+		case timelock.ErrInvalidContractParams:
+			statusCode = http.StatusBadRequest
+			errorCode = "INVALID_PARAMETERS"
 		default:
 			statusCode = http.StatusInternalServerError
 			errorCode = "INTERNAL_ERROR"
@@ -631,13 +759,183 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("DeleteTimeLock Error: ", err, "wallet_address", walletAddress, "timelock_id", id, "error_code", errorCode)
+		logger.Error("SetPendingAdmin Error: ", err, "user_address", userAddress, "timelock_id", id, "error_code", errorCode)
 		return
 	}
 
-	logger.Info("DeleteTimeLock Success: ", "wallet_address", walletAddress, "timelock_id", id)
+	logger.Info("SetPendingAdmin Success: ", "user_address", userAddress, "timelock_id", id, "new_pending_admin", req.NewPendingAdmin)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
-		Data:    gin.H{"message": "Timelock deleted successfully"},
+		Data:    gin.H{"message": "Pending admin set successfully"},
+	})
+}
+
+// AcceptAdmin 接受admin权限
+// @Summary 接受Compound timelock的admin权限
+// @Description 接受成为Compound标准timelock合约的admin，需要前端调用钱包实现，通过该timelock合约执行acceptAdmin函数。只有当前的pending admin才能执行此操作。这是Compound timelock权限转移流程的第二步。
+// @Tags Timelock
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Compound timelock合约的数据库ID" example(1)
+// @Success 200 {object} types.APIResponse{data=object} "成功接受admin权限"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 403 {object} types.APIResponse{error=types.APIError} "权限不足"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
+// @Router /api/v1/timelock/compound/{id}/accept-admin [post]
+func (h *Handler) AcceptAdmin(c *gin.Context) {
+	// 从上下文获取用户信息
+	_, userAddress, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "UNAUTHORIZED",
+				Message: "User not authenticated",
+			},
+		})
+		logger.Error("AcceptAdmin Error: ", errors.New("user not authenticated"))
+		return
+	}
+
+	// 获取路径参数
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_ID",
+				Message: "Invalid timelock ID",
+				Details: err.Error(),
+			},
+		})
+		logger.Error("AcceptAdmin Error: ", errors.New("invalid timelock ID"), "id", idStr, "user_address", userAddress)
+		return
+	}
+
+	// 构建请求
+	req := &types.AcceptAdminRequest{
+		ID: id,
+	}
+
+	// 调用service层
+	err = h.timeLockService.AcceptAdmin(c.Request.Context(), userAddress, req)
+	if err != nil {
+		var statusCode int
+		var errorCode string
+
+		switch err {
+		case timelock.ErrTimeLockNotFound:
+			statusCode = http.StatusNotFound
+			errorCode = "TIMELOCK_NOT_FOUND"
+		case timelock.ErrInvalidPermissions:
+			statusCode = http.StatusForbidden
+			errorCode = "INSUFFICIENT_PERMISSIONS"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    errorCode,
+				Message: err.Error(),
+			},
+		})
+		logger.Error("AcceptAdmin Error: ", err, "user_address", userAddress, "timelock_id", id, "error_code", errorCode)
+		return
+	}
+
+	logger.Info("AcceptAdmin Success: ", "user_address", userAddress, "timelock_id", id)
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    gin.H{"message": "Admin role accepted successfully"},
+	})
+}
+
+// CheckAdminPermissions 检查admin权限
+// @Summary 检查用户对Compound timelock的admin权限
+// @Description 检查当前用户对指定Compound timelock合约的管理权限，返回用户是否可以设置pending admin和是否可以接受admin权限。
+// @Tags Timelock
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Compound timelock合约的数据库ID" example(1)
+// @Success 200 {object} types.APIResponse{data=types.CheckAdminPermissionResponse} "成功获取权限信息"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
+// @Router /api/v1/timelock/compound/{id}/admin-permissions [get]
+func (h *Handler) CheckAdminPermissions(c *gin.Context) {
+	// 从上下文获取用户信息
+	_, userAddress, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "UNAUTHORIZED",
+				Message: "User not authenticated",
+			},
+		})
+		logger.Error("CheckAdminPermissions Error: ", errors.New("user not authenticated"))
+		return
+	}
+
+	// 获取路径参数
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_ID",
+				Message: "Invalid timelock ID",
+				Details: err.Error(),
+			},
+		})
+		logger.Error("CheckAdminPermissions Error: ", errors.New("invalid timelock ID"), "id", idStr, "user_address", userAddress)
+		return
+	}
+
+	// 构建请求
+	req := &types.CheckAdminPermissionRequest{
+		ID: id,
+	}
+
+	// 调用service层
+	response, err := h.timeLockService.CheckAdminPermissions(c.Request.Context(), userAddress, req)
+	if err != nil {
+		var statusCode int
+		var errorCode string
+
+		switch err {
+		case timelock.ErrTimeLockNotFound:
+			statusCode = http.StatusNotFound
+			errorCode = "TIMELOCK_NOT_FOUND"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    errorCode,
+				Message: err.Error(),
+			},
+		})
+		logger.Error("CheckAdminPermissions Error: ", err, "user_address", userAddress, "timelock_id", id, "error_code", errorCode)
+		return
+	}
+
+	logger.Info("CheckAdminPermissions Success: ", "user_address", userAddress, "timelock_id", id, "can_set_pending_admin", response.CanSetPendingAdmin, "can_accept_admin", response.CanAcceptAdmin)
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    response,
 	})
 }

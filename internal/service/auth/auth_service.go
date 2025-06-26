@@ -145,8 +145,7 @@ func (s *service) RefreshToken(ctx context.Context, req *types.RefreshTokenReque
 	user, err := s.userRepo.GetUserByID(ctx, claims.UserID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Error("RefreshToken Error: ", ErrUserNotFound)
-			return nil, ErrUserNotFound
+			return nil, fmt.Errorf("user not found")
 		}
 		logger.Error("RefreshToken Error: ", errors.New("database error"), "error: ", err)
 		return nil, fmt.Errorf("database error: %w", err)
@@ -188,8 +187,7 @@ func (s *service) GetProfile(ctx context.Context, walletAddress string) (*types.
 	user, err := s.userRepo.GetUserByWallet(ctx, walletAddress)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Error("GetProfile Error: ", ErrUserNotFound)
-			return nil, ErrUserNotFound
+			return nil, fmt.Errorf("user not found")
 		}
 		logger.Error("GetProfile Error: ", errors.New("database error"), "error: ", err)
 		return nil, fmt.Errorf("database error: %w", err)
@@ -216,8 +214,7 @@ func (s *service) VerifyToken(ctx context.Context, tokenString string) (*types.J
 	user, err := s.userRepo.GetUserByID(ctx, claims.UserID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Error("VerifyToken Error: ", ErrUserNotFound)
-			return nil, ErrUserNotFound
+			return nil, fmt.Errorf("user not found")
 		}
 		logger.Error("VerifyToken Error: ", errors.New("database error"), "error: ", err)
 		return nil, fmt.Errorf("database error: %w", err)
@@ -259,8 +256,7 @@ func (s *service) SwitchChain(ctx context.Context, walletAddress string, req *ty
 	user, err := s.userRepo.GetUserByWallet(ctx, normalizedAddress)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Error("SwitchChain Error: ", ErrUserNotFound)
-			return nil, ErrUserNotFound
+			return nil, fmt.Errorf("user not found")
 		}
 		logger.Error("SwitchChain Error: ", errors.New("database error"), "error: ", err)
 		return nil, fmt.Errorf("database error: %w", err)

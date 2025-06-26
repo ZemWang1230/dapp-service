@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 
@@ -55,8 +56,7 @@ func (r *repository) GetChainByChainName(chainName string) (*types.SupportChain,
 	err := r.db.Where("chain_name = ?", chainName).First(&chain).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Info("GetChainByChainName: chain not found", "chain_name", chainName)
-			return nil, nil
+			return nil, fmt.Errorf("chain not found")
 		}
 		logger.Error("GetChainByChainName Error: ", err, "chain_name", chainName)
 		return nil, err
@@ -132,8 +132,7 @@ func (r *repository) GetChainByID(ctx context.Context, id int64) (*types.Support
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&chain).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Info("GetChainByID: chain not found", "id", id)
-			return nil, nil
+			return nil, fmt.Errorf("chain not found")
 		}
 		logger.Error("GetChainByID Error: ", err, "id", id)
 		return nil, err
@@ -150,8 +149,7 @@ func (r *repository) GetChainByChainID(ctx context.Context, chainID int64) (*typ
 	err := r.db.WithContext(ctx).Where("chain_id = ?", chainID).First(&chain).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Info("GetChainByChainID: chain not found", "chain_id", chainID)
-			return nil, nil
+			return nil, fmt.Errorf("chain not found")
 		}
 		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainID)
 		return nil, err

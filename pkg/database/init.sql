@@ -2,7 +2,8 @@
 -- 执行前请确保数据库已创建
 
 -- 删除已存在的表（按依赖关系逆序）
-DROP TABLE IF EXISTS timelocks CASCADE;
+DROP TABLE IF EXISTS compound_timelocks CASCADE;
+DROP TABLE IF EXISTS openzeppelin_timelocks CASCADE;
 DROP TABLE IF EXISTS user_assets CASCADE;
 DROP TABLE IF EXISTS support_chains CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -55,25 +56,43 @@ CREATE TABLE user_assets (
     UNIQUE(wallet_address, chain_name, contract_address)  -- 确保唯一性
 );
 
--- 4. Timelock合约表 (timelocks)
-CREATE TABLE timelocks (
+-- 4. Compound标准Timelock合约表 (compound_timelocks)
+CREATE TABLE compound_timelocks (
     id BIGSERIAL PRIMARY KEY,
-    wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+    creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE, -- 创建者/导入者地址
     chain_id INTEGER NOT NULL,
     chain_name VARCHAR(50) NOT NULL,
     contract_address VARCHAR(42) NOT NULL,
-    standard VARCHAR(20) NOT NULL CHECK (standard IN ('compound', 'openzeppelin')),
-    creator_address VARCHAR(42),                -- 创建者地址（创建时使用）
     tx_hash VARCHAR(66),                        -- 创建交易hash（创建时使用）
-    min_delay BIGINT,                           -- 最小延迟时间（秒）
-    proposers TEXT,                             -- 提议者地址列表（JSON格式）
-    executors TEXT,                             -- 执行者地址列表（JSON格式）
-    admin VARCHAR(42),                          -- 管理员地址
+    min_delay BIGINT NOT NULL,                  -- 最小延迟时间（秒）
+    admin VARCHAR(42) NOT NULL,                 -- 管理员地址
+    pending_admin VARCHAR(42),                  -- 待定管理员地址
     remark VARCHAR(500) DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
+    is_imported BOOLEAN NOT NULL DEFAULT false, -- 是否导入的合约
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(wallet_address, chain_id, contract_address)  -- 确保同一钱包地址、链和合约地址的唯一性
+    UNIQUE(chain_id, contract_address)          -- 确保同一链和合约地址的唯一性
+);
+
+-- 5. OpenZeppelin标准Timelock合约表 (openzeppelin_timelocks)
+CREATE TABLE openzeppelin_timelocks (
+    id BIGSERIAL PRIMARY KEY,
+    creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE, -- 创建者/导入者地址
+    chain_id INTEGER NOT NULL,
+    chain_name VARCHAR(50) NOT NULL,
+    contract_address VARCHAR(42) NOT NULL,
+    tx_hash VARCHAR(66),                        -- 创建交易hash（创建时使用）
+    min_delay BIGINT NOT NULL,                  -- 最小延迟时间（秒）
+    proposers TEXT NOT NULL,                    -- 提议者地址列表（JSON格式）
+    executors TEXT NOT NULL,                    -- 执行者地址列表（JSON格式）
+    cancellers TEXT NOT NULL,                   -- 取消者地址列表（JSON格式）
+    remark VARCHAR(500) DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
+    is_imported BOOLEAN NOT NULL DEFAULT false, -- 是否导入的合约
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(chain_id, contract_address)          -- 确保同一链和合约地址的唯一性
 );
 
 -- 创建索引
@@ -86,12 +105,22 @@ CREATE INDEX idx_support_chains_is_testnet ON support_chains(is_testnet);
 CREATE INDEX idx_user_assets_wallet_address ON user_assets(wallet_address);
 CREATE INDEX idx_user_assets_chain_name ON user_assets(chain_name);
 CREATE INDEX idx_user_assets_usd_value ON user_assets(usd_value DESC);
-CREATE INDEX idx_timelocks_wallet_address ON timelocks(wallet_address);
-CREATE INDEX idx_timelocks_chain_id ON timelocks(chain_id);
-CREATE INDEX idx_timelocks_chain_name ON timelocks(chain_name);
-CREATE INDEX idx_timelocks_contract_address ON timelocks(contract_address);
-CREATE INDEX idx_timelocks_standard ON timelocks(standard);
-CREATE INDEX idx_timelocks_status ON timelocks(status);
+
+-- Compound timelock索引
+CREATE INDEX idx_compound_timelocks_creator_address ON compound_timelocks(creator_address);
+CREATE INDEX idx_compound_timelocks_chain_id ON compound_timelocks(chain_id);
+CREATE INDEX idx_compound_timelocks_chain_name ON compound_timelocks(chain_name);
+CREATE INDEX idx_compound_timelocks_contract_address ON compound_timelocks(contract_address);
+CREATE INDEX idx_compound_timelocks_admin ON compound_timelocks(admin);
+CREATE INDEX idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin);
+CREATE INDEX idx_compound_timelocks_status ON compound_timelocks(status);
+
+-- OpenZeppelin timelock索引
+CREATE INDEX idx_openzeppelin_timelocks_creator_address ON openzeppelin_timelocks(creator_address);
+CREATE INDEX idx_openzeppelin_timelocks_chain_id ON openzeppelin_timelocks(chain_id);
+CREATE INDEX idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(chain_name);
+CREATE INDEX idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address);
+CREATE INDEX idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status);
 
 -- 插入支持的链数据（包含主网和测试网）
 INSERT INTO support_chains (chain_name, display_name, chain_id, native_token, is_testnet, is_active) VALUES
