@@ -2,6 +2,7 @@
 -- 执行前请确保数据库已创建
 
 -- 删除已存在的表（按依赖关系逆序）
+DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS compound_timelocks CASCADE;
 DROP TABLE IF EXISTS openzeppelin_timelocks CASCADE;
 DROP TABLE IF EXISTS user_assets CASCADE;
@@ -29,6 +30,10 @@ CREATE TABLE support_chains (
     logo_url TEXT,                          -- 链的Logo URL
     is_testnet BOOLEAN NOT NULL DEFAULT false, -- 是否是测试网
     is_active BOOLEAN NOT NULL DEFAULT true,   -- 是否激活
+    alchemy_rpc_template TEXT,              -- Alchemy RPC URL模板，{API_KEY}为占位符
+    infura_rpc_template TEXT,               -- Infura RPC URL模板，{API_KEY}为占位符
+    custom_rpc_url TEXT,                    -- 自定义RPC URL（不需要API key的公共节点）
+    rpc_enabled BOOLEAN NOT NULL DEFAULT true, -- 是否启用RPC功能
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -95,6 +100,29 @@ CREATE TABLE openzeppelin_timelocks (
     UNIQUE(chain_id, contract_address)          -- 确保同一链和合约地址的唯一性
 );
 
+-- 6. 交易记录表 (transactions)
+CREATE TABLE transactions (
+    id BIGSERIAL PRIMARY KEY,
+    creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE, -- 交易创建者地址
+    chain_id INTEGER NOT NULL,                     -- 链ID
+    chain_name VARCHAR(50) NOT NULL,               -- 链名称
+    timelock_address VARCHAR(42) NOT NULL,         -- Timelock合约地址
+    timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')), -- Timelock标准
+    tx_hash VARCHAR(66) NOT NULL UNIQUE,           -- 交易哈希
+    tx_data TEXT NOT NULL,                         -- 交易数据
+    target VARCHAR(42) NOT NULL,                   -- 目标合约地址
+    value VARCHAR(100) NOT NULL DEFAULT '0',       -- 转账金额(wei)
+    function_sig VARCHAR(200),                     -- 函数签名
+    eta BIGINT NOT NULL,                           -- 预计执行时间(Unix时间戳)
+    queued_at TIMESTAMP WITH TIME ZONE,            -- 入队时间
+    executed_at TIMESTAMP WITH TIME ZONE,          -- 执行时间
+    canceled_at TIMESTAMP WITH TIME ZONE,          -- 取消时间
+    status VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'ready', 'executed', 'expired', 'canceled')), -- 状态
+    description VARCHAR(500) DEFAULT '',           -- 交易描述
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- 创建索引
 CREATE INDEX idx_users_wallet_address ON users(wallet_address);
 CREATE INDEX idx_users_chain_id ON users(chain_id);
@@ -122,23 +150,71 @@ CREATE INDEX idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(cha
 CREATE INDEX idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address);
 CREATE INDEX idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status);
 
+-- Transactions索引
+CREATE INDEX idx_transactions_creator_address ON transactions(creator_address);
+CREATE INDEX idx_transactions_chain_id ON transactions(chain_id);
+CREATE INDEX idx_transactions_timelock_address ON transactions(timelock_address);
+CREATE INDEX idx_transactions_timelock_standard ON transactions(timelock_standard);
+CREATE INDEX idx_transactions_tx_hash ON transactions(tx_hash);
+CREATE INDEX idx_transactions_status ON transactions(status);
+CREATE INDEX idx_transactions_eta ON transactions(eta);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
+CREATE INDEX idx_transactions_updated_at ON transactions(updated_at DESC);
+
 -- 插入支持的链数据（包含主网和测试网）
-INSERT INTO support_chains (chain_name, display_name, chain_id, native_token, is_testnet, is_active) VALUES
+INSERT INTO support_chains (chain_name, display_name, chain_id, native_token, is_testnet, is_active, alchemy_rpc_template, infura_rpc_template, custom_rpc_url, rpc_enabled) VALUES
 -- 主网
-('eth-mainnet', 'Ethereum Mainnet', 1, 'ETH', false, true),
-('matic-mainnet', 'Polygon Mainnet', 137, 'MATIC', false, true),
-('avalanche-mainnet', 'Avalanche C-Chain', 43114, 'AVAX', false, true),
-('bsc-mainnet', 'BNB Smart Chain', 56, 'BNB', false, true),
-('arbitrum-mainnet', 'Arbitrum One', 42161, 'ETH', false, true),
-('optimism-mainnet', 'Optimism', 10, 'ETH', false, true),
-('base-mainnet', 'Base', 8453, 'ETH', false, true),
-('fantom-mainnet', 'Fantom', 250, 'FTM', false, true),
-('moonbeam-mainnet', 'Moonbeam', 1284, 'GLMR', false, true),
+('eth-mainnet', 'Ethereum Mainnet', 1, 'ETH', false, true, 
+ 'https://eth-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('avalanche-mainnet', 'Avalanche C-Chain', 43114, 'AVAX', false, true, 
+ 'https://avax-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://avalanche-mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('bsc-mainnet', 'BNB Smart Chain', 56, 'BNB', false, true, 
+ 'https://bnb-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://bsc-mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('arbitrum-mainnet', 'Arbitrum One', 42161, 'ETH', false, true, 
+ 'https://arb-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://arbitrum-mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('optimism-mainnet', 'Optimism', 10, 'ETH', false, true, 
+ 'https://opt-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://optimism-mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('base-mainnet', 'Base', 8453, 'ETH', false, true, 
+ 'https://base-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://base-mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('fantom-mainnet', 'Fantom', 250, 'FTM', false, true, 
+ 'https://fantom-mainnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://fantom-mainnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
 
 -- 测试网
-('eth-sepolia', 'Ethereum Sepolia', 11155111, 'ETH', true, true),
-('matic-mumbai', 'Polygon Mumbai', 80001, 'MATIC', true, true),
-('avalanche-testnet', 'Avalanche Fuji', 43113, 'AVAX', true, true),
-('bsc-testnet', 'BNB Smart Chain Testnet', 97, 'BNB', true, true),
-('arbitrum-sepolia', 'Arbitrum Sepolia', 421614, 'ETH', true, true),
-('optimism-sepolia', 'Optimism Sepolia', 11155420, 'ETH', true, true);
+('eth-sepolia', 'Ethereum Sepolia', 11155111, 'ETH', true, true, 
+ 'https://eth-sepolia.g.alchemy.com/v2/{API_KEY}', 
+ 'https://sepolia.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('avalanche-testnet', 'Avalanche Fuji', 43113, 'AVAX', true, true, 
+ 'https://avax-fuji.g.alchemy.com/v2/{API_KEY}', 
+ 'https://avax-fuji.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('bsc-testnet', 'BNB Smart Chain Testnet', 97, 'BNB', true, true, 
+ 'https://bnb-testnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://bsc-testnet.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('arbitrum-sepolia', 'Arbitrum Sepolia', 421614, 'ETH', true, true, 
+ 'https://arb-sepolia.g.alchemy.com/v2/{API_KEY}', 
+ 'https://arbitrum-sepolia.infura.io/v3/{API_KEY}', 
+ NULL, true),
+('optimism-sepolia', 'Optimism Sepolia', 11155420, 'ETH', true, true, 
+ 'https://opt-sepolia.g.alchemy.com/v2/{API_KEY}', 
+ 'https://optimism-sepolia.infura.io/v3/{API_KEY}', 
+ NULL, true),
+ ('monad-testnet', 'Monad Testnet', 10143, 'MONAD', true, true, 
+ 'https://monad-testnet.g.alchemy.com/v2/{API_KEY}', 
+ 'https://monad-testnet.infura.io/v3/{API_KEY}', 
+ NULL, true);

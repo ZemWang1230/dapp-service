@@ -18,6 +18,7 @@ type Repository interface {
 	// Compound Timelock操作
 	CreateCompoundTimeLock(ctx context.Context, timeLock *types.CompoundTimeLock) error
 	GetCompoundTimeLockByID(ctx context.Context, id int64) (*types.CompoundTimeLock, error)
+	GetCompoundTimeLockByAddress(ctx context.Context, chainID int, contractAddress string, timeLock *types.CompoundTimeLock) error
 	UpdateCompoundTimeLock(ctx context.Context, timeLock *types.CompoundTimeLock) error
 	DeleteCompoundTimeLock(ctx context.Context, id int64) error
 	UpdateCompoundTimeLockRemark(ctx context.Context, id int64, remark string) error
@@ -27,6 +28,7 @@ type Repository interface {
 	// OpenZeppelin Timelock操作
 	CreateOpenzeppelinTimeLock(ctx context.Context, timeLock *types.OpenzeppelinTimeLock) error
 	GetOpenzeppelinTimeLockByID(ctx context.Context, id int64) (*types.OpenzeppelinTimeLock, error)
+	GetOpenzeppelinTimeLockByAddress(ctx context.Context, chainID int, contractAddress string, timeLock *types.OpenzeppelinTimeLock) error
 	UpdateOpenzeppelinTimeLock(ctx context.Context, timeLock *types.OpenzeppelinTimeLock) error
 	DeleteOpenzeppelinTimeLock(ctx context.Context, id int64) error
 	UpdateOpenzeppelinTimeLockRemark(ctx context.Context, id int64, remark string) error
@@ -42,6 +44,10 @@ type Repository interface {
 	ValidateCompoundOwnership(ctx context.Context, id int64, userAddress string) (bool, error)
 	ValidateOpenzeppelinOwnership(ctx context.Context, id int64, userAddress string) (bool, error)
 	CheckCompoundAdminPermissions(ctx context.Context, id int64, userAddress string) (bool, bool, error) // canSetPendingAdmin, canAcceptAdmin
+
+	// 获取活跃timelock合约（用于事件监听）
+	GetActiveCompoundTimelocksByChain(ctx context.Context, chainID int) ([]types.CompoundTimeLock, error)
+	GetActiveOpenZeppelinTimelocksByChain(ctx context.Context, chainID int) ([]types.OpenzeppelinTimeLock, error)
 }
 
 type repository struct {
@@ -83,6 +89,24 @@ func (r *repository) GetCompoundTimeLockByID(ctx context.Context, id int64) (*ty
 
 	logger.Info("GetCompoundTimeLockByID: ", "timelock_id", timeLock.ID, "creator_address", timeLock.CreatorAddress)
 	return &timeLock, nil
+}
+
+// GetCompoundTimeLockByAddress 根据链ID和合约地址获取compound timelock合约
+func (r *repository) GetCompoundTimeLockByAddress(ctx context.Context, chainID int, contractAddress string, timeLock *types.CompoundTimeLock) error {
+	err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND contract_address = ? AND status != ?", chainID, contractAddress, types.TimeLockDeleted).
+		First(timeLock).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("timelock not found")
+		}
+		logger.Error("GetCompoundTimeLockByAddress Error: ", err, "chain_id", chainID, "contract_address", contractAddress)
+		return err
+	}
+
+	logger.Info("GetCompoundTimeLockByAddress: ", "timelock_id", timeLock.ID, "creator_address", timeLock.CreatorAddress)
+	return nil
 }
 
 // UpdateCompoundTimeLock 更新compound timelock合约信息
@@ -186,6 +210,24 @@ func (r *repository) GetOpenzeppelinTimeLockByID(ctx context.Context, id int64) 
 
 	logger.Info("GetOpenzeppelinTimeLockByID: ", "timelock_id", timeLock.ID, "creator_address", timeLock.CreatorAddress)
 	return &timeLock, nil
+}
+
+// GetOpenzeppelinTimeLockByAddress 根据链ID和合约地址获取openzeppelin timelock合约
+func (r *repository) GetOpenzeppelinTimeLockByAddress(ctx context.Context, chainID int, contractAddress string, timeLock *types.OpenzeppelinTimeLock) error {
+	err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND contract_address = ? AND status != ?", chainID, contractAddress, types.TimeLockDeleted).
+		First(timeLock).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("timelock not found")
+		}
+		logger.Error("GetOpenzeppelinTimeLockByAddress Error: ", err, "chain_id", chainID, "contract_address", contractAddress)
+		return err
+	}
+
+	logger.Info("GetOpenzeppelinTimeLockByAddress: ", "timelock_id", timeLock.ID, "creator_address", timeLock.CreatorAddress)
+	return nil
 }
 
 // UpdateOpenzeppelinTimeLock 更新openzeppelin timelock合约信息
@@ -486,4 +528,38 @@ func (r *repository) canSetPendingAdmin(tl types.CompoundTimeLock, userAddress s
 // canAcceptAdmin 检查用户是否可以接受管理员权限
 func (r *repository) canAcceptAdmin(tl types.CompoundTimeLock, userAddress string) bool {
 	return tl.PendingAdmin != nil && *tl.PendingAdmin == userAddress
+}
+
+// GetActiveCompoundTimelocksByChain 获取指定链上活跃的compound timelock合约
+func (r *repository) GetActiveCompoundTimelocksByChain(ctx context.Context, chainID int) ([]types.CompoundTimeLock, error) {
+	var timelocks []types.CompoundTimeLock
+
+	err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND status = ?", chainID, types.TimeLockActive).
+		Find(&timelocks).Error
+
+	if err != nil {
+		logger.Error("GetActiveCompoundTimelocksByChain Error: ", err, "chain_id", chainID)
+		return nil, err
+	}
+
+	logger.Info("GetActiveCompoundTimelocksByChain: ", "chain_id", chainID, "count", len(timelocks))
+	return timelocks, nil
+}
+
+// GetActiveOpenZeppelinTimelocksByChain 获取指定链上活跃的openzeppelin timelock合约
+func (r *repository) GetActiveOpenZeppelinTimelocksByChain(ctx context.Context, chainID int) ([]types.OpenzeppelinTimeLock, error) {
+	var timelocks []types.OpenzeppelinTimeLock
+
+	err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND status = ?", chainID, types.TimeLockActive).
+		Find(&timelocks).Error
+
+	if err != nil {
+		logger.Error("GetActiveOpenZeppelinTimelocksByChain Error: ", err, "chain_id", chainID)
+		return nil, err
+	}
+
+	logger.Info("GetActiveOpenZeppelinTimelocksByChain: ", "chain_id", chainID, "count", len(timelocks))
+	return timelocks, nil
 }

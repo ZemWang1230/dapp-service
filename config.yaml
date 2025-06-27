@@ -27,4 +27,23 @@ covalent:
   base_url: "https://api.covalenthq.com/v1"
   request_timeout: "30s"
   cache_prefix: "asset:"
-  cache_expiry: 300  # 缓存过期时间，单位秒（5分钟） 
+  cache_expiry: 300  # 缓存过期时间，单位秒（5分钟）
+
+# RPC配置 - 用于监听链上事件
+rpc:
+  # RPC提供商配置（用户只需要填写API key）
+  alchemy_api_key: "7JGar3dcq0bHQa9vMk9zSS15hdFCmVHa"
+  infura_api_key: "YOUR_INFURA_API_KEY"
+  
+  # 当前使用的提供商（alchemy、infura 或 custom）
+  # alchemy: 使用Alchemy RPC
+  # infura: 使用Infura RPC  
+  # custom: 使用自定义RPC（公共节点）
+  provider: "alchemy"
+  
+  # 监听配置
+  poll_interval: "30s"  # 轮询间隔
+  block_confirmations: 12  # 区块确认数
+  
+  # 是否包含测试网
+  include_testnets: true 

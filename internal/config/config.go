@@ -2,18 +2,23 @@ package config
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 
 	"github.com/spf13/viper"
 )
 
+// Config 应用配置
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Covalent CovalentConfig `mapstructure:"covalent"`
+	RPC      RPCConfig      `mapstructure:"rpc"`
 }
 
 type ServerConfig struct {
@@ -51,6 +56,16 @@ type CovalentConfig struct {
 	CacheExpiry    int           `mapstructure:"cache_expiry"` // seconds
 }
 
+// RPCConfig RPC配置
+type RPCConfig struct {
+	AlchemyAPIKey      string        `mapstructure:"alchemy_api_key"`
+	InfuraAPIKey       string        `mapstructure:"infura_api_key"`
+	Provider           string        `mapstructure:"provider"`
+	PollInterval       time.Duration `mapstructure:"poll_interval"`
+	BlockConfirmations int           `mapstructure:"block_confirmations"`
+	IncludeTestnets    bool          `mapstructure:"include_testnets"`
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -81,6 +96,10 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("covalent.cache_prefix", "asset:")
 	viper.SetDefault("covalent.cache_expiry", 300) // 5 minutes
 
+	// RPC defaults
+	viper.SetDefault("rpc.poll_interval", time.Second*30)
+	viper.SetDefault("rpc.block_confirmations", 12)
+
 	// Read environment variables
 	viper.AutomaticEnv()
 
@@ -99,4 +118,47 @@ func LoadConfig() (*Config, error) {
 
 	logger.Info("LoadConfig: ", "load config success")
 	return &config, nil
+}
+
+// GetRPCURL 根据链RPC信息获取RPC URL
+func (c *Config) GetRPCURL(chainInfo *types.ChainRPCInfo) (string, error) {
+	if !chainInfo.RPCEnabled {
+		return "", errors.New("RPC disabled for chain: " + chainInfo.ChainName)
+	}
+
+	// 根据配置的提供商选择RPC
+	switch c.RPC.Provider {
+	case "alchemy":
+		if chainInfo.AlchemyRPCTemplate == nil {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("alchemy RPC not supported for chain: %s", chainInfo.ChainName))
+			return "", errors.New("alchemy RPC not supported for chain: " + chainInfo.ChainName)
+		}
+		if c.RPC.AlchemyAPIKey == "" || c.RPC.AlchemyAPIKey == "YOUR_ALCHEMY_API_KEY" {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("alchemy API key not configured"))
+			return "", errors.New("alchemy API key not configured")
+		}
+		return strings.Replace(*chainInfo.AlchemyRPCTemplate, "{API_KEY}", c.RPC.AlchemyAPIKey, 1), nil
+
+	case "infura":
+		if chainInfo.InfuraRPCTemplate == nil {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("infura RPC not supported for chain: %s", chainInfo.ChainName))
+			return "", errors.New("infura RPC not supported for chain: " + chainInfo.ChainName)
+		}
+		if c.RPC.InfuraAPIKey == "" || c.RPC.InfuraAPIKey == "YOUR_INFURA_API_KEY" {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("infura API key not configured"))
+			return "", errors.New("infura API key not configured")
+		}
+		return strings.Replace(*chainInfo.InfuraRPCTemplate, "{API_KEY}", c.RPC.InfuraAPIKey, 1), nil
+
+	case "custom":
+		if chainInfo.CustomRPCURL == nil {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("custom RPC not available for chain: %s", chainInfo.ChainName))
+			return "", errors.New("custom RPC not available for chain: " + chainInfo.ChainName)
+		}
+		return *chainInfo.CustomRPCURL, nil
+
+	default:
+		logger.Error("GetRPCURL error: ", fmt.Errorf("unsupported RPC provider: %s", c.RPC.Provider))
+		return "", errors.New("unsupported RPC provider: " + c.RPC.Provider)
+	}
 }

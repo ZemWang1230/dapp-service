@@ -144,3 +144,15 @@ type GetChainByIDRequest struct {
 type GetChainByChainIDRequest struct {
 	ChainID int64 `json:"chain_id" form:"chain_id" binding:"required"`
 }
+
+// ChainRPCInfo 链的RPC信息（从数据库获取）
+type ChainRPCInfo struct {
+	ChainName          string  `gorm:"column:chain_name" json:"chain_name"`
+	DisplayName        string  `gorm:"column:display_name" json:"display_name"`
+	ChainID            int     `gorm:"column:chain_id" json:"chain_id"`
+	AlchemyRPCTemplate *string `gorm:"column:alchemy_rpc_template" json:"alchemy_rpc_template"`
+	InfuraRPCTemplate  *string `gorm:"column:infura_rpc_template" json:"infura_rpc_template"`
+	CustomRPCURL       *string `gorm:"column:custom_rpc_url" json:"custom_rpc_url"`
+	RPCEnabled         bool    `gorm:"column:rpc_enabled" json:"rpc_enabled"`
+	IsTestnet          bool    `gorm:"column:is_testnet" json:"is_testnet"`
+}

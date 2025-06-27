@@ -21,6 +21,9 @@ type Repository interface {
 	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) ([]types.SupportChain, int64, error)
 	GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error)
 	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error)
+
+	// RPC配置相关
+	GetRPCEnabledChains(ctx context.Context, includeTestnets bool) ([]types.ChainRPCInfo, error)
 }
 
 // repository 支持链仓库实现
@@ -157,4 +160,29 @@ func (r *repository) GetChainByChainID(ctx context.Context, chainID int64) (*typ
 
 	logger.Info("GetChainByChainID: ", "chain_id", chainID, "chain_name", chain.ChainName)
 	return &chain, nil
+}
+
+// GetRPCEnabledChains 获取启用RPC的链配置
+func (r *repository) GetRPCEnabledChains(ctx context.Context, includeTestnets bool) ([]types.ChainRPCInfo, error) {
+	var chains []types.ChainRPCInfo
+
+	query := r.db.WithContext(ctx).
+		Table("support_chains").
+		Where("is_active = ? AND rpc_enabled = ?", true, true)
+
+	if !includeTestnets {
+		query = query.Where("is_testnet = ?", false)
+	}
+
+	err := query.
+		Select("chain_name, display_name, chain_id, alchemy_rpc_template, infura_rpc_template, custom_rpc_url, rpc_enabled, is_testnet").
+		Find(&chains).Error
+
+	if err != nil {
+		logger.Error("GetRPCEnabledChains Error: ", err, "include_testnets", includeTestnets)
+		return nil, err
+	}
+
+	logger.Info("GetRPCEnabledChains Success: ", "count", len(chains), "include_testnets", includeTestnets)
+	return chains, nil
 }
