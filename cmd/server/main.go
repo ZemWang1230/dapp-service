@@ -9,17 +9,20 @@ import (
 	"syscall"
 
 	"timelocker-backend/docs"
+	abiHandler "timelocker-backend/internal/api/abi"
 	assetHandler "timelocker-backend/internal/api/asset"
 	authHandler "timelocker-backend/internal/api/auth"
 	chainHandler "timelocker-backend/internal/api/chain"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 	transactionHandler "timelocker-backend/internal/api/transaction"
 	"timelocker-backend/internal/config"
+	abiRepo "timelocker-backend/internal/repository/abi"
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 	transactionRepo "timelocker-backend/internal/repository/transaction"
 	userRepo "timelocker-backend/internal/repository/user"
+	abiService "timelocker-backend/internal/service/abi"
 	assetService "timelocker-backend/internal/service/asset"
 	authService "timelocker-backend/internal/service/auth"
 	chainService "timelocker-backend/internal/service/chain"
@@ -91,6 +94,7 @@ func main() {
 	userRepository := userRepo.NewRepository(db)
 	chainRepository := chainRepo.NewRepository(db)
 	assetRepository := assetRepo.NewRepository(db)
+	abiRepository := abiRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
 	transactionRepository := transactionRepo.NewRepository(db)
 
@@ -110,6 +114,7 @@ func main() {
 		assetRepository,
 		redisClient,
 	)
+	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
 	timelockSvc := timelockService.NewService(timelockRepository)
 	transactionSvc := transactionService.NewService(transactionRepository, timelockRepository)
@@ -125,6 +130,7 @@ func main() {
 	// 8. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
+	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
 	chainHandler := chainHandler.NewHandler(chainSvc)
 	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
 	transactionHandler := transactionHandler.NewHandler(transactionSvc, authSvc)
@@ -154,6 +160,7 @@ func main() {
 	{
 		authHandler.RegisterRoutes(v1)
 		assetHandler.RegisterRoutes(v1)
+		abiHandler.RegisterRoutes(v1)
 		chainHandler.RegisterRoutes(v1)
 		timelockHandler.RegisterRoutes(v1)
 		transactionHandler.RegisterRoutes(v1)

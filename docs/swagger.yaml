@@ -1,5 +1,76 @@
 basePath: /
 definitions:
+  types.ABI:
+    properties:
+      abi_content:
+        description: ABI JSON内容
+        type: string
+      created_at:
+        type: string
+      description:
+        description: ABI描述
+        type: string
+      id:
+        type: integer
+      is_shared:
+        description: 是否为共享ABI
+        type: boolean
+      name:
+        description: ABI名称
+        type: string
+      owner:
+        description: 所有者地址，全0表示共享ABI
+        type: string
+      updated_at:
+        type: string
+    type: object
+  types.ABIListResponse:
+    properties:
+      shared_abis:
+        description: 平台共享的ABI
+        items:
+          $ref: '#/definitions/types.ABI'
+        type: array
+      user_abis:
+        description: 用户创建的ABI
+        items:
+          $ref: '#/definitions/types.ABI'
+        type: array
+    type: object
+  types.ABIResponse:
+    properties:
+      abi_content:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      is_shared:
+        type: boolean
+      name:
+        type: string
+      owner:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  types.ABIValidationResult:
+    properties:
+      error_message:
+        type: string
+      event_count:
+        type: integer
+      function_count:
+        type: integer
+      is_valid:
+        type: boolean
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
   types.APIError:
     properties:
       code:
@@ -114,6 +185,21 @@ definitions:
           type: string
         type: array
     type: object
+  types.CreateABIRequest:
+    properties:
+      abi_content:
+        type: string
+      description:
+        maxLength: 500
+        type: string
+      name:
+        maxLength: 200
+        minLength: 1
+        type: string
+    required:
+    - abi_content
+    - name
+    type: object
   types.CreateTimeLockRequest:
     properties:
       admin:
@@ -162,6 +248,59 @@ definitions:
     - standard
     - tx_hash
     type: object
+  types.CreateTransactionRequest:
+    properties:
+      chain_id:
+        type: integer
+      chain_name:
+        type: string
+      description:
+        maxLength: 500
+        type: string
+      eta:
+        type: integer
+      function_sig:
+        type: string
+      operation_id:
+        description: OpenZeppelin操作ID
+        type: string
+      target:
+        type: string
+      timelock_address:
+        type: string
+      timelock_standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        enum:
+        - compound
+        - openzeppelin
+      tx_data:
+        type: string
+      tx_hash:
+        type: string
+      value:
+        type: string
+    required:
+    - chain_id
+    - chain_name
+    - eta
+    - target
+    - timelock_address
+    - timelock_standard
+    - tx_data
+    - tx_hash
+    type: object
+  types.ExecuteTransactionRequest:
+    properties:
+      execute_tx_hash:
+        description: 执行交易的哈希
+        type: string
+      id:
+        type: integer
+    required:
+    - execute_tx_hash
+    - id
+    type: object
   types.GetSupportChainsResponse:
     properties:
       chains:
@@ -183,6 +322,21 @@ definitions:
         type: array
       total:
         type: integer
+    type: object
+  types.GetTransactionListResponse:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+      transactions:
+        items:
+          $ref: '#/definitions/types.TransactionWithPermission'
+        type: array
     type: object
   types.ImportTimeLockRequest:
     properties:
@@ -229,6 +383,30 @@ definitions:
     - contract_address
     - min_delay
     - standard
+    type: object
+  types.MarkTransactionFailedRequest:
+    properties:
+      id:
+        type: integer
+      reason:
+        description: 失败原因
+        maxLength: 200
+        type: string
+    required:
+    - id
+    - reason
+    type: object
+  types.MarkTransactionSubmitFailedRequest:
+    properties:
+      id:
+        type: integer
+      reason:
+        description: 提交失败原因
+        maxLength: 200
+        type: string
+    required:
+    - id
+    - reason
     type: object
   types.OpenzeppelinTimeLockWithPermission:
     properties:
@@ -299,6 +477,17 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  types.RetrySubmitTransactionRequest:
+    properties:
+      id:
+        type: integer
+      tx_hash:
+        description: 新的交易哈希
+        type: string
+    required:
+    - id
+    - tx_hash
     type: object
   types.SetPendingAdminRequest:
     properties:
@@ -397,6 +586,242 @@ definitions:
     - TimeLockActive
     - TimeLockInactive
     - TimeLockDeleted
+  types.TransactionDetailResponse:
+    properties:
+      can_cancel:
+        description: 是否可以取消
+        type: boolean
+      can_execute:
+        description: 是否可以执行
+        type: boolean
+      can_retry_submit:
+        description: 是否可以重试提交
+        type: boolean
+      canceled_at:
+        description: 取消时间
+        type: string
+      chain_id:
+        description: 链ID
+        type: integer
+      chain_name:
+        description: 链名称
+        type: string
+      created_at:
+        type: string
+      creator_address:
+        description: 交易创建者地址
+        type: string
+      description:
+        description: 交易描述
+        type: string
+      eta:
+        description: 预计执行时间(Unix时间戳)
+        type: integer
+      executed_at:
+        description: 执行时间
+        type: string
+      function_sig:
+        description: 函数签名
+        type: string
+      id:
+        type: integer
+      operation_id:
+        description: OpenZeppelin操作ID (32字节哈希)
+        type: string
+      queued_at:
+        description: 入队时间
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/types.TransactionStatus'
+        description: 状态
+      status_message:
+        description: 状态消息
+        type: string
+      target:
+        description: 目标合约地址
+        type: string
+      time_remaining:
+        description: 剩余时间(秒)，负数表示已过期
+        type: integer
+      timelock_address:
+        description: Timelock合约地址
+        type: string
+      timelock_info:
+        description: Timelock合约信息
+      timelock_standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        description: Timelock标准
+      tx_data:
+        description: 交易数据
+        type: string
+      tx_hash:
+        description: 交易哈希
+        type: string
+      updated_at:
+        type: string
+      user_permissions:
+        description: creator, executor, canceller
+        items:
+          type: string
+        type: array
+      value:
+        description: 转账金额(wei)
+        type: string
+    type: object
+  types.TransactionStatsResponse:
+    properties:
+      canceled_count:
+        type: integer
+      executed_count:
+        type: integer
+      executing_count:
+        type: integer
+      expired_count:
+        type: integer
+      failed_count:
+        type: integer
+      queued_count:
+        type: integer
+      ready_count:
+        type: integer
+      submit_failed_count:
+        type: integer
+      submitting_count:
+        type: integer
+      total_transactions:
+        type: integer
+    type: object
+  types.TransactionStatus:
+    enum:
+    - submitting
+    - queued
+    - ready
+    - executing
+    - executed
+    - failed
+    - submit_failed
+    - expired
+    - canceled
+    type: string
+    x-enum-comments:
+      TransactionCanceled: 已取消
+      TransactionExecuted: 已执行并确认
+      TransactionExecuting: 执行中（等待区块链确认）
+      TransactionExpired: 已过期
+      TransactionFailed: 执行失败
+      TransactionQueued: 已成功提交到timelock，等待ETA
+      TransactionReady: 就绪（可以执行）
+      TransactionSubmitFailed: 提交失败
+      TransactionSubmitting: 正在提交到timelock合约
+    x-enum-varnames:
+    - TransactionSubmitting
+    - TransactionQueued
+    - TransactionReady
+    - TransactionExecuting
+    - TransactionExecuted
+    - TransactionFailed
+    - TransactionSubmitFailed
+    - TransactionExpired
+    - TransactionCanceled
+  types.TransactionWithPermission:
+    properties:
+      can_cancel:
+        description: 是否可以取消
+        type: boolean
+      can_execute:
+        description: 是否可以执行
+        type: boolean
+      can_retry_submit:
+        description: 是否可以重试提交
+        type: boolean
+      canceled_at:
+        description: 取消时间
+        type: string
+      chain_id:
+        description: 链ID
+        type: integer
+      chain_name:
+        description: 链名称
+        type: string
+      created_at:
+        type: string
+      creator_address:
+        description: 交易创建者地址
+        type: string
+      description:
+        description: 交易描述
+        type: string
+      eta:
+        description: 预计执行时间(Unix时间戳)
+        type: integer
+      executed_at:
+        description: 执行时间
+        type: string
+      function_sig:
+        description: 函数签名
+        type: string
+      id:
+        type: integer
+      operation_id:
+        description: OpenZeppelin操作ID (32字节哈希)
+        type: string
+      queued_at:
+        description: 入队时间
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/types.TransactionStatus'
+        description: 状态
+      status_message:
+        description: 状态消息
+        type: string
+      target:
+        description: 目标合约地址
+        type: string
+      time_remaining:
+        description: 剩余时间(秒)，负数表示已过期
+        type: integer
+      timelock_address:
+        description: Timelock合约地址
+        type: string
+      timelock_standard:
+        allOf:
+        - $ref: '#/definitions/types.TimeLockStandard'
+        description: Timelock标准
+      tx_data:
+        description: 交易数据
+        type: string
+      tx_hash:
+        description: 交易哈希
+        type: string
+      updated_at:
+        type: string
+      user_permissions:
+        description: creator, executor, canceller
+        items:
+          type: string
+        type: array
+      value:
+        description: 转账金额(wei)
+        type: string
+    type: object
+  types.UpdateABIRequest:
+    properties:
+      abi_content:
+        type: string
+      description:
+        maxLength: 500
+        type: string
+      name:
+        maxLength: 200
+        minLength: 1
+        type: string
+    required:
+    - abi_content
+    - name
+    type: object
   types.UpdateTimeLockRequest:
     properties:
       id:
@@ -493,6 +918,397 @@ info:
   title: TimeLocker Backend API
   version: "1.0"
 paths:
+  /api/v1/abi:
+    post:
+      consumes:
+      - application/json
+      description: 用户创建新的智能合约ABI。系统会验证ABI格式的正确性。每个用户在同一名称下只能创建一个ABI。
+      parameters:
+      - description: 创建ABI请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.CreateABIRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: ABI创建成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.ABIResponse'
+              type: object
+        "400":
+          description: 请求参数错误或ABI格式无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: ABI名称已存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 创建ABI
+      tags:
+      - ABI
+  /api/v1/abi/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除用户创建的ABI。用户只能删除自己创建的ABI，不能删除平台共享的ABI。删除操作是不可逆的。
+      parameters:
+      - description: ABI ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ABI删除成功
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "400":
+          description: 无效的ABI ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 无权删除该ABI或尝试删除共享ABI
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: ABI不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 删除ABI
+      tags:
+      - ABI
+    get:
+      consumes:
+      - application/json
+      description: 根据ABI ID获取详细信息。用户只能访问自己创建的ABI或平台共享的ABI。
+      parameters:
+      - description: ABI ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取ABI详情成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.ABIResponse'
+              type: object
+        "400":
+          description: 无效的ABI ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 无权访问该ABI
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: ABI不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取ABI详情
+      tags:
+      - ABI
+    put:
+      consumes:
+      - application/json
+      description: 更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。
+      parameters:
+      - description: ABI ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新ABI请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.UpdateABIRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ABI更新成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.ABIResponse'
+              type: object
+        "400":
+          description: 请求参数错误或ABI格式无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 无权更新该ABI
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: ABI不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: ABI名称已存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 更新ABI
+      tags:
+      - ABI
+  /api/v1/abi/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI。返回结果分为两个部分：用户ABI和共享ABI。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取ABI列表成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.ABIListResponse'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取ABI列表
+      tags:
+      - ABI
+  /api/v1/abi/validate:
+    post:
+      consumes:
+      - application/json
+      description: 验证智能合约ABI的格式正确性，返回详细的验证结果。此接口可用于在创建或更新ABI前进行预验证。
+      parameters:
+      - description: 验证ABI请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            abi_content:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ABI验证完成
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.ABIValidationResult'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 验证ABI格式
+      tags:
+      - ABI
   /api/v1/assets:
     get:
       consumes:
@@ -1635,6 +2451,784 @@ paths:
       summary: 获取用户timelock合约列表（按权限筛选，所有链）
       tags:
       - Timelock
+  /api/v1/transaction/{id}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定交易的完整详细信息，包括交易数据、状态、权限信息以及关联的timelock合约信息。只有有权限的用户才能查看详细信息。
+      parameters:
+      - description: 交易ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取交易详情
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.TransactionDetailResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 无权访问此交易
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 交易不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取交易详细信息
+      tags:
+      - Transaction
+  /api/v1/transaction/{id}/cancel:
+    post:
+      consumes:
+      - application/json
+      description: 取消处于queued或ready状态的timelock交易。需要验证用户权限（compound的admin，openzeppelin的canceller或创建者）。取消成功后更新交易状态。
+      parameters:
+      - description: 交易ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功取消交易
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 权限不足
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 交易不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 交易状态不允许取消
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 取消timelock交易
+      tags:
+      - Transaction
+  /api/v1/transaction/{id}/execute:
+    post:
+      consumes:
+      - application/json
+      description: 执行已就绪的timelock交易或重试失败的交易。支持ready状态（ETA已到达）和failed状态（执行失败后重试）的交易。需要验证用户权限（compound的admin，openzeppelin的executor）。执行成功后更新交易状态。
+      parameters:
+      - description: 交易ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 执行交易的请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.ExecuteTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功执行交易
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 权限不足
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 交易不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 交易状态不允许执行
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 执行已就绪的timelock交易
+      tags:
+      - Transaction
+  /api/v1/transaction/{id}/mark-failed:
+    post:
+      consumes:
+      - application/json
+      description: 将执行中的交易标记为失败状态。这个接口通常由前端在区块链执行失败时调用，或者由后端监控程序调用。只能标记状态为executing的交易。
+      parameters:
+      - description: 交易ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 标记失败的请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.MarkTransactionFailedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功标记交易失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 交易不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 交易状态不允许标记失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 标记交易执行失败
+      tags:
+      - Transaction
+  /api/v1/transaction/{id}/mark-submit-failed:
+    post:
+      consumes:
+      - application/json
+      description: 将正在提交的交易标记为提交失败状态。这个接口通常由前端在提交到timelock合约失败时调用。只能标记状态为submitting的交易。
+      parameters:
+      - description: 交易ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 标记提交失败的请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.MarkTransactionSubmitFailedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功标记交易提交失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 交易不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 交易状态不允许标记提交失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 标记交易提交失败
+      tags:
+      - Transaction
+  /api/v1/transaction/{id}/retry-submit:
+    post:
+      consumes:
+      - application/json
+      description: 重试提交失败的交易。用于submit_failed状态的交易，允许用户使用新的交易哈希重新提交。需要验证用户权限（创建者或有提议权限的用户）。
+      parameters:
+      - description: 交易ID
+        example: 1
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 重试提交的请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.RetrySubmitTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功重试提交交易
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 权限不足
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 交易不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 交易状态不允许重试或交易哈希已存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 重试提交交易
+      tags:
+      - Transaction
+  /api/v1/transaction/create:
+    post:
+      consumes:
+      - application/json
+      description: 创建新的timelock交易记录。前端发起交易后，需要提供chainid、timelock合约地址、timelock标准、txhash、txData、eta等信息。系统会验证用户权限（compound的admin，openzeppelin的proposer）后创建记录。
+      parameters:
+      - description: 创建交易的请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.CreateTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功创建交易记录
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.TransactionWithPermission'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "403":
+          description: 权限不足
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 交易已存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 创建交易记录
+      tags:
+      - Transaction
+  /api/v1/transaction/list:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户的交易列表，支持按链ID、timelock地址、标准和状态进行筛选。返回带权限信息的交易列表，包括用户可执行和可取消的操作。
+      parameters:
+      - description: 按链ID筛选
+        example: 1
+        in: query
+        name: chain_id
+        type: integer
+      - description: 按timelock地址筛选
+        example: 0x1234567890123456789012345678901234567890
+        in: query
+        name: timelock_address
+        type: string
+      - description: 按timelock标准筛选
+        enum:
+        - compound
+        - openzeppelin
+        example: compound
+        in: query
+        name: timelock_standard
+        type: string
+      - description: 按状态筛选
+        enum:
+        - queued
+        - ready
+        - executed
+        - expired
+        - canceled
+        example: queued
+        in: query
+        name: status
+        type: string
+      - description: 页码
+        example: 1
+        in: query
+        minimum: 1
+        name: page
+        required: true
+        type: integer
+      - description: 每页大小
+        example: 20
+        in: query
+        maximum: 100
+        minimum: 1
+        name: page_size
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取交易列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetTransactionListResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取用户交易列表
+      tags:
+      - Transaction
+  /api/v1/transaction/pending:
+    get:
+      consumes:
+      - application/json
+      description: 获取状态为queued、ready、executing或failed的交易列表，可选择只显示当前用户可执行的交易。包含失败后可重试的交易。这是交易执行界面使用的主要接口，按ETA排序显示最紧急的交易。
+      parameters:
+      - description: 按链ID筛选
+        example: 1
+        in: query
+        name: chain_id
+        type: integer
+      - description: 只显示当前用户可执行的交易
+        example: false
+        in: query
+        name: only_can_exec
+        type: boolean
+      - description: 页码
+        example: 1
+        in: query
+        minimum: 1
+        name: page
+        required: true
+        type: integer
+      - description: 每页大小
+        example: 20
+        in: query
+        maximum: 100
+        minimum: 1
+        name: page_size
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取待处理交易列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetTransactionListResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取待处理交易列表
+      tags:
+      - Transaction
+  /api/v1/transaction/stats:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户的交易统计信息，包括总交易数和各状态的交易数量。用于仪表板显示。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取交易统计
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.TransactionStatsResponse'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取交易统计信息
+      tags:
+      - Transaction
   /health:
     get:
       consumes:
