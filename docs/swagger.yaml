@@ -88,6 +88,20 @@ definitions:
       success:
         type: boolean
     type: object
+  types.AddEmailNotificationRequest:
+    properties:
+      email:
+        type: string
+      email_remark:
+        type: string
+      timelock_contracts:
+        description: 可选，可以为空数组
+        items:
+          type: string
+        type: array
+    required:
+    - email
+    type: object
   types.AssetInfo:
     properties:
       balance:
@@ -156,6 +170,9 @@ definitions:
       creator_address:
         description: 创建者/导入者地址
         type: string
+      emergency_mode:
+        description: 是否启用应急模式
+        type: boolean
       id:
         type: integer
       is_imported:
@@ -289,6 +306,78 @@ definitions:
     - timelock_standard
     - tx_data
     - tx_hash
+    type: object
+  types.EmailNotificationListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/types.EmailNotificationResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  types.EmailNotificationResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      email_remark:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      is_verified:
+        type: boolean
+      timelock_contracts:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+    type: object
+  types.EmailSendLogResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      event_type:
+        type: string
+      id:
+        type: integer
+      is_emergency:
+        type: boolean
+      is_replied:
+        type: boolean
+      replied_at:
+        type: string
+      send_status:
+        type: string
+      sent_at:
+        type: string
+      subject:
+        type: string
+      timelock_address:
+        type: string
+      transaction_hash:
+        type: string
+    type: object
+  types.EmergencyReplyResponse:
+    properties:
+      message:
+        type: string
+      replied_at:
+        type: string
+      success:
+        type: boolean
     type: object
   types.ExecuteTransactionRequest:
     properties:
@@ -431,6 +520,9 @@ definitions:
       creator_address:
         description: 创建者/导入者地址
         type: string
+      emergency_mode:
+        description: 是否启用应急模式
+        type: boolean
       executors:
         description: 执行者地址列表（JSON）
         type: string
@@ -477,6 +569,13 @@ definitions:
         type: string
     required:
     - refresh_token
+    type: object
+  types.ResendVerificationRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
     type: object
   types.RetrySubmitTransactionRequest:
     properties:
@@ -822,6 +921,15 @@ definitions:
     - abi_content
     - name
     type: object
+  types.UpdateEmailNotificationRequest:
+    properties:
+      email_remark:
+        type: string
+      timelock_contracts:
+        items:
+          type: string
+        type: array
+    type: object
   types.UpdateTimeLockRequest:
     properties:
       id:
@@ -882,6 +990,16 @@ definitions:
         type: string
       wallet_address:
         type: string
+    type: object
+  types.VerifyEmailRequest:
+    properties:
+      email:
+        type: string
+      verification_code:
+        type: string
+    required:
+    - email
+    - verification_code
     type: object
   types.WalletConnectRequest:
     properties:
@@ -1777,6 +1895,562 @@ paths:
       summary: 获取支持的区块链列表
       tags:
       - Chain
+  /api/v1/email-notifications:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户的邮件通知配置列表，支持分页查询。返回邮箱地址、验证状态、监听的合约等信息。
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.EmailNotificationListResponse'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取邮件通知配置列表
+      tags:
+      - Email Notifications
+    post:
+      consumes:
+      - application/json
+      description: 为用户添加邮件通知配置，支持设置邮箱地址、备注和监听的timelock合约。添加后会发送验证码到邮箱进行验证。
+      parameters:
+      - description: 添加邮件通知请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.AddEmailNotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 添加成功，返回邮件通知配置信息
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.EmailNotificationResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "409":
+          description: 邮箱已存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 添加邮件通知配置
+      tags:
+      - Email Notifications
+  /api/v1/email-notifications/{email}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的邮件通知配置。删除后该邮箱将不再接收timelock合约的通知邮件。
+      parameters:
+      - description: 邮箱地址
+        in: path
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 邮件配置不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 删除邮件通知配置
+      tags:
+      - Email Notifications
+    get:
+      consumes:
+      - application/json
+      description: 根据邮箱地址获取特定的邮件通知配置详情，包括验证状态和监听的合约列表。
+      parameters:
+      - description: 邮箱地址
+        in: path
+        name: email
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.EmailNotificationResponse'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 邮件配置不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取单个邮件通知配置
+      tags:
+      - Email Notifications
+    put:
+      consumes:
+      - application/json
+      description: 更新邮件通知配置的备注和监听的timelock合约列表。注意：无法更改邮箱地址，只能更新备注和合约列表。
+      parameters:
+      - description: 邮箱地址
+        in: path
+        name: email
+        required: true
+        type: string
+      - description: 更新邮件通知请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.UpdateEmailNotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.EmailNotificationResponse'
+              type: object
+        "400":
+          description: 请求参数错误或邮箱未验证
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 邮件配置不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 更新邮件通知配置
+      tags:
+      - Email Notifications
+  /api/v1/email-notifications/emergency-reply:
+    get:
+      consumes:
+      - application/json
+      description: 处理应急邮件的回复确认。用户点击应急邮件中的确认按钮时调用此接口。不需要认证，通过token验证身份。
+      parameters:
+      - description: 应急邮件回复token
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 回复成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.EmergencyReplyResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 回复token不存在或已过期
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 应急邮件回复
+      tags:
+      - Email Notifications
+  /api/v1/email-notifications/logs:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户相关的邮件发送记录，包括发送状态、时间和应急邮件回复状态等信息。
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页数量
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/types.EmailSendLogResponse'
+                  type: array
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取邮件发送记录
+      tags:
+      - Email Notifications
+  /api/v1/email-notifications/resend-code:
+    post:
+      consumes:
+      - application/json
+      description: 重新发送邮箱验证码。如果之前的验证码过期或丢失，可以使用此接口重新发送。
+      parameters:
+      - description: 重发验证码请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.ResendVerificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 验证码发送成功
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "400":
+          description: 请求参数错误或邮箱已验证
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 邮件配置不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 重发验证码
+      tags:
+      - Email Notifications
+  /api/v1/email-notifications/verified-emails:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户的已验证邮箱列表，用于在timelock合约管理中选择监听邮箱。只返回已验证且激活的邮箱。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/types.EmailNotificationResponse'
+                  type: array
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取已验证邮箱列表
+      tags:
+      - Email Notifications
+  /api/v1/email-notifications/verify:
+    post:
+      consumes:
+      - application/json
+      description: 使用验证码验证邮箱地址。验证成功后，该邮箱可以接收timelock合约的通知邮件。
+      parameters:
+      - description: 验证邮箱请求体
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.VerifyEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 验证成功
+          schema:
+            $ref: '#/definitions/types.APIResponse'
+        "400":
+          description: 请求参数错误或验证码无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 邮件配置不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 验证邮箱
+      tags:
+      - Email Notifications
   /api/v1/timelock/{standard}/{id}:
     delete:
       consumes:

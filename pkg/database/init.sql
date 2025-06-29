@@ -1,7 +1,12 @@
 -- TimeLocker 数据库初始化脚本
 -- 执行前请确保数据库已创建
 
--- 删除已存在的表（按依赖关系逆序）
+-- =============================================================================
+-- 第一步：删除已存在的表（按依赖关系逆序）
+-- =============================================================================
+DROP TABLE IF EXISTS emergency_notifications CASCADE;
+DROP TABLE IF EXISTS email_send_logs CASCADE;
+DROP TABLE IF EXISTS email_notifications CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS compound_timelocks CASCADE;
 DROP TABLE IF EXISTS openzeppelin_timelocks CASCADE;
@@ -9,6 +14,10 @@ DROP TABLE IF EXISTS user_assets CASCADE;
 DROP TABLE IF EXISTS abis CASCADE;
 DROP TABLE IF EXISTS support_chains CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
+
+-- =============================================================================
+-- 第二步：创建表结构
+-- =============================================================================
 
 -- 1. 用户表 (users) - 以钱包地址为核心，支持chain_id
 CREATE TABLE users (
@@ -89,6 +98,7 @@ CREATE TABLE compound_timelocks (
     remark VARCHAR(500) DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
     is_imported BOOLEAN NOT NULL DEFAULT false, -- 是否导入的合约
+    emergency_mode BOOLEAN NOT NULL DEFAULT false, -- 是否启用应急模式（针对此合约的所有交易）
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(chain_id, contract_address)          -- 确保同一链和合约地址的唯一性
@@ -109,6 +119,7 @@ CREATE TABLE openzeppelin_timelocks (
     remark VARCHAR(500) DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
     is_imported BOOLEAN NOT NULL DEFAULT false, -- 是否导入的合约
+    emergency_mode BOOLEAN NOT NULL DEFAULT false, -- 是否启用应急模式（针对此合约的所有交易）
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(chain_id, contract_address)          -- 确保同一链和合约地址的唯一性
@@ -137,49 +148,7 @@ CREATE TABLE transactions (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 创建索引
-CREATE INDEX idx_users_wallet_address ON users(wallet_address);
-CREATE INDEX idx_users_chain_id ON users(chain_id);
-CREATE INDEX idx_support_chains_chain_name ON support_chains(chain_name);
-CREATE INDEX idx_support_chains_chain_id ON support_chains(chain_id);
-CREATE INDEX idx_support_chains_is_active ON support_chains(is_active);
-CREATE INDEX idx_support_chains_is_testnet ON support_chains(is_testnet);
-CREATE INDEX idx_user_assets_wallet_address ON user_assets(wallet_address);
-CREATE INDEX idx_user_assets_chain_name ON user_assets(chain_name);
-CREATE INDEX idx_user_assets_usd_value ON user_assets(usd_value DESC);
 
--- ABI表索引
-CREATE INDEX idx_abis_owner ON abis(owner);
-CREATE INDEX idx_abis_name ON abis(name);
-CREATE INDEX idx_abis_is_shared ON abis(is_shared);
-CREATE INDEX idx_abis_created_at ON abis(created_at DESC);
-
--- Compound timelock索引
-CREATE INDEX idx_compound_timelocks_creator_address ON compound_timelocks(creator_address);
-CREATE INDEX idx_compound_timelocks_chain_id ON compound_timelocks(chain_id);
-CREATE INDEX idx_compound_timelocks_chain_name ON compound_timelocks(chain_name);
-CREATE INDEX idx_compound_timelocks_contract_address ON compound_timelocks(contract_address);
-CREATE INDEX idx_compound_timelocks_admin ON compound_timelocks(admin);
-CREATE INDEX idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin);
-CREATE INDEX idx_compound_timelocks_status ON compound_timelocks(status);
-
--- OpenZeppelin timelock索引
-CREATE INDEX idx_openzeppelin_timelocks_creator_address ON openzeppelin_timelocks(creator_address);
-CREATE INDEX idx_openzeppelin_timelocks_chain_id ON openzeppelin_timelocks(chain_id);
-CREATE INDEX idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(chain_name);
-CREATE INDEX idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address);
-CREATE INDEX idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status);
-
--- Transactions索引
-CREATE INDEX idx_transactions_creator_address ON transactions(creator_address);
-CREATE INDEX idx_transactions_chain_id ON transactions(chain_id);
-CREATE INDEX idx_transactions_timelock_address ON transactions(timelock_address);
-CREATE INDEX idx_transactions_timelock_standard ON transactions(timelock_standard);
-CREATE INDEX idx_transactions_tx_hash ON transactions(tx_hash);
-CREATE INDEX idx_transactions_status ON transactions(status);
-CREATE INDEX idx_transactions_eta ON transactions(eta);
-CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
-CREATE INDEX idx_transactions_updated_at ON transactions(updated_at DESC);
 
 -- 插入支持的链数据（包含主网和测试网）
 INSERT INTO support_chains (chain_name, display_name, chain_id, native_token, is_testnet, is_active, alchemy_rpc_template, infura_rpc_template, custom_rpc_url, rpc_enabled) VALUES
@@ -238,6 +207,139 @@ INSERT INTO support_chains (chain_name, display_name, chain_id, native_token, is
  'https://monad-testnet.g.alchemy.com/v2/{API_KEY}', 
  'https://monad-testnet.infura.io/v3/{API_KEY}', 
  NULL, true);
+
+-- 8. 邮件通知配置表 (email_notifications)
+CREATE TABLE email_notifications (
+    id BIGSERIAL PRIMARY KEY,
+    wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE, -- 用户钱包地址
+    email VARCHAR(255) NOT NULL,                    -- 邮箱地址
+    email_remark VARCHAR(200) DEFAULT '',           -- 邮箱备注
+    timelock_contracts TEXT NOT NULL DEFAULT '[]', -- 监听的timelock合约地址列表（JSON格式）
+    is_verified BOOLEAN NOT NULL DEFAULT false,    -- 是否已验证邮箱
+    verification_code VARCHAR(6),                   -- 验证码
+    verification_expires_at TIMESTAMP WITH TIME ZONE, -- 验证码过期时间
+    is_active BOOLEAN NOT NULL DEFAULT true,        -- 是否激活
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(wallet_address, email)                   -- 确保同一用户不能重复添加相同邮箱
+);
+
+-- 9. 邮件发送记录表 (email_send_logs)
+CREATE TABLE email_send_logs (
+    id BIGSERIAL PRIMARY KEY,
+    email_notification_id BIGINT NOT NULL REFERENCES email_notifications(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,                    -- 接收邮箱
+    timelock_address VARCHAR(42) NOT NULL,          -- 相关timelock合约地址
+    transaction_hash VARCHAR(66),                   -- 相关交易hash
+    event_type VARCHAR(50) NOT NULL,                -- 事件类型：proposal_created, proposal_canceled, ready_to_execute, executed, expired
+    subject VARCHAR(500) NOT NULL,                  -- 邮件主题
+    content TEXT NOT NULL,                          -- 邮件内容
+    is_emergency BOOLEAN NOT NULL DEFAULT false,   -- 是否为应急邮件
+    emergency_reply_token VARCHAR(64),              -- 应急邮件回复token
+    is_replied BOOLEAN NOT NULL DEFAULT false,      -- 是否已回复（仅应急邮件）
+    replied_at TIMESTAMP WITH TIME ZONE,            -- 回复时间
+    send_status VARCHAR(20) NOT NULL DEFAULT 'pending', -- 发送状态：pending, sent, failed
+    send_attempts INTEGER NOT NULL DEFAULT 0,       -- 发送尝试次数
+    error_message TEXT,                             -- 错误信息
+    sent_at TIMESTAMP WITH TIME ZONE,               -- 发送时间
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 10. 应急通知追踪表 (emergency_notifications) - 简化版本
+CREATE TABLE emergency_notifications (
+    id BIGSERIAL PRIMARY KEY,
+    timelock_address VARCHAR(42) NOT NULL,          -- timelock合约地址
+    transaction_hash VARCHAR(66) NOT NULL,          -- 交易hash
+    event_type VARCHAR(50) NOT NULL,                -- 事件类型：proposal_created, proposal_canceled, ready_to_execute, executed, expired
+    replied_emails INTEGER NOT NULL DEFAULT 0,      -- 已回复邮箱数量
+    is_completed BOOLEAN NOT NULL DEFAULT false,    -- 是否完成（至少一个邮箱回复）
+    next_send_at TIMESTAMP WITH TIME ZONE,          -- 下次发送时间
+    send_count INTEGER NOT NULL DEFAULT 1,          -- 发送次数
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(timelock_address, transaction_hash, event_type) -- 确保同一交易的同一事件只有一个记录
+);
+
+-- =============================================================================
+-- 第三步：创建索引
+-- =============================================================================
+
+-- 用户表索引
+CREATE INDEX idx_users_wallet_address ON users(wallet_address);
+CREATE INDEX idx_users_chain_id ON users(chain_id);
+
+-- 支持链表索引
+CREATE INDEX idx_support_chains_chain_name ON support_chains(chain_name);
+CREATE INDEX idx_support_chains_chain_id ON support_chains(chain_id);
+CREATE INDEX idx_support_chains_is_active ON support_chains(is_active);
+CREATE INDEX idx_support_chains_is_testnet ON support_chains(is_testnet);
+
+-- 用户资产表索引
+CREATE INDEX idx_user_assets_wallet_address ON user_assets(wallet_address);
+CREATE INDEX idx_user_assets_chain_name ON user_assets(chain_name);
+CREATE INDEX idx_user_assets_usd_value ON user_assets(usd_value DESC);
+
+-- ABI表索引
+CREATE INDEX idx_abis_owner ON abis(owner);
+CREATE INDEX idx_abis_name ON abis(name);
+CREATE INDEX idx_abis_is_shared ON abis(is_shared);
+CREATE INDEX idx_abis_created_at ON abis(created_at DESC);
+
+-- Compound timelock索引
+CREATE INDEX idx_compound_timelocks_creator_address ON compound_timelocks(creator_address);
+CREATE INDEX idx_compound_timelocks_chain_id ON compound_timelocks(chain_id);
+CREATE INDEX idx_compound_timelocks_chain_name ON compound_timelocks(chain_name);
+CREATE INDEX idx_compound_timelocks_contract_address ON compound_timelocks(contract_address);
+CREATE INDEX idx_compound_timelocks_admin ON compound_timelocks(admin);
+CREATE INDEX idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin);
+CREATE INDEX idx_compound_timelocks_status ON compound_timelocks(status);
+CREATE INDEX idx_compound_timelocks_emergency_mode ON compound_timelocks(emergency_mode);
+
+-- OpenZeppelin timelock索引
+CREATE INDEX idx_openzeppelin_timelocks_creator_address ON openzeppelin_timelocks(creator_address);
+CREATE INDEX idx_openzeppelin_timelocks_chain_id ON openzeppelin_timelocks(chain_id);
+CREATE INDEX idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(chain_name);
+CREATE INDEX idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address);
+CREATE INDEX idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status);
+CREATE INDEX idx_openzeppelin_timelocks_emergency_mode ON openzeppelin_timelocks(emergency_mode);
+
+-- 交易记录表索引
+CREATE INDEX idx_transactions_creator_address ON transactions(creator_address);
+CREATE INDEX idx_transactions_chain_id ON transactions(chain_id);
+CREATE INDEX idx_transactions_timelock_address ON transactions(timelock_address);
+CREATE INDEX idx_transactions_timelock_standard ON transactions(timelock_standard);
+CREATE INDEX idx_transactions_tx_hash ON transactions(tx_hash);
+CREATE INDEX idx_transactions_status ON transactions(status);
+CREATE INDEX idx_transactions_eta ON transactions(eta);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
+CREATE INDEX idx_transactions_updated_at ON transactions(updated_at DESC);
+
+-- 邮件通知配置表索引
+CREATE INDEX idx_email_notifications_wallet_address ON email_notifications(wallet_address);
+CREATE INDEX idx_email_notifications_email ON email_notifications(email);
+CREATE INDEX idx_email_notifications_is_verified ON email_notifications(is_verified);
+CREATE INDEX idx_email_notifications_is_active ON email_notifications(is_active);
+
+-- 邮件发送记录表索引
+CREATE INDEX idx_email_send_logs_email_notification_id ON email_send_logs(email_notification_id);
+CREATE INDEX idx_email_send_logs_timelock_address ON email_send_logs(timelock_address);
+CREATE INDEX idx_email_send_logs_transaction_hash ON email_send_logs(transaction_hash);
+CREATE INDEX idx_email_send_logs_event_type ON email_send_logs(event_type);
+CREATE INDEX idx_email_send_logs_is_emergency ON email_send_logs(is_emergency);
+CREATE INDEX idx_email_send_logs_is_replied ON email_send_logs(is_replied);
+CREATE INDEX idx_email_send_logs_send_status ON email_send_logs(send_status);
+CREATE INDEX idx_email_send_logs_sent_at ON email_send_logs(sent_at DESC);
+
+-- 应急通知追踪表索引
+CREATE INDEX idx_emergency_notifications_timelock_address ON emergency_notifications(timelock_address);
+CREATE INDEX idx_emergency_notifications_transaction_hash ON emergency_notifications(transaction_hash);
+CREATE INDEX idx_emergency_notifications_is_completed ON emergency_notifications(is_completed);
+CREATE INDEX idx_emergency_notifications_next_send_at ON emergency_notifications(next_send_at);
+
+-- =============================================================================
+-- 第四步：插入初始数据
+-- =============================================================================
 
 -- 插入共享ABI数据
 INSERT INTO abis (name, abi_content, owner, description, is_shared) VALUES

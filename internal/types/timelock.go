@@ -35,6 +35,7 @@ type CompoundTimeLock struct {
 	Remark          string         `json:"remark" gorm:"size:500"`                                // 备注
 	Status          TimeLockStatus `json:"status" gorm:"size:20;not null;default:'active';index"` // 状态
 	IsImported      bool           `json:"is_imported" gorm:"not null;default:false"`             // 是否导入的合约
+	EmergencyMode   bool           `json:"emergency_mode" gorm:"not null;default:false;index"`    // 是否启用应急模式
 	CreatedAt       time.Time      `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -59,6 +60,7 @@ type OpenzeppelinTimeLock struct {
 	Remark          string         `json:"remark" gorm:"size:500"`                                // 备注
 	Status          TimeLockStatus `json:"status" gorm:"size:20;not null;default:'active';index"` // 状态
 	IsImported      bool           `json:"is_imported" gorm:"not null;default:false"`             // 是否导入的合约
+	EmergencyMode   bool           `json:"emergency_mode" gorm:"not null;default:false;index"`    // 是否启用应急模式
 	CreatedAt       time.Time      `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -186,4 +188,11 @@ type CheckAdminPermissionRequest struct {
 type CheckAdminPermissionResponse struct {
 	CanSetPendingAdmin bool `json:"can_set_pending_admin"`
 	CanAcceptAdmin     bool `json:"can_accept_admin"`
+}
+
+// UpdateEmergencyModeRequest 更新应急模式请求
+type UpdateEmergencyModeRequest struct {
+	ID            int64            `json:"id" binding:"required"`
+	Standard      TimeLockStandard `json:"standard" binding:"required,oneof=compound openzeppelin"`
+	EmergencyMode bool             `json:"emergency_mode"`
 }

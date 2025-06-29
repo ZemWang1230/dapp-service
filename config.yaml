@@ -46,4 +46,22 @@ rpc:
   block_confirmations: 12  # 区块确认数
   
   # 是否包含测试网
-  include_testnets: true 
+  include_testnets: true
+
+# 邮件服务配置
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  smtp_username: "your_email@gmail.com"  # 发送邮件的邮箱地址
+  smtp_password: "your_app_password"     # 邮箱应用密码（不是登录密码）
+  from_name: "TimeLocker Notification"   # 发件人名称
+  from_email: "your_email@gmail.com"     # 发件人邮箱（通常与smtp_username相同）
+  
+  # 邮件通知功能配置
+  verification_code_expiry: "10m"        # 验证码过期时间
+  enable_emergency_mode: true            # 是否启用应急模式
+  emergency_resend_interval: "2h"        # 应急邮件重发间隔
+  emergency_max_attempts: 10             # 应急邮件最大发送次数
+  
+  # 邮件模板配置
+  base_url: "http://localhost:8080"      # 前端基础URL，用于生成邮件中的链接 

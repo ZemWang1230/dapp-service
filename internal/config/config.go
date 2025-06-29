@@ -19,6 +19,7 @@ type Config struct {
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Covalent CovalentConfig `mapstructure:"covalent"`
 	RPC      RPCConfig      `mapstructure:"rpc"`
+	Email    EmailConfig    `mapstructure:"email"`
 }
 
 type ServerConfig struct {
@@ -66,6 +67,21 @@ type RPCConfig struct {
 	IncludeTestnets    bool          `mapstructure:"include_testnets"`
 }
 
+// EmailConfig 邮件配置
+type EmailConfig struct {
+	SMTPHost                string        `mapstructure:"smtp_host"`
+	SMTPPort                int           `mapstructure:"smtp_port"`
+	SMTPUsername            string        `mapstructure:"smtp_username"`
+	SMTPPassword            string        `mapstructure:"smtp_password"`
+	FromName                string        `mapstructure:"from_name"`
+	FromEmail               string        `mapstructure:"from_email"`
+	VerificationCodeExpiry  time.Duration `mapstructure:"verification_code_expiry"`
+	EnableEmergencyMode     bool          `mapstructure:"enable_emergency_mode"`
+	EmergencyResendInterval time.Duration `mapstructure:"emergency_resend_interval"`
+	EmergencyMaxAttempts    int           `mapstructure:"emergency_max_attempts"`
+	BaseURL                 string        `mapstructure:"base_url"`
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -99,6 +115,19 @@ func LoadConfig() (*Config, error) {
 	// RPC defaults
 	viper.SetDefault("rpc.poll_interval", time.Second*30)
 	viper.SetDefault("rpc.block_confirmations", 12)
+
+	// Email defaults
+	viper.SetDefault("email.smtp_host", "smtp.gmail.com")
+	viper.SetDefault("email.smtp_port", 587)
+	viper.SetDefault("email.smtp_username", "")
+	viper.SetDefault("email.smtp_password", "")
+	viper.SetDefault("email.from_name", "TimeLocker Notification")
+	viper.SetDefault("email.from_email", "")
+	viper.SetDefault("email.verification_code_expiry", time.Minute*10)
+	viper.SetDefault("email.enable_emergency_mode", true)
+	viper.SetDefault("email.emergency_resend_interval", time.Hour*2)
+	viper.SetDefault("email.emergency_max_attempts", 10)
+	viper.SetDefault("email.base_url", "http://localhost:8080")
 
 	// Read environment variables
 	viper.AutomaticEnv()

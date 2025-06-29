@@ -11,6 +11,7 @@ import (
 	"timelocker-backend/internal/config"
 	chainRepository "timelocker-backend/internal/repository/chain"
 	timelockRepository "timelocker-backend/internal/repository/timelock"
+	"timelocker-backend/internal/service/email_notification"
 	"timelocker-backend/internal/service/transaction"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
@@ -27,6 +28,7 @@ import (
 type EventListener struct {
 	config         *config.Config
 	transactionSvc transaction.Service
+	emailSvc       email_notification.Service
 	chainRepo      chainRepository.Repository
 	timelockRepo   timelockRepository.Repository
 	db             *gorm.DB
@@ -263,10 +265,11 @@ const (
 )
 
 // NewEventListener 创建新的事件监听器
-func NewEventListener(config *config.Config, transactionSvc transaction.Service, chainRepo chainRepository.Repository, timelockRepo timelockRepository.Repository, db *gorm.DB) *EventListener {
+func NewEventListener(config *config.Config, transactionSvc transaction.Service, emailSvc email_notification.Service, chainRepo chainRepository.Repository, timelockRepo timelockRepository.Repository, db *gorm.DB) *EventListener {
 	return &EventListener{
 		config:         config,
 		transactionSvc: transactionSvc,
+		emailSvc:       emailSvc,
 		chainRepo:      chainRepo,
 		timelockRepo:   timelockRepo,
 		db:             db,
@@ -930,6 +933,25 @@ func (el *EventListener) processEvents(ctx context.Context, events []TimelockEve
 				"event_tx_hash", eventTxHash,
 				"status", newStatus,
 				"block_number", blockNumber)
+
+			// 发送邮件通知
+			if el.emailSvc != nil {
+				eventType := el.getEmailEventType(newStatus)
+				if eventType != "" {
+					err := el.emailSvc.SendTimelockNotification(ctx, contractAddr, eventType, &dbTxHash)
+					if err != nil {
+						logger.Error("EventListener: failed to send email notification", err,
+							"contract_addr", contractAddr,
+							"event_type", eventType,
+							"tx_hash", dbTxHash)
+					} else {
+						logger.Info("EventListener: sent email notification",
+							"contract_addr", contractAddr,
+							"event_type", eventType,
+							"tx_hash", dbTxHash)
+					}
+				}
+			}
 		}
 	}
 }
@@ -1187,4 +1209,22 @@ func (el *EventListener) parseOpenZeppelinEventData(log ethTypes.Log, abiString 
 	}
 
 	return target, value, data, predecessor, delay, nil
+}
+
+// getEmailEventType 将交易状态转换为邮件事件类型
+func (el *EventListener) getEmailEventType(status types.TransactionStatus) string {
+	switch status {
+	case types.TransactionQueued:
+		return "proposal_created"
+	case types.TransactionCanceled:
+		return "proposal_canceled"
+	case types.TransactionReady:
+		return "ready_to_execute"
+	case types.TransactionExecuted:
+		return "executed"
+	case types.TransactionExpired:
+		return "expired"
+	default:
+		return ""
+	}
 }
