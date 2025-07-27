@@ -911,7 +911,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "获取当前认证用户的资料信息，包括钱包地址、当前选择的链ID、注册时间和最后登录时间等。此接口需要在请求头中携带有效的JWT访问令牌。",
+                "description": "获取当前认证用户的详细资料信息，包括钱包地址、当前使用的链ID、创建时间等。需要有效的JWT令牌。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1116,129 +1116,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/auth/switch-chain": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "用户切换到新的区块链网络。由于不同链的安全性考虑，切换链需要重新进行钱包签名验证。成功后会更新用户的当前链ID，并返回新的访问令牌。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Authentication"
-                ],
-                "summary": "切换区块链网络",
-                "parameters": [
-                    {
-                        "description": "切换链请求体，包含新的链ID和签名信息",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.SwitchChainRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "切换成功，返回新的访问令牌和用户信息",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.SwitchChainResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "用户不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/auth/wallet-connect": {
             "post": {
                 "description": "通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。",
@@ -1341,7 +1218,7 @@ const docTemplate = `{
         },
         "/api/v1/chain/chainid/{chain_id}": {
             "get": {
-                "description": "根据区块链网络的ChainID（如以太坊主网为1）获取具体的链信息，包括链名称、原生代币、Logo等详细信息。",
+                "description": "根据指定的链ID（如1代表以太坊主网）获取单个支持链的详细信息，包括链名称、原生代币、Logo等基本信息。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1351,12 +1228,12 @@ const docTemplate = `{
                 "tags": [
                     "Chain"
                 ],
-                "summary": "根据区块链ChainID获取链信息",
+                "summary": "根据ChainID获取链信息",
                 "parameters": [
                     {
                         "type": "integer",
                         "example": 1,
-                        "description": "区块链网络的ChainID",
+                        "description": "链ID（区块链网络ID）",
                         "name": "chain_id",
                         "in": "path",
                         "required": true
@@ -1400,7 +1277,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "链信息不存在",
+                        "description": "链不存在",
                         "schema": {
                             "allOf": [
                                 {
@@ -1525,9 +1402,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/chain/{id}": {
+        "/api/v1/chain/wallet-config/{chain_id}": {
             "get": {
-                "description": "根据链在数据库中的ID获取具体的链信息，包括链名称、链ID、原生代币、Logo等详细信息。",
+                "description": "获取指定链ID的钱包插件配置数据，包括chainId、chainName、nativeCurrency、rpcUrls、blockExplorerUrls等信息，用于帮助用户在钱包插件中添加该链。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1537,12 +1414,111 @@ const docTemplate = `{
                 "tags": [
                     "Chain"
                 ],
-                "summary": "根据数据库ID获取链信息",
+                "summary": "获取钱包插件添加链的配置数据",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "example": 137,
+                        "description": "链ID",
+                        "name": "chain_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功获取钱包配置数据",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/types.WalletChainConfig"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "链不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chain/{id}": {
+            "get": {
+                "description": "根据指定的ID获取单个支持链的详细信息，包括链名称、链ID、原生代币、Logo等基本信息。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chain"
+                ],
+                "summary": "根据ID获取链信息",
                 "parameters": [
                     {
                         "type": "integer",
                         "example": 1,
-                        "description": "链在数据库中的ID",
+                        "description": "链的数据库ID",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -1586,7 +1562,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "链信息不存在",
+                        "description": "链不存在",
                         "schema": {
                             "allOf": [
                                 {
@@ -6081,6 +6057,20 @@ const docTemplate = `{
                 }
             }
         },
+        "types.NativeCurrencyConfig": {
+            "type": "object",
+            "properties": {
+                "decimals": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
         "types.OpenzeppelinTimeLockWithPermission": {
             "type": "object",
             "properties": {
@@ -6232,6 +6222,14 @@ const docTemplate = `{
         "types.SupportChain": {
             "type": "object",
             "properties": {
+                "alchemy_rpc_template": {
+                    "description": "Alchemy RPC URL模板",
+                    "type": "string"
+                },
+                "block_explorer_urls": {
+                    "description": "区块浏览器URLs (JSON数组)",
+                    "type": "string"
+                },
                 "chain_id": {
                     "description": "链ID",
                     "type": "integer"
@@ -6250,6 +6248,10 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "infura_rpc_template": {
+                    "description": "Infura RPC URL模板",
+                    "type": "string"
+                },
                 "is_active": {
                     "description": "是否激活",
                     "type": "boolean"
@@ -6262,51 +6264,28 @@ const docTemplate = `{
                     "description": "链Logo URL",
                     "type": "string"
                 },
-                "native_token": {
-                    "description": "原生代币符号",
+                "native_currency_decimals": {
+                    "description": "原生货币精度",
+                    "type": "integer"
+                },
+                "native_currency_name": {
+                    "description": "原生货币名称",
                     "type": "string"
+                },
+                "native_currency_symbol": {
+                    "description": "原生货币符号",
+                    "type": "string"
+                },
+                "official_rpc_urls": {
+                    "description": "官方RPC URLs (JSON数组)",
+                    "type": "string"
+                },
+                "rpc_enabled": {
+                    "description": "是否启用RPC功能",
+                    "type": "boolean"
                 },
                 "updated_at": {
                     "type": "string"
-                }
-            }
-        },
-        "types.SwitchChainRequest": {
-            "type": "object",
-            "required": [
-                "chain_id",
-                "message",
-                "signature"
-            ],
-            "properties": {
-                "chain_id": {
-                    "type": "integer"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "signature": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.SwitchChainResponse": {
-            "type": "object",
-            "properties": {
-                "access_token": {
-                    "type": "string"
-                },
-                "expires_at": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "refresh_token": {
-                    "type": "string"
-                },
-                "user": {
-                    "$ref": "#/definitions/types.User"
                 }
             }
         },
@@ -6801,6 +6780,32 @@ const docTemplate = `{
                 },
                 "verification_code": {
                     "type": "string"
+                }
+            }
+        },
+        "types.WalletChainConfig": {
+            "type": "object",
+            "properties": {
+                "blockExplorerUrls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "chainId": {
+                    "type": "string"
+                },
+                "chainName": {
+                    "type": "string"
+                },
+                "nativeCurrency": {
+                    "$ref": "#/definitions/types.NativeCurrencyConfig"
+                },
+                "rpcUrls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

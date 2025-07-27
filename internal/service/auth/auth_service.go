@@ -28,7 +28,6 @@ var (
 type Service interface {
 	WalletConnect(ctx context.Context, req *types.WalletConnectRequest) (*types.WalletConnectResponse, error)
 	RefreshToken(ctx context.Context, req *types.RefreshTokenRequest) (*types.WalletConnectResponse, error)
-	SwitchChain(ctx context.Context, walletAddress string, req *types.SwitchChainRequest) (*types.SwitchChainResponse, error)
 	GetProfile(ctx context.Context, walletAddress string) (*types.UserProfile, error)
 	VerifyToken(ctx context.Context, tokenString string) (*types.JWTClaims, error)
 }
@@ -184,22 +183,31 @@ func (s *service) RefreshToken(ctx context.Context, req *types.RefreshTokenReque
 
 // GetProfile 获取用户资料
 func (s *service) GetProfile(ctx context.Context, walletAddress string) (*types.UserProfile, error) {
-	user, err := s.userRepo.GetUserByWallet(ctx, walletAddress)
+	logger.Info("GetProfile: start", "wallet_address", walletAddress)
+
+	// 标准化钱包地址
+	normalizedAddress := crypto.NormalizeAddress(walletAddress)
+
+	// 获取用户信息
+	user, err := s.userRepo.GetUserByWallet(ctx, normalizedAddress)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("user not found")
+			return nil, ErrUserNotFound
 		}
 		logger.Error("GetProfile Error: ", errors.New("database error"), "error: ", err)
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	logger.Info("GetProfile :", "User: ", user.WalletAddress)
-	return &types.UserProfile{
+	profile := &types.UserProfile{
 		WalletAddress: user.WalletAddress,
 		ChainID:       user.ChainID,
 		CreatedAt:     user.CreatedAt,
 		LastLogin:     user.LastLogin,
-	}, nil
+	}
+
+	logger.Info("GetProfile: success", "user_id", user.ID, "wallet_address", user.WalletAddress)
+
+	return profile, nil
 }
 
 // VerifyToken 验证访问令牌
@@ -226,85 +234,4 @@ func (s *service) VerifyToken(ctx context.Context, tokenString string) (*types.J
 	}
 
 	return claims, nil
-}
-
-// SwitchChain 切换链（需要重新签名验证）
-func (s *service) SwitchChain(ctx context.Context, walletAddress string, req *types.SwitchChainRequest) (*types.SwitchChainResponse, error) {
-	logger.Info("SwitchChain: start", "wallet_address", walletAddress, "new_chain_id", req.ChainID)
-
-	// 1. 标准化钱包地址
-	normalizedAddress := crypto.NormalizeAddress(walletAddress)
-
-	// 2. 验证签名（确保用户拥有钱包的私钥）
-	err := crypto.VerifySignature(req.Message, req.Signature, normalizedAddress)
-	if err != nil {
-		// 尝试从签名中恢复地址进行二次验证
-		recoveredAddress, recoverErr := crypto.RecoverAddress(req.Message, req.Signature)
-		if recoverErr != nil {
-			logger.Error("SwitchChain Error: ", ErrSignatureRecovery, recoverErr)
-			return nil, fmt.Errorf("%w: %v", ErrSignatureRecovery, recoverErr)
-		}
-
-		// 验证恢复的地址是否与标准化后的地址一致
-		if strings.ToLower(recoveredAddress) != normalizedAddress {
-			logger.Error("SwitchChain Error: ", ErrInvalidSignature)
-			return nil, fmt.Errorf("%w: signature does not match wallet address", ErrInvalidSignature)
-		}
-	}
-
-	// 3. 获取用户信息
-	user, err := s.userRepo.GetUserByWallet(ctx, normalizedAddress)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("user not found")
-		}
-		logger.Error("SwitchChain Error: ", errors.New("database error"), "error: ", err)
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-
-	// 4. 检查是否需要切换（避免无必要的更新）
-	if user.ChainID == req.ChainID {
-		logger.Info("SwitchChain: already on target chain", "wallet_address", normalizedAddress, "chain_id", req.ChainID)
-
-		// 仍然生成新的令牌以更新过期时间
-		accessToken, refreshToken, expiresAt, err := s.jwtManager.GenerateTokens(user.ID, user.WalletAddress)
-		if err != nil {
-			logger.Error("SwitchChain Error: ", errors.New("failed to generate jwt tokens"), "error: ", err)
-			return nil, fmt.Errorf("failed to generate tokens: %w", err)
-		}
-
-		return &types.SwitchChainResponse{
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			ExpiresAt:    expiresAt,
-			User:         *user,
-			Message:      "Already on target chain",
-		}, nil
-	}
-
-	// 5. 更新用户的链ID
-	if err := s.userRepo.UpdateUserChainID(ctx, normalizedAddress, req.ChainID); err != nil {
-		logger.Error("SwitchChain Error: ", errors.New("failed to update user chain id"), "error: ", err)
-		return nil, fmt.Errorf("failed to update user chain id: %w", err)
-	}
-
-	// 6. 更新内存中的用户数据
-	user.ChainID = req.ChainID
-
-	// 7. 生成新的JWT令牌（包含新的链ID信息）
-	accessToken, refreshToken, expiresAt, err := s.jwtManager.GenerateTokens(user.ID, user.WalletAddress)
-	if err != nil {
-		logger.Error("SwitchChain Error: ", errors.New("failed to generate jwt tokens"), "error: ", err)
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
-	}
-
-	logger.Info("SwitchChain: success", "user_id", user.ID, "wallet_address", user.WalletAddress, "new_chain_id", user.ChainID)
-
-	return &types.SwitchChainResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    expiresAt,
-		User:         *user,
-		Message:      fmt.Sprintf("Successfully switched to chain %d", req.ChainID),
-	}, nil
 }

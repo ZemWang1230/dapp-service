@@ -24,26 +24,25 @@ func NewHandler(authService auth.Service) *Handler {
 	}
 }
 
-// RegisterRoutes 注册认证相关路由
+// RegisterRoutes 注册认证路由
 func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
-	// 创建认证路由组
+	// 认证API组
 	authGroup := router.Group("/auth")
 	{
-		// 公开端点
-		// 钱包连接认证
+		// 钱包连接
+		// POST /api/v1/auth/wallet-connect
 		// http://localhost:8080/api/v1/auth/wallet-connect
 		authGroup.POST("/wallet-connect", h.WalletConnect)
-		// 刷新访问令牌
-		// http://localhost:8080/api/v1/auth/refresh
-		authGroup.POST("/refresh", h.RefreshToken)
 
-		// 需要认证的端点
+		// 刷新令牌
+		// POST /api/v1/auth/refresh-token
+		// http://localhost:8080/api/v1/auth/refresh-token
+		authGroup.POST("/refresh-token", h.RefreshToken)
+
 		// 获取用户资料
+		// GET /api/v1/auth/profile
 		// http://localhost:8080/api/v1/auth/profile
 		authGroup.GET("/profile", middleware.AuthMiddleware(h.authService), h.GetProfile)
-		// 切换链
-		// http://localhost:8080/api/v1/auth/switch-chain
-		authGroup.POST("/switch-chain", middleware.AuthMiddleware(h.authService), h.SwitchChain)
 	}
 }
 
@@ -179,7 +178,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 // GetProfile 获取用户资料
 // @Summary 获取用户资料
-// @Description 获取当前认证用户的资料信息，包括钱包地址、当前选择的链ID、注册时间和最后登录时间等。此接口需要在请求头中携带有效的JWT访问令牌。
+// @Description 获取当前认证用户的详细资料信息，包括钱包地址、当前使用的链ID、创建时间等。需要有效的JWT令牌。
 // @Tags Authentication
 // @Accept json
 // @Produce json
@@ -204,7 +203,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	// 获取用户资料
+	// 调用认证服务
 	profile, err := h.authService.GetProfile(c.Request.Context(), walletAddress)
 	if err != nil {
 		var statusCode int
@@ -229,85 +228,9 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	logger.Info("GetProfile :", "User: ", profile.WalletAddress)
+	logger.Info("GetProfile: ", "User: ", profile.WalletAddress, "ChainID: ", profile.ChainID)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    profile,
-	})
-}
-
-// SwitchChain 切换链
-// @Summary 切换区块链网络
-// @Description 用户切换到新的区块链网络。由于不同链的安全性考虑，切换链需要重新进行钱包签名验证。成功后会更新用户的当前链ID，并返回新的访问令牌。
-// @Tags Authentication
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param request body types.SwitchChainRequest true "切换链请求体，包含新的链ID和签名信息"
-// @Success 200 {object} types.APIResponse{data=types.SwitchChainResponse} "切换成功，返回新的访问令牌和用户信息"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "用户不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/auth/switch-chain [post]
-func (h *Handler) SwitchChain(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, walletAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("SwitchChain Error: ", errors.New("user not authenticated"))
-		return
-	}
-
-	var req types.SwitchChainRequest
-	// 绑定请求参数
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("SwitchChain Error: ", errors.New("invalid request parameters"), "error: ", err)
-		return
-	}
-
-	// 调用认证服务
-	response, err := h.authService.SwitchChain(c.Request.Context(), walletAddress, &req)
-	if err != nil {
-		var statusCode int
-		var errorCode string
-
-		switch err {
-		case auth.ErrUserNotFound:
-			statusCode = http.StatusNotFound
-			errorCode = "USER_NOT_FOUND"
-		default:
-			statusCode = http.StatusInternalServerError
-			errorCode = "INTERNAL_ERROR"
-		}
-		logger.Error("SwitchChain Error: ", err, "errorCode: ", errorCode)
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		return
-	}
-
-	logger.Info("SwitchChain :", "User: ", response.User.WalletAddress, "ChainID: ", response.User.ChainID)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    response,
 	})
 }

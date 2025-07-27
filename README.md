@@ -103,7 +103,6 @@ go run cmd/server/main.go
 
 #### 认证相关
 - `POST /api/v1/auth/wallet-connect` - 钱包连接登录（支持链ID）
-- `POST /api/v1/auth/switch-chain` - 切换链（需要重新签名）
 - `POST /api/v1/auth/refresh` - 刷新Token
 - `GET /api/v1/auth/profile` - 获取用户资料
 
@@ -123,19 +122,6 @@ curl -X POST http://localhost:8080/api/v1/auth/wallet-connect \
     "signature": "0x...",
     "message": "Connect to TimeLocker",
     "chain_id": 1
-  }'
-```
-
-#### 2. 切换链（timelock合约操作需要）
-
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/switch-chain \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-jwt-token" \
-  -d '{
-    "chain_id": 137,
-    "signature": "0x...",
-    "message": "Switch to Polygon chain for timelock operations"
   }'
 ```
 
@@ -378,7 +364,7 @@ MIT License
 - 🔗 **链ID管理**: 重新添加用户链ID功能，支持timelock合约的链切换
 - 🎯 **智能排序**: 资产按USD价值从高到低排序，主网优先，测试网在后
 - 🧪 **测试网优化**: 测试网仅显示原生代币，USD价值为0，不计入总价值
-- 🔐 **切换链功能**: 新增`/auth/switch-chain`端点，需要重新签名验证
+
 - 📊 **数据完整性**: 确保所有支持的链都能正确显示资产信息
 
 ### v2.1.0

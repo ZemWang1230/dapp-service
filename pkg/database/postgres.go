@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"timelocker-backend/internal/config"
+	"timelocker-backend/pkg/database/migrations"
 	"timelocker-backend/pkg/logger"
 
 	"gorm.io/driver/postgres"
@@ -39,6 +40,12 @@ func NewPostgresConnection(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	logger.Info("Database connected successfully", "host", cfg.Host, "port", cfg.Port, "dbname", cfg.DBName)
+	// 运行数据库迁移
+	if err := migrations.InitTables(db); err != nil {
+		logger.Error("Failed to run database migrations", err)
+		return nil, fmt.Errorf("failed to run database migrations: %w", err)
+	}
+
+	logger.Info("Database connected successfully")
 	return db, nil
 }

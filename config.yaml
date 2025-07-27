@@ -23,7 +23,7 @@ jwt:
 
 # Covalent API配置
 covalent:
-  api_key: "cqt_rQHQFmXpXvKYMGfGbMMYHKTgQXKQ"  # 请设置你的Covalent API Key
+  api_key: "cqt_rQy6bmwRdmhwtfCBRXBdxWkVtrVg"  # 请设置你的Covalent API Key
   base_url: "https://api.covalenthq.com/v1"
   request_timeout: "30s"
   cache_prefix: "asset:"
@@ -33,7 +33,7 @@ covalent:
 rpc:
   # RPC提供商配置（用户只需要填写API key）
   alchemy_api_key: "7JGar3dcq0bHQa9vMk9zSS15hdFCmVHa"
-  infura_api_key: "YOUR_INFURA_API_KEY"
+  infura_api_key: "31f7df93b3884e1f884c58c79d142e99"
   
   # 当前使用的提供商（alchemy、infura 或 custom）
   # alchemy: 使用Alchemy RPC
@@ -44,18 +44,19 @@ rpc:
   # 监听配置
   poll_interval: "30s"  # 轮询间隔
   block_confirmations: 12  # 区块确认数
+  max_block_range: 500  # 单次RPC请求的最大区块范围（alchemy限制为500）
   
   # 是否包含测试网
   include_testnets: true
 
 # 邮件服务配置
 email:
-  smtp_host: "smtp.gmail.com"
+  smtp_host: "smtp.zoho.com"
   smtp_port: 587
-  smtp_username: "your_email@gmail.com"  # 发送邮件的邮箱地址
-  smtp_password: "your_app_password"     # 邮箱应用密码（不是登录密码）
+  smtp_username: "zem@timelock.live"  # 发送邮件的邮箱地址
+  smtp_password: "X1p1DdL7aHBd"     # 邮箱应用密码（不是登录密码）
   from_name: "TimeLocker Notification"   # 发件人名称
-  from_email: "your_email@gmail.com"     # 发件人邮箱（通常与smtp_username相同）
+  from_email: "zem@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
   
   # 邮件通知功能配置
   verification_code_expiry: "10m"        # 验证码过期时间

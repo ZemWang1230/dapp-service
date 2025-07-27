@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"timelocker-backend/internal/repository/chain"
 	"timelocker-backend/internal/types"
@@ -11,8 +12,9 @@ import (
 // Service 支持链服务接口
 type Service interface {
 	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) (*types.GetSupportChainsResponse, error)
-	GetChainByID(ctx context.Context, req *types.GetChainByIDRequest) (*types.SupportChain, error)
-	GetChainByChainID(ctx context.Context, req *types.GetChainByChainIDRequest) (*types.SupportChain, error)
+	GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error)
+	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error)
+	GetWalletChainConfig(ctx context.Context, chainID int64) (*types.WalletChainConfig, error)
 }
 
 // service 支持链服务实现
@@ -48,37 +50,73 @@ func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportCha
 }
 
 // GetChainByID 根据ID获取链信息
-func (s *service) GetChainByID(ctx context.Context, req *types.GetChainByIDRequest) (*types.SupportChain, error) {
-	logger.Info("GetChainByID: ", "id", req.ID)
+func (s *service) GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error) {
+	logger.Info("GetChainByID start: ", "id", id)
 
-	chain, err := s.chainRepo.GetChainByID(ctx, req.ID)
+	chain, err := s.chainRepo.GetChainByID(ctx, id)
 	if err != nil {
-		logger.Error("GetChainByID Error: ", err, "id", req.ID)
-		return nil, fmt.Errorf("failed to get chain by id: %w", err)
+		logger.Error("GetChainByID Error: ", err, "id", id)
+		return nil, err
 	}
 
-	if chain == nil {
-		return nil, nil
-	}
-
-	logger.Info("GetChainByID: ", "id", req.ID, "chain_name", chain.ChainName)
+	logger.Info("GetChainByID success: ", "id", id, "chain_name", chain.ChainName)
 	return chain, nil
 }
 
 // GetChainByChainID 根据ChainID获取链信息
-func (s *service) GetChainByChainID(ctx context.Context, req *types.GetChainByChainIDRequest) (*types.SupportChain, error) {
-	logger.Info("GetChainByChainID: ", "chain_id", req.ChainID)
+func (s *service) GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error) {
+	logger.Info("GetChainByChainID start: ", "chain_id", chainID)
 
-	chain, err := s.chainRepo.GetChainByChainID(ctx, req.ChainID)
+	chain, err := s.chainRepo.GetChainByChainID(ctx, chainID)
 	if err != nil {
-		logger.Error("GetChainByChainID Error: ", err, "chain_id", req.ChainID)
-		return nil, fmt.Errorf("failed to get chain by chain id: %w", err)
+		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainID)
+		return nil, err
 	}
 
-	if chain == nil {
-		return nil, nil
-	}
-
-	logger.Info("GetChainByChainID: ", "chain_id", req.ChainID, "chain_name", chain.ChainName)
+	logger.Info("GetChainByChainID success: ", "chain_id", chainID, "chain_name", chain.ChainName)
 	return chain, nil
+}
+
+// GetWalletChainConfig 获取钱包插件添加链的配置数据
+func (s *service) GetWalletChainConfig(ctx context.Context, chainID int64) (*types.WalletChainConfig, error) {
+	logger.Info("GetWalletChainConfig start: ", "chain_id", chainID)
+
+	// 获取链信息
+	chain, err := s.chainRepo.GetChainByChainID(ctx, chainID)
+	if err != nil {
+		logger.Error("GetWalletChainConfig Error: ", err, "chain_id", chainID)
+		return nil, err
+	}
+
+	// 解析官方RPC URLs
+	var officialRPCs []string
+	if err := json.Unmarshal([]byte(chain.OfficialRPCUrls), &officialRPCs); err != nil {
+		logger.Error("GetWalletChainConfig: failed to parse official RPC URLs", err, "chain_id", chainID)
+		// 使用默认值
+		officialRPCs = []string{}
+	}
+
+	// 解析区块浏览器URLs
+	var blockExplorers []string
+	if err := json.Unmarshal([]byte(chain.BlockExplorerUrls), &blockExplorers); err != nil {
+		logger.Error("GetWalletChainConfig: failed to parse block explorer URLs", err, "chain_id", chainID)
+		// 使用默认值
+		blockExplorers = []string{}
+	}
+
+	// 构建钱包配置
+	config := &types.WalletChainConfig{
+		ChainID:   fmt.Sprintf("0x%X", chain.ChainID), // 转换为十六进制格式
+		ChainName: chain.DisplayName,
+		NativeCurrency: types.NativeCurrencyConfig{
+			Name:     chain.NativeCurrencyName,
+			Symbol:   chain.NativeCurrencySymbol,
+			Decimals: chain.NativeCurrencyDecimals,
+		},
+		RPCUrls:           officialRPCs,
+		BlockExplorerUrls: blockExplorers,
+	}
+
+	logger.Info("GetWalletChainConfig success: ", "chain_id", chainID, "chain_name", config.ChainName)
+	return config, nil
 }

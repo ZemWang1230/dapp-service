@@ -42,6 +42,11 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// GET /api/v1/chain/chainid/:chain_id
 		// http://localhost:8080/api/v1/chain/chainid/1
 		chainGroup.GET("/chainid/:chain_id", h.GetChainByChainID)
+
+		// 获取钱包插件添加链的配置数据
+		// GET /api/v1/chain/wallet-config/:chain_id
+		// http://localhost:8080/api/v1/chain/wallet-config/137
+		chainGroup.GET("/wallet-config/:chain_id", h.GetWalletChainConfig)
 	}
 }
 
@@ -96,63 +101,60 @@ func (h *Handler) GetSupportChains(c *gin.Context) {
 }
 
 // GetChainByID 根据ID获取链信息
-// @Summary 根据数据库ID获取链信息
-// @Description 根据链在数据库中的ID获取具体的链信息，包括链名称、链ID、原生代币、Logo等详细信息。
+// @Summary 根据ID获取链信息
+// @Description 根据指定的ID获取单个支持链的详细信息，包括链名称、链ID、原生代币、Logo等基本信息。
 // @Tags Chain
 // @Accept json
 // @Produce json
-// @Param id path int true "链在数据库中的ID" example(1)
+// @Param id path int true "链的数据库ID" example(1)
 // @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "链信息不存在"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/chain/{id} [get]
 func (h *Handler) GetChainByID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		logger.Error("GetChainByID ParseInt Error: ", err, "id", idStr)
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_ID",
-				Message: "Invalid chain ID",
+				Message: "Invalid ID format",
 				Details: err.Error(),
 			},
 		})
+		logger.Error("GetChainByID Error: ", err, "id", idStr)
 		return
 	}
 
-	req := &types.GetChainByIDRequest{
-		ID: id,
-	}
-
-	// 调用服务
-	chain, err := h.chainService.GetChainByID(c.Request.Context(), req)
+	// 调用服务层
+	chain, err := h.chainService.GetChainByID(c.Request.Context(), id)
 	if err != nil {
-		logger.Error("GetChainByID Service Error: ", err, "id", id)
-		c.JSON(http.StatusInternalServerError, types.APIResponse{
+		var statusCode int
+		var errorCode string
+
+		switch err.Error() {
+		case "chain not found":
+			statusCode = http.StatusNotFound
+			errorCode = "CHAIN_NOT_FOUND"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: "Failed to get chain information",
-				Details: err.Error(),
+				Code:    errorCode,
+				Message: err.Error(),
 			},
 		})
+		logger.Error("GetChainByID Error: ", err, "id", id)
 		return
 	}
 
-	if chain == nil {
-		c.JSON(http.StatusNotFound, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "CHAIN_NOT_FOUND",
-				Message: "Chain not found",
-			},
-		})
-		return
-	}
-
+	logger.Info("GetChainByID: ", "id", id, "chain_name", chain.ChainName)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    chain,
@@ -160,65 +162,127 @@ func (h *Handler) GetChainByID(c *gin.Context) {
 }
 
 // GetChainByChainID 根据ChainID获取链信息
-// @Summary 根据区块链ChainID获取链信息
-// @Description 根据区块链网络的ChainID（如以太坊主网为1）获取具体的链信息，包括链名称、原生代币、Logo等详细信息。
+// @Summary 根据ChainID获取链信息
+// @Description 根据指定的链ID（如1代表以太坊主网）获取单个支持链的详细信息，包括链名称、原生代币、Logo等基本信息。
 // @Tags Chain
 // @Accept json
 // @Produce json
-// @Param chain_id path int true "区块链网络的ChainID" example(1)
+// @Param chain_id path int true "链ID（区块链网络ID）" example(1)
 // @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "链信息不存在"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/chain/chainid/{chain_id} [get]
 func (h *Handler) GetChainByChainID(c *gin.Context) {
 	chainIDStr := c.Param("chain_id")
 	chainID, err := strconv.ParseInt(chainIDStr, 10, 64)
 	if err != nil {
-		logger.Error("GetChainByChainID ParseInt Error: ", err, "chain_id", chainIDStr)
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_CHAIN_ID",
-				Message: "Invalid chain ID",
+				Message: "Invalid chain ID format",
 				Details: err.Error(),
 			},
 		})
+		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainIDStr)
 		return
 	}
 
-	req := &types.GetChainByChainIDRequest{
-		ChainID: chainID,
-	}
-
-	// 调用服务
-	chain, err := h.chainService.GetChainByChainID(c.Request.Context(), req)
+	// 调用服务层
+	chain, err := h.chainService.GetChainByChainID(c.Request.Context(), chainID)
 	if err != nil {
-		logger.Error("GetChainByChainID Service Error: ", err, "chain_id", chainID)
-		c.JSON(http.StatusInternalServerError, types.APIResponse{
+		var statusCode int
+		var errorCode string
+
+		switch err.Error() {
+		case "chain not found":
+			statusCode = http.StatusNotFound
+			errorCode = "CHAIN_NOT_FOUND"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: "Failed to get chain information",
-				Details: err.Error(),
+				Code:    errorCode,
+				Message: err.Error(),
 			},
 		})
+		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainID)
 		return
 	}
 
-	if chain == nil {
-		c.JSON(http.StatusNotFound, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "CHAIN_NOT_FOUND",
-				Message: "Chain not found",
-			},
-		})
-		return
-	}
-
+	logger.Info("GetChainByChainID: ", "chain_id", chainID, "chain_name", chain.ChainName)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    chain,
+	})
+}
+
+// GetWalletChainConfig 获取钱包插件添加链的配置数据
+// @Summary 获取钱包插件添加链的配置数据
+// @Description 获取指定链ID的钱包插件配置数据，包括chainId、chainName、nativeCurrency、rpcUrls、blockExplorerUrls等信息，用于帮助用户在钱包插件中添加该链。
+// @Tags Chain
+// @Accept json
+// @Produce json
+// @Param chain_id path int true "链ID" example(137)
+// @Success 200 {object} types.APIResponse{data=types.WalletChainConfig} "成功获取钱包配置数据"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
+// @Router /api/v1/chain/wallet-config/{chain_id} [get]
+func (h *Handler) GetWalletChainConfig(c *gin.Context) {
+	chainIDStr := c.Param("chain_id")
+	chainID := int64(0)
+
+	// 转换链ID
+	if parsed, err := strconv.ParseInt(chainIDStr, 10, 64); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_CHAIN_ID",
+				Message: "Invalid chain ID format",
+				Details: err.Error(),
+			},
+		})
+		logger.Error("GetWalletChainConfig Error: ", err, "chain_id", chainIDStr)
+		return
+	} else {
+		chainID = parsed
+	}
+
+	// 调用服务层
+	config, err := h.chainService.GetWalletChainConfig(c.Request.Context(), chainID)
+	if err != nil {
+		var statusCode int
+		var errorCode string
+
+		switch err.Error() {
+		case "chain not found":
+			statusCode = http.StatusNotFound
+			errorCode = "CHAIN_NOT_FOUND"
+		default:
+			statusCode = http.StatusInternalServerError
+			errorCode = "INTERNAL_ERROR"
+		}
+
+		c.JSON(statusCode, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    errorCode,
+				Message: err.Error(),
+			},
+		})
+		logger.Error("GetWalletChainConfig Error: ", err, "chain_id", chainID)
+		return
+	}
+
+	logger.Info("GetWalletChainConfig: ", "chain_id", chainID, "chain_name", config.ChainName)
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    config,
 	})
 }

@@ -4,23 +4,46 @@ import (
 	"time"
 )
 
-// SupportChain 支持的区块链模型（简化版）
+// SupportChain 支持的区块链模型（重构版）
 type SupportChain struct {
-	ID          int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	ChainName   string    `json:"chain_name" gorm:"size:50;not null;unique"` // Covalent API的chainName
-	DisplayName string    `json:"display_name" gorm:"size:100;not null"`     // 显示名称
-	ChainID     int64     `json:"chain_id" gorm:"not null"`                  // 链ID
-	NativeToken string    `json:"native_token" gorm:"size:10;not null"`      // 原生代币符号
-	LogoURL     string    `json:"logo_url" gorm:"type:text"`                 // 链Logo URL
-	IsTestnet   bool      `json:"is_testnet" gorm:"not null;default:false"`  // 是否是测试网
-	IsActive    bool      `json:"is_active" gorm:"not null;default:true"`    // 是否激活
-	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	ID                     int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	ChainName              string    `json:"chain_name" gorm:"size:50;not null;unique"`           // Covalent API的chainName
+	DisplayName            string    `json:"display_name" gorm:"size:100;not null"`               // 显示名称
+	ChainID                int64     `json:"chain_id" gorm:"not null"`                            // 链ID
+	NativeCurrencyName     string    `json:"native_currency_name" gorm:"size:50;not null"`        // 原生货币名称
+	NativeCurrencySymbol   string    `json:"native_currency_symbol" gorm:"size:10;not null"`      // 原生货币符号
+	NativeCurrencyDecimals int       `json:"native_currency_decimals" gorm:"not null;default:18"` // 原生货币精度
+	LogoURL                string    `json:"logo_url" gorm:"type:text"`                           // 链Logo URL
+	IsTestnet              bool      `json:"is_testnet" gorm:"not null;default:false"`            // 是否是测试网
+	IsActive               bool      `json:"is_active" gorm:"not null;default:true"`              // 是否激活
+	AlchemyRPCTemplate     string    `json:"alchemy_rpc_template" gorm:"type:text"`               // Alchemy RPC URL模板
+	InfuraRPCTemplate      string    `json:"infura_rpc_template" gorm:"type:text"`                // Infura RPC URL模板
+	OfficialRPCUrls        string    `json:"official_rpc_urls" gorm:"type:text;not null"`         // 官方RPC URLs (JSON数组)
+	BlockExplorerUrls      string    `json:"block_explorer_urls" gorm:"type:text;not null"`       // 区块浏览器URLs (JSON数组)
+	RPCEnabled             bool      `json:"rpc_enabled" gorm:"not null;default:true"`            // 是否启用RPC功能
+	CreatedAt              time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt              time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 // TableName 设置表名
 func (SupportChain) TableName() string {
 	return "support_chains"
+}
+
+// WalletChainConfig 钱包插件添加链的配置数据
+type WalletChainConfig struct {
+	ChainID           string               `json:"chainId"`
+	ChainName         string               `json:"chainName"`
+	NativeCurrency    NativeCurrencyConfig `json:"nativeCurrency"`
+	RPCUrls           []string             `json:"rpcUrls"`
+	BlockExplorerUrls []string             `json:"blockExplorerUrls"`
+}
+
+// NativeCurrencyConfig 原生货币配置
+type NativeCurrencyConfig struct {
+	Name     string `json:"name"`
+	Symbol   string `json:"symbol"`
+	Decimals int    `json:"decimals"`
 }
 
 // UserAsset 用户资产模型 - 优化版
@@ -147,12 +170,11 @@ type GetChainByChainIDRequest struct {
 
 // ChainRPCInfo 链的RPC信息（从数据库获取）
 type ChainRPCInfo struct {
-	ChainName          string  `gorm:"column:chain_name" json:"chain_name"`
-	DisplayName        string  `gorm:"column:display_name" json:"display_name"`
-	ChainID            int     `gorm:"column:chain_id" json:"chain_id"`
-	AlchemyRPCTemplate *string `gorm:"column:alchemy_rpc_template" json:"alchemy_rpc_template"`
-	InfuraRPCTemplate  *string `gorm:"column:infura_rpc_template" json:"infura_rpc_template"`
-	CustomRPCURL       *string `gorm:"column:custom_rpc_url" json:"custom_rpc_url"`
-	RPCEnabled         bool    `gorm:"column:rpc_enabled" json:"rpc_enabled"`
-	IsTestnet          bool    `gorm:"column:is_testnet" json:"is_testnet"`
+	ChainName          string  `json:"chain_name" db:"chain_name"`
+	DisplayName        string  `json:"display_name" db:"display_name"`
+	ChainID            int     `json:"chain_id" db:"chain_id"`
+	AlchemyRPCTemplate *string `json:"alchemy_rpc_template" db:"alchemy_rpc_template"`
+	InfuraRPCTemplate  *string `json:"infura_rpc_template" db:"infura_rpc_template"`
+	RPCEnabled         bool    `json:"rpc_enabled" db:"rpc_enabled"`
+	IsTestnet          bool    `json:"is_testnet" db:"is_testnet"`
 }

@@ -64,6 +64,7 @@ type RPCConfig struct {
 	Provider           string        `mapstructure:"provider"`
 	PollInterval       time.Duration `mapstructure:"poll_interval"`
 	BlockConfirmations int           `mapstructure:"block_confirmations"`
+	MaxBlockRange      int           `mapstructure:"max_block_range"` // 单次RPC请求的最大区块范围
 	IncludeTestnets    bool          `mapstructure:"include_testnets"`
 }
 
@@ -179,15 +180,8 @@ func (c *Config) GetRPCURL(chainInfo *types.ChainRPCInfo) (string, error) {
 		}
 		return strings.Replace(*chainInfo.InfuraRPCTemplate, "{API_KEY}", c.RPC.InfuraAPIKey, 1), nil
 
-	case "custom":
-		if chainInfo.CustomRPCURL == nil {
-			logger.Error("GetRPCURL error: ", fmt.Errorf("custom RPC not available for chain: %s", chainInfo.ChainName))
-			return "", errors.New("custom RPC not available for chain: " + chainInfo.ChainName)
-		}
-		return *chainInfo.CustomRPCURL, nil
-
 	default:
 		logger.Error("GetRPCURL error: ", fmt.Errorf("unsupported RPC provider: %s", c.RPC.Provider))
-		return "", errors.New("unsupported RPC provider: " + c.RPC.Provider)
+		return "", fmt.Errorf("unsupported RPC provider: %s", c.RPC.Provider)
 	}
 }

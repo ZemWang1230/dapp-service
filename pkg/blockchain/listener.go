@@ -473,8 +473,13 @@ func (el *EventListener) processChainEvents(ctx context.Context, chainID int, cl
 		return nil // 没有新区块
 	}
 
-	// 限制单次处理区块数量，避免RPC超时
-	maxBlocks := big.NewInt(500) // 减少处理量，提高稳定性
+	// 限制单次处理区块数量，避免RPC超时（使用配置值，默认500以符合alchemy限制）
+	maxBlockRange := el.config.RPC.MaxBlockRange
+	if maxBlockRange <= 0 {
+		maxBlockRange = 500 // 默认值，符合alchemy要求
+	}
+	maxBlocks := big.NewInt(int64(maxBlockRange))
+
 	if new(big.Int).Sub(toBlock, fromBlock).Cmp(maxBlocks) > 0 {
 		toBlock = new(big.Int).Add(fromBlock, maxBlocks)
 	}

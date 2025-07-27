@@ -41,22 +41,6 @@ type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
-// SwitchChainRequest 切换链请求（需要重新签名）
-type SwitchChainRequest struct {
-	ChainID   int    `json:"chain_id" binding:"required"`
-	Signature string `json:"signature" binding:"required"`
-	Message   string `json:"message" binding:"required"`
-}
-
-// SwitchChainResponse 切换链响应
-type SwitchChainResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	User         User      `json:"user"`
-	Message      string    `json:"message"`
-}
-
 // UserProfile 用户资料
 type UserProfile struct {
 	WalletAddress string     `json:"wallet_address"`

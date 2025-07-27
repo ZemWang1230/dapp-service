@@ -497,6 +497,15 @@ definitions:
     - id
     - reason
     type: object
+  types.NativeCurrencyConfig:
+    properties:
+      decimals:
+        type: integer
+      name:
+        type: string
+      symbol:
+        type: string
+    type: object
   types.OpenzeppelinTimeLockWithPermission:
     properties:
       cancellers:
@@ -600,6 +609,12 @@ definitions:
     type: object
   types.SupportChain:
     properties:
+      alchemy_rpc_template:
+        description: Alchemy RPC URL模板
+        type: string
+      block_explorer_urls:
+        description: 区块浏览器URLs (JSON数组)
+        type: string
       chain_id:
         description: 链ID
         type: integer
@@ -613,6 +628,9 @@ definitions:
         type: string
       id:
         type: integer
+      infura_rpc_template:
+        description: Infura RPC URL模板
+        type: string
       is_active:
         description: 是否激活
         type: boolean
@@ -622,37 +640,23 @@ definitions:
       logo_url:
         description: 链Logo URL
         type: string
-      native_token:
-        description: 原生代币符号
+      native_currency_decimals:
+        description: 原生货币精度
+        type: integer
+      native_currency_name:
+        description: 原生货币名称
         type: string
+      native_currency_symbol:
+        description: 原生货币符号
+        type: string
+      official_rpc_urls:
+        description: 官方RPC URLs (JSON数组)
+        type: string
+      rpc_enabled:
+        description: 是否启用RPC功能
+        type: boolean
       updated_at:
         type: string
-    type: object
-  types.SwitchChainRequest:
-    properties:
-      chain_id:
-        type: integer
-      message:
-        type: string
-      signature:
-        type: string
-    required:
-    - chain_id
-    - message
-    - signature
-    type: object
-  types.SwitchChainResponse:
-    properties:
-      access_token:
-        type: string
-      expires_at:
-        type: string
-      message:
-        type: string
-      refresh_token:
-        type: string
-      user:
-        $ref: '#/definitions/types.User'
     type: object
   types.TimeLockDetailResponse:
     properties:
@@ -1000,6 +1004,23 @@ definitions:
     required:
     - email
     - verification_code
+    type: object
+  types.WalletChainConfig:
+    properties:
+      blockExplorerUrls:
+        items:
+          type: string
+        type: array
+      chainId:
+        type: string
+      chainName:
+        type: string
+      nativeCurrency:
+        $ref: '#/definitions/types.NativeCurrencyConfig'
+      rpcUrls:
+        items:
+          type: string
+        type: array
     type: object
   types.WalletConnectRequest:
     properties:
@@ -1511,7 +1532,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 获取当前认证用户的资料信息，包括钱包地址、当前选择的链ID、注册时间和最后登录时间等。此接口需要在请求头中携带有效的JWT访问令牌。
+      description: 获取当前认证用户的详细资料信息，包括钱包地址、当前使用的链ID、创建时间等。需要有效的JWT令牌。
       produces:
       - application/json
       responses:
@@ -1619,71 +1640,6 @@ paths:
       summary: 刷新访问令牌
       tags:
       - Authentication
-  /api/v1/auth/switch-chain:
-    post:
-      consumes:
-      - application/json
-      description: 用户切换到新的区块链网络。由于不同链的安全性考虑，切换链需要重新进行钱包签名验证。成功后会更新用户的当前链ID，并返回新的访问令牌。
-      parameters:
-      - description: 切换链请求体，包含新的链ID和签名信息
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.SwitchChainRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 切换成功，返回新的访问令牌和用户信息
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.SwitchChainResponse'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 用户不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 切换区块链网络
-      tags:
-      - Authentication
   /api/v1/auth/wallet-connect:
     post:
       consumes:
@@ -1742,9 +1698,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: 根据链在数据库中的ID获取具体的链信息，包括链名称、链ID、原生代币、Logo等详细信息。
+      description: 根据指定的ID获取单个支持链的详细信息，包括链名称、链ID、原生代币、Logo等基本信息。
       parameters:
-      - description: 链在数据库中的ID
+      - description: 链的数据库ID
         example: 1
         in: path
         name: id
@@ -1772,7 +1728,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "404":
-          description: 链信息不存在
+          description: 链不存在
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -1789,16 +1745,16 @@ paths:
                 error:
                   $ref: '#/definitions/types.APIError'
               type: object
-      summary: 根据数据库ID获取链信息
+      summary: 根据ID获取链信息
       tags:
       - Chain
   /api/v1/chain/chainid/{chain_id}:
     get:
       consumes:
       - application/json
-      description: 根据区块链网络的ChainID（如以太坊主网为1）获取具体的链信息，包括链名称、原生代币、Logo等详细信息。
+      description: 根据指定的链ID（如1代表以太坊主网）获取单个支持链的详细信息，包括链名称、原生代币、Logo等基本信息。
       parameters:
-      - description: 区块链网络的ChainID
+      - description: 链ID（区块链网络ID）
         example: 1
         in: path
         name: chain_id
@@ -1826,7 +1782,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "404":
-          description: 链信息不存在
+          description: 链不存在
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -1843,7 +1799,7 @@ paths:
                 error:
                   $ref: '#/definitions/types.APIError'
               type: object
-      summary: 根据区块链ChainID获取链信息
+      summary: 根据ChainID获取链信息
       tags:
       - Chain
   /api/v1/chain/list:
@@ -1893,6 +1849,60 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
       summary: 获取支持的区块链列表
+      tags:
+      - Chain
+  /api/v1/chain/wallet-config/{chain_id}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定链ID的钱包插件配置数据，包括chainId、chainName、nativeCurrency、rpcUrls、blockExplorerUrls等信息，用于帮助用户在钱包插件中添加该链。
+      parameters:
+      - description: 链ID
+        example: 137
+        in: path
+        name: chain_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取钱包配置数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.WalletChainConfig'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 链不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 获取钱包插件添加链的配置数据
       tags:
       - Chain
   /api/v1/email-notifications:
