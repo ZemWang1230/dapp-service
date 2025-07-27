@@ -3,414 +3,504 @@ package migrations
 import (
 	"context"
 	"fmt"
+	"time"
 	"timelocker-backend/pkg/logger"
 
 	"gorm.io/gorm"
 )
 
-// InitTables 初始化数据库表和数据
+// Migration 表示一个数据库迁移版本
+type Migration struct {
+	ID          int64  `gorm:"primaryKey;autoIncrement"`
+	Version     string `gorm:"unique;size:50;not null"`
+	Description string `gorm:"size:200;not null"`
+	Applied     bool   `gorm:"not null;default:false"`
+	AppliedAt   *time.Time
+	CreatedAt   time.Time `gorm:"autoCreateTime"`
+}
+
+// TableName 设置表名
+func (Migration) TableName() string {
+	return "schema_migrations"
+}
+
+// MigrationHandler 迁移处理器
+type MigrationHandler struct {
+	db *gorm.DB
+}
+
+// NewMigrationHandler 创建迁移处理器
+func NewMigrationHandler(db *gorm.DB) *MigrationHandler {
+	return &MigrationHandler{db: db}
+}
+
+// InitTables 安全的数据库初始化 - 不会删除现有数据
 func InitTables(db *gorm.DB) error {
 	ctx := context.Background()
-	logger.Info("Starting database initialization...")
+	logger.Info("Starting safe database initialization...")
 
-	// 第一步：逆序删除表（按依赖关系）
-	if err := dropTables(db, ctx); err != nil {
-		logger.Error("Failed to drop tables: ", err)
-		return fmt.Errorf("failed to drop tables: %w", err)
+	handler := NewMigrationHandler(db)
+
+	// 1. 创建迁移记录表
+	if err := handler.ensureMigrationTable(ctx); err != nil {
+		logger.Error("Failed to create migration table", err)
+		return fmt.Errorf("failed to create migration table: %w", err)
 	}
 
-	// 第二步：创建表结构
-	if err := createTables(db, ctx); err != nil {
-		logger.Error("Failed to create tables: ", err)
-		return fmt.Errorf("failed to create tables: %w", err)
-	}
-
-	// 第三步：创建索引
-	if err := createIndexes(db, ctx); err != nil {
-		logger.Error("Failed to create indexes: ", err)
-		return fmt.Errorf("failed to create indexes: %w", err)
-	}
-
-	// 第四步：插入初始数据
-	if err := insertInitialData(db, ctx); err != nil {
-		logger.Error("Failed to insert initial data: ", err)
-		return fmt.Errorf("failed to insert initial data: %w", err)
+	// 2. 执行所有待执行的迁移
+	if err := handler.runMigrations(ctx); err != nil {
+		logger.Error("Failed to run migrations", err)
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	logger.Info("Database initialization completed successfully")
 	return nil
 }
 
-// dropTables 逆序删除表
-func dropTables(db *gorm.DB, ctx context.Context) error {
-	logger.Info("Dropping existing tables...")
-
-	tables := []string{
-		"emergency_notifications",
-		"email_send_logs",
-		"email_notifications",
-		"transactions",
-		"compound_timelocks",
-		"openzeppelin_timelocks",
-		"user_assets",
-		"abis",
-		"support_chains",
-		"users",
+// ensureMigrationTable 确保迁移记录表存在
+func (h *MigrationHandler) ensureMigrationTable(ctx context.Context) error {
+	if h.db.Migrator().HasTable(&Migration{}) {
+		logger.Info("Migration table already exists")
+		return nil
 	}
 
-	for _, table := range tables {
-		if err := db.WithContext(ctx).Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table)).Error; err != nil {
-			logger.Error("Failed to drop table", err, "table", table)
-			return fmt.Errorf("failed to drop table %s: %w", table, err)
+	logger.Info("Creating migration table...")
+	if err := h.db.WithContext(ctx).AutoMigrate(&Migration{}); err != nil {
+		return fmt.Errorf("failed to create migration table: %w", err)
+	}
+
+	logger.Info("Migration table created successfully")
+	return nil
+}
+
+// runMigrations 执行所有待执行的迁移
+func (h *MigrationHandler) runMigrations(ctx context.Context) error {
+	migrations := []migrationFunc{
+		{"v1.0.0", "Create initial tables", h.createInitialTables},
+		{"v1.0.1", "Create indexes", h.createIndexes},
+		{"v1.0.2", "Insert default chains data", h.insertSupportedChains},
+		{"v1.0.3", "Insert shared ABIs data", h.insertSharedABIs},
+	}
+
+	for _, migration := range migrations {
+		if err := h.runSingleMigration(ctx, migration); err != nil {
+			return fmt.Errorf("failed to run migration %s: %w", migration.version, err)
 		}
 	}
 
-	logger.Info("Dropped tables successfully")
 	return nil
 }
 
-// createTables 创建表结构
-func createTables(db *gorm.DB, ctx context.Context) error {
-	logger.Info("Creating database tables...")
+// migrationFunc 迁移函数类型
+type migrationFunc struct {
+	version     string
+	description string
+	fn          func(context.Context) error
+}
+
+// runSingleMigration 执行单个迁移
+func (h *MigrationHandler) runSingleMigration(ctx context.Context, migration migrationFunc) error {
+	// 检查迁移是否已执行
+	var existingMigration Migration
+	result := h.db.WithContext(ctx).Where("version = ?", migration.version).First(&existingMigration)
+
+	if result.Error == nil && existingMigration.Applied {
+		logger.Info("Migration already applied", "version", migration.version)
+		return nil
+	}
+
+	logger.Info("Running migration", "version", migration.version, "description", migration.description)
+
+	// 开始事务执行迁移
+	err := h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 执行迁移逻辑
+		if err := migration.fn(ctx); err != nil {
+			return err
+		}
+
+		// 记录迁移执行情况
+		now := time.Now()
+		migrationRecord := Migration{
+			Version:     migration.version,
+			Description: migration.description,
+			Applied:     true,
+			AppliedAt:   &now,
+		}
+
+		if result.Error != nil {
+			// 创建新记录
+			return tx.Create(&migrationRecord).Error
+		} else {
+			// 更新现有记录
+			return tx.Model(&existingMigration).Updates(map[string]interface{}{
+				"applied":    true,
+				"applied_at": &now,
+			}).Error
+		}
+	})
+
+	if err != nil {
+		logger.Error("Migration failed", err, "version", migration.version)
+		return err
+	}
+
+	logger.Info("Migration completed successfully", "version", migration.version)
+	return nil
+}
+
+// createInitialTables 创建初始表结构（v1.0.0）
+func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
+	logger.Info("Creating initial database tables...")
 
 	// 1. 用户表
-	createUsersTable := `
-	CREATE TABLE users (
-		id BIGSERIAL PRIMARY KEY,
-		wallet_address VARCHAR(42) NOT NULL UNIQUE,
-		chain_id INTEGER NOT NULL DEFAULT 1,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		last_login TIMESTAMP WITH TIME ZONE,
-		status INTEGER DEFAULT 1
-	)`
+	if !h.db.Migrator().HasTable("users") {
+		createUsersTable := `
+		CREATE TABLE users (
+			id BIGSERIAL PRIMARY KEY,
+			wallet_address VARCHAR(42) NOT NULL UNIQUE,
+			chain_id INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			last_login TIMESTAMP WITH TIME ZONE,
+			status INTEGER DEFAULT 1
+		)`
 
-	if err := db.WithContext(ctx).Exec(createUsersTable).Error; err != nil {
-		logger.Error("Failed to create users table: ", err)
-		return fmt.Errorf("failed to create users table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createUsersTable).Error; err != nil {
+			return fmt.Errorf("failed to create users table: %w", err)
+		}
+		logger.Info("Created table: users")
 	}
-	logger.Info("Created table: users")
 
-	// 2. 支持的区块链表（重构版）
-	createSupportChainsTable := `
-	CREATE TABLE support_chains (
-		id BIGSERIAL PRIMARY KEY,
-		chain_name VARCHAR(50) NOT NULL UNIQUE,
-		display_name VARCHAR(100) NOT NULL,
-		chain_id BIGINT NOT NULL,
-		native_currency_name VARCHAR(50) NOT NULL,
-		native_currency_symbol VARCHAR(10) NOT NULL,
-		native_currency_decimals INTEGER NOT NULL DEFAULT 18,
-		logo_url TEXT,
-		is_testnet BOOLEAN NOT NULL DEFAULT false,
-		is_active BOOLEAN NOT NULL DEFAULT true,
-		alchemy_rpc_template TEXT,
-		infura_rpc_template TEXT,
-		official_rpc_urls TEXT NOT NULL,
-		block_explorer_urls TEXT NOT NULL,
-		rpc_enabled BOOLEAN NOT NULL DEFAULT true,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-	)`
+	// 2. 支持的区块链表
+	if !h.db.Migrator().HasTable("support_chains") {
+		createSupportChainsTable := `
+		CREATE TABLE support_chains (
+			id BIGSERIAL PRIMARY KEY,
+			chain_name VARCHAR(50) NOT NULL UNIQUE,
+			display_name VARCHAR(100) NOT NULL,
+			chain_id BIGINT NOT NULL,
+			native_currency_name VARCHAR(50) NOT NULL,
+			native_currency_symbol VARCHAR(10) NOT NULL,
+			native_currency_decimals INTEGER NOT NULL DEFAULT 18,
+			logo_url TEXT,
+			is_testnet BOOLEAN NOT NULL DEFAULT false,
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			alchemy_rpc_template TEXT,
+			infura_rpc_template TEXT,
+			official_rpc_urls TEXT NOT NULL,
+			block_explorer_urls TEXT NOT NULL,
+			rpc_enabled BOOLEAN NOT NULL DEFAULT true,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`
 
-	if err := db.WithContext(ctx).Exec(createSupportChainsTable).Error; err != nil {
-		logger.Error("Failed to create support_chains table: ", err)
-		return fmt.Errorf("failed to create support_chains table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createSupportChainsTable).Error; err != nil {
+			return fmt.Errorf("failed to create support_chains table: %w", err)
+		}
+		logger.Info("Created table: support_chains")
 	}
-	logger.Info("Created table: support_chains")
 
 	// 3. 用户资产表
-	createUserAssetsTable := `
-	CREATE TABLE user_assets (
-		id BIGSERIAL PRIMARY KEY,
-		wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-		chain_name VARCHAR(50) NOT NULL,
-		contract_address VARCHAR(42) NOT NULL DEFAULT '',
-		token_symbol VARCHAR(20) NOT NULL,
-		token_name VARCHAR(100) NOT NULL,
-		token_decimals INTEGER NOT NULL DEFAULT 18,
-		balance VARCHAR(100) NOT NULL DEFAULT '0',
-		balance_wei VARCHAR(100) NOT NULL DEFAULT '0',
-		usd_value DECIMAL(20,8) DEFAULT 0,
-		token_price DECIMAL(20,8) DEFAULT 0,
-		price_change24h DECIMAL(10,4) DEFAULT 0,
-		is_native BOOLEAN NOT NULL DEFAULT false,
-		token_logo_url TEXT,
-		chain_logo_url TEXT,
-		last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		UNIQUE(wallet_address, chain_name, contract_address)
-	)`
+	if !h.db.Migrator().HasTable("user_assets") {
+		createUserAssetsTable := `
+		CREATE TABLE user_assets (
+			id BIGSERIAL PRIMARY KEY,
+			wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+			chain_name VARCHAR(50) NOT NULL,
+			contract_address VARCHAR(42) NOT NULL DEFAULT '',
+			token_symbol VARCHAR(20) NOT NULL,
+			token_name VARCHAR(100) NOT NULL,
+			token_decimals INTEGER NOT NULL DEFAULT 18,
+			balance VARCHAR(100) NOT NULL DEFAULT '0',
+			balance_wei VARCHAR(100) NOT NULL DEFAULT '0',
+			usd_value DECIMAL(20,8) DEFAULT 0,
+			token_price DECIMAL(20,8) DEFAULT 0,
+			price_change24h DECIMAL(10,4) DEFAULT 0,
+			is_native BOOLEAN NOT NULL DEFAULT false,
+			token_logo_url TEXT,
+			chain_logo_url TEXT,
+			last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(wallet_address, chain_name, contract_address)
+		)`
 
-	if err := db.WithContext(ctx).Exec(createUserAssetsTable).Error; err != nil {
-		logger.Error("Failed to create user_assets table: ", err)
-		return fmt.Errorf("failed to create user_assets table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createUserAssetsTable).Error; err != nil {
+			return fmt.Errorf("failed to create user_assets table: %w", err)
+		}
+		logger.Info("Created table: user_assets")
 	}
-	logger.Info("Created table: user_assets")
 
 	// 4. ABI库表
-	createABIsTable := `
-	CREATE TABLE abis (
-		id BIGSERIAL PRIMARY KEY,
-		name VARCHAR(200) NOT NULL,
-		abi_content TEXT NOT NULL,
-		owner VARCHAR(42) NOT NULL,
-		description VARCHAR(500) DEFAULT '',
-		is_shared BOOLEAN NOT NULL DEFAULT false,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		UNIQUE(name, owner)
-	)`
+	if !h.db.Migrator().HasTable("abis") {
+		createABIsTable := `
+		CREATE TABLE abis (
+			id BIGSERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			abi_content TEXT NOT NULL,
+			owner VARCHAR(42) NOT NULL,
+			description VARCHAR(500) DEFAULT '',
+			is_shared BOOLEAN NOT NULL DEFAULT false,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(name, owner)
+		)`
 
-	if err := db.WithContext(ctx).Exec(createABIsTable).Error; err != nil {
-		logger.Error("Failed to create abis table: ", err)
-		return fmt.Errorf("failed to create abis table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createABIsTable).Error; err != nil {
+			return fmt.Errorf("failed to create abis table: %w", err)
+		}
+		logger.Info("Created table: abis")
 	}
-	logger.Info("Created table: abis")
 
 	// 5. Compound标准Timelock合约表
-	createCompoundTimelocksTable := `
-	CREATE TABLE compound_timelocks (
-		id BIGSERIAL PRIMARY KEY,
-		creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-		chain_id INTEGER NOT NULL,
-		chain_name VARCHAR(50) NOT NULL,
-		contract_address VARCHAR(42) NOT NULL,
-		tx_hash VARCHAR(66),
-		min_delay BIGINT NOT NULL,
-		admin VARCHAR(42) NOT NULL,
-		pending_admin VARCHAR(42),
-		remark VARCHAR(500) DEFAULT '',
-		status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
-		is_imported BOOLEAN NOT NULL DEFAULT false,
-		emergency_mode BOOLEAN NOT NULL DEFAULT false,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		UNIQUE(chain_id, contract_address)
-	)`
+	if !h.db.Migrator().HasTable("compound_timelocks") {
+		createCompoundTimelocksTable := `
+		CREATE TABLE compound_timelocks (
+			id BIGSERIAL PRIMARY KEY,
+			creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+			chain_id INTEGER NOT NULL,
+			chain_name VARCHAR(50) NOT NULL,
+			contract_address VARCHAR(42) NOT NULL,
+			tx_hash VARCHAR(66),
+			min_delay BIGINT NOT NULL,
+			admin VARCHAR(42) NOT NULL,
+			pending_admin VARCHAR(42),
+			remark VARCHAR(500) DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
+			is_imported BOOLEAN NOT NULL DEFAULT false,
+			emergency_mode BOOLEAN NOT NULL DEFAULT false,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(chain_id, contract_address)
+		)`
 
-	if err := db.WithContext(ctx).Exec(createCompoundTimelocksTable).Error; err != nil {
-		logger.Error("Failed to create compound_timelocks table: ", err)
-		return fmt.Errorf("failed to create compound_timelocks table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createCompoundTimelocksTable).Error; err != nil {
+			return fmt.Errorf("failed to create compound_timelocks table: %w", err)
+		}
+		logger.Info("Created table: compound_timelocks")
 	}
-	logger.Info("Created table: compound_timelocks")
 
 	// 6. OpenZeppelin标准Timelock合约表
-	createOpenzeppelinTimelocksTable := `
-	CREATE TABLE openzeppelin_timelocks (
-		id BIGSERIAL PRIMARY KEY,
-		creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-		chain_id INTEGER NOT NULL,
-		chain_name VARCHAR(50) NOT NULL,
-		contract_address VARCHAR(42) NOT NULL,
-		tx_hash VARCHAR(66),
-		min_delay BIGINT NOT NULL,
-		proposers TEXT NOT NULL,
-		executors TEXT NOT NULL,
-		cancellers TEXT NOT NULL,
-		remark VARCHAR(500) DEFAULT '',
-		status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
-		is_imported BOOLEAN NOT NULL DEFAULT false,
-		emergency_mode BOOLEAN NOT NULL DEFAULT false,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		UNIQUE(chain_id, contract_address)
-	)`
+	if !h.db.Migrator().HasTable("openzeppelin_timelocks") {
+		createOpenzeppelinTimelocksTable := `
+		CREATE TABLE openzeppelin_timelocks (
+			id BIGSERIAL PRIMARY KEY,
+			creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+			chain_id INTEGER NOT NULL,
+			chain_name VARCHAR(50) NOT NULL,
+			contract_address VARCHAR(42) NOT NULL,
+			tx_hash VARCHAR(66),
+			min_delay BIGINT NOT NULL,
+			proposers TEXT NOT NULL,
+			executors TEXT NOT NULL,
+			cancellers TEXT NOT NULL,
+			remark VARCHAR(500) DEFAULT '',
+			status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
+			is_imported BOOLEAN NOT NULL DEFAULT false,
+			emergency_mode BOOLEAN NOT NULL DEFAULT false,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(chain_id, contract_address)
+		)`
 
-	if err := db.WithContext(ctx).Exec(createOpenzeppelinTimelocksTable).Error; err != nil {
-		logger.Error("Failed to create openzeppelin_timelocks table: ", err)
-		return fmt.Errorf("failed to create openzeppelin_timelocks table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createOpenzeppelinTimelocksTable).Error; err != nil {
+			return fmt.Errorf("failed to create openzeppelin_timelocks table: %w", err)
+		}
+		logger.Info("Created table: openzeppelin_timelocks")
 	}
-	logger.Info("Created table: openzeppelin_timelocks")
 
 	// 7. 交易记录表
-	createTransactionsTable := `
-	CREATE TABLE transactions (
-		id BIGSERIAL PRIMARY KEY,
-		creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-		chain_id INTEGER NOT NULL,
-		chain_name VARCHAR(50) NOT NULL,
-		timelock_address VARCHAR(42) NOT NULL,
-		timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
-		tx_hash VARCHAR(66) NOT NULL UNIQUE,
-		tx_data TEXT NOT NULL,
-		target VARCHAR(42) NOT NULL,
-		value VARCHAR(100) NOT NULL DEFAULT '0',
-		function_sig VARCHAR(200),
-		eta BIGINT NOT NULL,
-		queued_at TIMESTAMP WITH TIME ZONE,
-		executed_at TIMESTAMP WITH TIME ZONE,
-		canceled_at TIMESTAMP WITH TIME ZONE,
-		status VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'ready', 'executed', 'expired', 'canceled')),
-		description VARCHAR(500) DEFAULT '',
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-	)`
+	if !h.db.Migrator().HasTable("transactions") {
+		createTransactionsTable := `
+		CREATE TABLE transactions (
+			id BIGSERIAL PRIMARY KEY,
+			creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+			chain_id INTEGER NOT NULL,
+			chain_name VARCHAR(50) NOT NULL,
+			timelock_address VARCHAR(42) NOT NULL,
+			timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
+			tx_hash VARCHAR(66) NOT NULL UNIQUE,
+			tx_data TEXT NOT NULL,
+			target VARCHAR(42) NOT NULL,
+			value VARCHAR(100) NOT NULL DEFAULT '0',
+			function_sig VARCHAR(200),
+			eta BIGINT NOT NULL,
+			queued_at TIMESTAMP WITH TIME ZONE,
+			executed_at TIMESTAMP WITH TIME ZONE,
+			canceled_at TIMESTAMP WITH TIME ZONE,
+			status VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'ready', 'executed', 'expired', 'canceled')),
+			description VARCHAR(500) DEFAULT '',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`
 
-	if err := db.WithContext(ctx).Exec(createTransactionsTable).Error; err != nil {
-		logger.Error("Failed to create transactions table: ", err)
-		return fmt.Errorf("failed to create transactions table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createTransactionsTable).Error; err != nil {
+			return fmt.Errorf("failed to create transactions table: %w", err)
+		}
+		logger.Info("Created table: transactions")
 	}
-	logger.Info("Created table: transactions")
 
 	// 8. 邮件通知配置表
-	createEmailNotificationsTable := `
-	CREATE TABLE email_notifications (
-		id BIGSERIAL PRIMARY KEY,
-		wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-		email VARCHAR(255) NOT NULL,
-		email_remark VARCHAR(200) DEFAULT '',
-		timelock_contracts TEXT NOT NULL DEFAULT '[]',
-		is_verified BOOLEAN NOT NULL DEFAULT false,
-		verification_code VARCHAR(6),
-		verification_expires_at TIMESTAMP WITH TIME ZONE,
-		is_active BOOLEAN NOT NULL DEFAULT true,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		UNIQUE(wallet_address, email)
-	)`
+	if !h.db.Migrator().HasTable("email_notifications") {
+		createEmailNotificationsTable := `
+		CREATE TABLE email_notifications (
+			id BIGSERIAL PRIMARY KEY,
+			wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
+			email VARCHAR(255) NOT NULL,
+			email_remark VARCHAR(200) DEFAULT '',
+			timelock_contracts TEXT NOT NULL DEFAULT '[]',
+			is_verified BOOLEAN NOT NULL DEFAULT false,
+			verification_code VARCHAR(6),
+			verification_expires_at TIMESTAMP WITH TIME ZONE,
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(wallet_address, email)
+		)`
 
-	if err := db.WithContext(ctx).Exec(createEmailNotificationsTable).Error; err != nil {
-		logger.Error("Failed to create email_notifications table: ", err)
-		return fmt.Errorf("failed to create email_notifications table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createEmailNotificationsTable).Error; err != nil {
+			return fmt.Errorf("failed to create email_notifications table: %w", err)
+		}
+		logger.Info("Created table: email_notifications")
 	}
-	logger.Info("Created table: email_notifications")
 
 	// 9. 邮件发送记录表
-	createEmailSendLogsTable := `
-	CREATE TABLE email_send_logs (
-		id BIGSERIAL PRIMARY KEY,
-		email_notification_id BIGINT NOT NULL REFERENCES email_notifications(id) ON DELETE CASCADE,
-		email VARCHAR(255) NOT NULL,
-		timelock_address VARCHAR(42) NOT NULL,
-		transaction_hash VARCHAR(66),
-		event_type VARCHAR(50) NOT NULL,
-		subject VARCHAR(500) NOT NULL,
-		content TEXT NOT NULL,
-		is_emergency BOOLEAN NOT NULL DEFAULT false,
-		emergency_reply_token VARCHAR(64),
-		is_replied BOOLEAN NOT NULL DEFAULT false,
-		replied_at TIMESTAMP WITH TIME ZONE,
-		send_status VARCHAR(20) NOT NULL DEFAULT 'pending',
-		send_attempts INTEGER NOT NULL DEFAULT 0,
-		error_message TEXT,
-		sent_at TIMESTAMP WITH TIME ZONE,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-	)`
+	if !h.db.Migrator().HasTable("email_send_logs") {
+		createEmailSendLogsTable := `
+		CREATE TABLE email_send_logs (
+			id BIGSERIAL PRIMARY KEY,
+			email_notification_id BIGINT NOT NULL REFERENCES email_notifications(id) ON DELETE CASCADE,
+			email VARCHAR(255) NOT NULL,
+			timelock_address VARCHAR(42) NOT NULL,
+			transaction_hash VARCHAR(66),
+			event_type VARCHAR(50) NOT NULL,
+			subject VARCHAR(500) NOT NULL,
+			content TEXT NOT NULL,
+			is_emergency BOOLEAN NOT NULL DEFAULT false,
+			emergency_reply_token VARCHAR(64),
+			is_replied BOOLEAN NOT NULL DEFAULT false,
+			replied_at TIMESTAMP WITH TIME ZONE,
+			send_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			send_attempts INTEGER NOT NULL DEFAULT 0,
+			error_message TEXT,
+			sent_at TIMESTAMP WITH TIME ZONE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`
 
-	if err := db.WithContext(ctx).Exec(createEmailSendLogsTable).Error; err != nil {
-		logger.Error("Failed to create email_send_logs table: ", err)
-		return fmt.Errorf("failed to create email_send_logs table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createEmailSendLogsTable).Error; err != nil {
+			return fmt.Errorf("failed to create email_send_logs table: %w", err)
+		}
+		logger.Info("Created table: email_send_logs")
 	}
-	logger.Info("Created table: email_send_logs")
 
 	// 10. 应急通知追踪表
-	createEmergencyNotificationsTable := `
-	CREATE TABLE emergency_notifications (
-		id BIGSERIAL PRIMARY KEY,
-		timelock_address VARCHAR(42) NOT NULL,
-		transaction_hash VARCHAR(66) NOT NULL,
-		event_type VARCHAR(50) NOT NULL,
-		replied_emails INTEGER NOT NULL DEFAULT 0,
-		is_completed BOOLEAN NOT NULL DEFAULT false,
-		next_send_at TIMESTAMP WITH TIME ZONE,
-		send_count INTEGER NOT NULL DEFAULT 1,
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-		UNIQUE(timelock_address, transaction_hash, event_type)
-	)`
+	if !h.db.Migrator().HasTable("emergency_notifications") {
+		createEmergencyNotificationsTable := `
+		CREATE TABLE emergency_notifications (
+			id BIGSERIAL PRIMARY KEY,
+			timelock_address VARCHAR(42) NOT NULL,
+			transaction_hash VARCHAR(66) NOT NULL,
+			event_type VARCHAR(50) NOT NULL,
+			replied_emails INTEGER NOT NULL DEFAULT 0,
+			is_completed BOOLEAN NOT NULL DEFAULT false,
+			next_send_at TIMESTAMP WITH TIME ZONE,
+			send_count INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(timelock_address, transaction_hash, event_type)
+		)`
 
-	if err := db.WithContext(ctx).Exec(createEmergencyNotificationsTable).Error; err != nil {
-		logger.Error("Failed to create emergency_notifications table: ", err)
-		return fmt.Errorf("failed to create emergency_notifications table: %w", err)
+		if err := h.db.WithContext(ctx).Exec(createEmergencyNotificationsTable).Error; err != nil {
+			return fmt.Errorf("failed to create emergency_notifications table: %w", err)
+		}
+		logger.Info("Created table: emergency_notifications")
 	}
-	logger.Info("Created table: emergency_notifications")
 
+	logger.Info("All tables created successfully")
 	return nil
 }
 
-// createIndexes 创建索引
-func createIndexes(db *gorm.DB, ctx context.Context) error {
+// createIndexes 创建索引（v1.0.1）
+func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 	logger.Info("Creating database indexes...")
 
 	indexes := []string{
 		// 用户表索引
-		"CREATE INDEX idx_users_wallet_address ON users(wallet_address)",
-		"CREATE INDEX idx_users_chain_id ON users(chain_id)",
+		"CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address)",
+		"CREATE INDEX IF NOT EXISTS idx_users_chain_id ON users(chain_id)",
 
 		// 支持链表索引
-		"CREATE INDEX idx_support_chains_chain_name ON support_chains(chain_name)",
-		"CREATE INDEX idx_support_chains_chain_id ON support_chains(chain_id)",
-		"CREATE INDEX idx_support_chains_is_active ON support_chains(is_active)",
-		"CREATE INDEX idx_support_chains_is_testnet ON support_chains(is_testnet)",
+		"CREATE INDEX IF NOT EXISTS idx_support_chains_chain_name ON support_chains(chain_name)",
+		"CREATE INDEX IF NOT EXISTS idx_support_chains_chain_id ON support_chains(chain_id)",
+		"CREATE INDEX IF NOT EXISTS idx_support_chains_is_active ON support_chains(is_active)",
+		"CREATE INDEX IF NOT EXISTS idx_support_chains_is_testnet ON support_chains(is_testnet)",
 
 		// 用户资产表索引
-		"CREATE INDEX idx_user_assets_wallet_address ON user_assets(wallet_address)",
-		"CREATE INDEX idx_user_assets_chain_name ON user_assets(chain_name)",
-		"CREATE INDEX idx_user_assets_usd_value ON user_assets(usd_value DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_user_assets_wallet_address ON user_assets(wallet_address)",
+		"CREATE INDEX IF NOT EXISTS idx_user_assets_chain_name ON user_assets(chain_name)",
+		"CREATE INDEX IF NOT EXISTS idx_user_assets_usd_value ON user_assets(usd_value DESC)",
 
 		// ABI表索引
-		"CREATE INDEX idx_abis_owner ON abis(owner)",
-		"CREATE INDEX idx_abis_name ON abis(name)",
-		"CREATE INDEX idx_abis_is_shared ON abis(is_shared)",
-		"CREATE INDEX idx_abis_created_at ON abis(created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_abis_owner ON abis(owner)",
+		"CREATE INDEX IF NOT EXISTS idx_abis_name ON abis(name)",
+		"CREATE INDEX IF NOT EXISTS idx_abis_is_shared ON abis(is_shared)",
+		"CREATE INDEX IF NOT EXISTS idx_abis_created_at ON abis(created_at DESC)",
 
 		// Compound timelock索引
-		"CREATE INDEX idx_compound_timelocks_creator_address ON compound_timelocks(creator_address)",
-		"CREATE INDEX idx_compound_timelocks_chain_id ON compound_timelocks(chain_id)",
-		"CREATE INDEX idx_compound_timelocks_chain_name ON compound_timelocks(chain_name)",
-		"CREATE INDEX idx_compound_timelocks_contract_address ON compound_timelocks(contract_address)",
-		"CREATE INDEX idx_compound_timelocks_admin ON compound_timelocks(admin)",
-		"CREATE INDEX idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin)",
-		"CREATE INDEX idx_compound_timelocks_status ON compound_timelocks(status)",
-		"CREATE INDEX idx_compound_timelocks_emergency_mode ON compound_timelocks(emergency_mode)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_creator_address ON compound_timelocks(creator_address)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_chain_id ON compound_timelocks(chain_id)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_chain_name ON compound_timelocks(chain_name)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_contract_address ON compound_timelocks(contract_address)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_admin ON compound_timelocks(admin)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_status ON compound_timelocks(status)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelocks_emergency_mode ON compound_timelocks(emergency_mode)",
 
 		// OpenZeppelin timelock索引
-		"CREATE INDEX idx_openzeppelin_timelocks_creator_address ON openzeppelin_timelocks(creator_address)",
-		"CREATE INDEX idx_openzeppelin_timelocks_chain_id ON openzeppelin_timelocks(chain_id)",
-		"CREATE INDEX idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(chain_name)",
-		"CREATE INDEX idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address)",
-		"CREATE INDEX idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status)",
-		"CREATE INDEX idx_openzeppelin_timelocks_emergency_mode ON openzeppelin_timelocks(emergency_mode)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_creator_address ON openzeppelin_timelocks(creator_address)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_chain_id ON openzeppelin_timelocks(chain_id)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(chain_name)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_emergency_mode ON openzeppelin_timelocks(emergency_mode)",
 
 		// 交易记录表索引
-		"CREATE INDEX idx_transactions_creator_address ON transactions(creator_address)",
-		"CREATE INDEX idx_transactions_chain_id ON transactions(chain_id)",
-		"CREATE INDEX idx_transactions_timelock_address ON transactions(timelock_address)",
-		"CREATE INDEX idx_transactions_timelock_standard ON transactions(timelock_standard)",
-		"CREATE INDEX idx_transactions_tx_hash ON transactions(tx_hash)",
-		"CREATE INDEX idx_transactions_status ON transactions(status)",
-		"CREATE INDEX idx_transactions_eta ON transactions(eta)",
-		"CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC)",
-		"CREATE INDEX idx_transactions_updated_at ON transactions(updated_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_creator_address ON transactions(creator_address)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_chain_id ON transactions(chain_id)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_timelock_address ON transactions(timelock_address)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_timelock_standard ON transactions(timelock_standard)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_tx_hash ON transactions(tx_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_eta ON transactions(eta)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_transactions_updated_at ON transactions(updated_at DESC)",
 
 		// 邮件通知配置表索引
-		"CREATE INDEX idx_email_notifications_wallet_address ON email_notifications(wallet_address)",
-		"CREATE INDEX idx_email_notifications_email ON email_notifications(email)",
-		"CREATE INDEX idx_email_notifications_is_verified ON email_notifications(is_verified)",
-		"CREATE INDEX idx_email_notifications_is_active ON email_notifications(is_active)",
+		"CREATE INDEX IF NOT EXISTS idx_email_notifications_wallet_address ON email_notifications(wallet_address)",
+		"CREATE INDEX IF NOT EXISTS idx_email_notifications_email ON email_notifications(email)",
+		"CREATE INDEX IF NOT EXISTS idx_email_notifications_is_verified ON email_notifications(is_verified)",
+		"CREATE INDEX IF NOT EXISTS idx_email_notifications_is_active ON email_notifications(is_active)",
 
 		// 邮件发送记录表索引
-		"CREATE INDEX idx_email_send_logs_email_notification_id ON email_send_logs(email_notification_id)",
-		"CREATE INDEX idx_email_send_logs_timelock_address ON email_send_logs(timelock_address)",
-		"CREATE INDEX idx_email_send_logs_transaction_hash ON email_send_logs(transaction_hash)",
-		"CREATE INDEX idx_email_send_logs_event_type ON email_send_logs(event_type)",
-		"CREATE INDEX idx_email_send_logs_is_emergency ON email_send_logs(is_emergency)",
-		"CREATE INDEX idx_email_send_logs_is_replied ON email_send_logs(is_replied)",
-		"CREATE INDEX idx_email_send_logs_send_status ON email_send_logs(send_status)",
-		"CREATE INDEX idx_email_send_logs_sent_at ON email_send_logs(sent_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_email_notification_id ON email_send_logs(email_notification_id)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_timelock_address ON email_send_logs(timelock_address)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_transaction_hash ON email_send_logs(transaction_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_event_type ON email_send_logs(event_type)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_is_emergency ON email_send_logs(is_emergency)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_is_replied ON email_send_logs(is_replied)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_send_status ON email_send_logs(send_status)",
+		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_sent_at ON email_send_logs(sent_at DESC)",
 
 		// 应急通知追踪表索引
-		"CREATE INDEX idx_emergency_notifications_timelock_address ON emergency_notifications(timelock_address)",
-		"CREATE INDEX idx_emergency_notifications_transaction_hash ON emergency_notifications(transaction_hash)",
-		"CREATE INDEX idx_emergency_notifications_is_completed ON emergency_notifications(is_completed)",
-		"CREATE INDEX idx_emergency_notifications_next_send_at ON emergency_notifications(next_send_at)",
+		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_timelock_address ON emergency_notifications(timelock_address)",
+		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_transaction_hash ON emergency_notifications(transaction_hash)",
+		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_is_completed ON emergency_notifications(is_completed)",
+		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_next_send_at ON emergency_notifications(next_send_at)",
 	}
 
 	for _, indexSQL := range indexes {
-		if err := db.WithContext(ctx).Exec(indexSQL).Error; err != nil {
+		if err := h.db.WithContext(ctx).Exec(indexSQL).Error; err != nil {
 			logger.Error("Failed to create index", err, "sql", indexSQL)
 			return fmt.Errorf("failed to create index: %w", err)
 		}
@@ -420,28 +510,17 @@ func createIndexes(db *gorm.DB, ctx context.Context) error {
 	return nil
 }
 
-// insertInitialData 插入初始数据
-func insertInitialData(db *gorm.DB, ctx context.Context) error {
-	logger.Info("Inserting initial data...")
-
-	// 插入支持的链数据
-	if err := insertSupportedChains(db, ctx); err != nil {
-		logger.Error("Failed to insert supported chains: ", err)
-		return fmt.Errorf("failed to insert supported chains: %w", err)
-	}
-
-	// 插入共享ABI数据
-	if err := insertSharedABIs(db, ctx); err != nil {
-		logger.Error("Failed to insert shared ABIs: ", err)
-		return fmt.Errorf("failed to insert shared ABIs: %w", err)
-	}
-
-	return nil
-}
-
-// insertSupportedChains 插入支持的链数据
-func insertSupportedChains(db *gorm.DB, ctx context.Context) error {
+// insertSupportedChains 插入支持的链数据（v1.0.2）
+func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 	logger.Info("Inserting supported chains data...")
+
+	// 检查是否已有数据
+	var count int64
+	h.db.WithContext(ctx).Table("support_chains").Count(&count)
+	if count > 0 {
+		logger.Info("Supported chains data already exists, skipping insertion")
+		return nil
+	}
 
 	// 主网数据
 	mainnets := []map[string]interface{}{
@@ -597,7 +676,7 @@ func insertSupportedChains(db *gorm.DB, ctx context.Context) error {
 
 	// 插入主网数据
 	for _, chain := range mainnets {
-		if err := db.WithContext(ctx).Table("support_chains").Create(chain).Error; err != nil {
+		if err := h.db.WithContext(ctx).Table("support_chains").Create(chain).Error; err != nil {
 			logger.Error("Failed to insert mainnet chain", err, "chain_name", chain["chain_name"])
 			return fmt.Errorf("failed to insert mainnet chain %s: %w", chain["chain_name"], err)
 		}
@@ -605,7 +684,7 @@ func insertSupportedChains(db *gorm.DB, ctx context.Context) error {
 
 	// 插入测试网数据
 	for _, chain := range testnets {
-		if err := db.WithContext(ctx).Table("support_chains").Create(chain).Error; err != nil {
+		if err := h.db.WithContext(ctx).Table("support_chains").Create(chain).Error; err != nil {
 			logger.Error("Failed to insert testnet chain", err, "chain_name", chain["chain_name"])
 			return fmt.Errorf("failed to insert testnet chain %s: %w", chain["chain_name"], err)
 		}
@@ -615,9 +694,17 @@ func insertSupportedChains(db *gorm.DB, ctx context.Context) error {
 	return nil
 }
 
-// insertSharedABIs 插入共享ABI数据
-func insertSharedABIs(db *gorm.DB, ctx context.Context) error {
+// insertSharedABIs 插入共享ABI数据（v1.0.3）
+func (h *MigrationHandler) insertSharedABIs(ctx context.Context) error {
 	logger.Info("Inserting shared ABIs data...")
+
+	// 检查是否已有数据
+	var count int64
+	h.db.WithContext(ctx).Table("abis").Where("is_shared = ?", true).Count(&count)
+	if count > 0 {
+		logger.Info("Shared ABIs data already exists, skipping insertion")
+		return nil
+	}
 
 	sharedABIs := []map[string]interface{}{
 		{
@@ -651,12 +738,51 @@ func insertSharedABIs(db *gorm.DB, ctx context.Context) error {
 	}
 
 	for _, abi := range sharedABIs {
-		if err := db.WithContext(ctx).Table("abis").Create(abi).Error; err != nil {
+		if err := h.db.WithContext(ctx).Table("abis").Create(abi).Error; err != nil {
 			logger.Error("Failed to insert shared ABI", err, "name", abi["name"])
 			return fmt.Errorf("failed to insert shared ABI %s: %w", abi["name"], err)
 		}
 	}
 
 	logger.Info("Inserted all shared ABIs successfully")
+	return nil
+}
+
+// GetMigrationStatus 获取迁移状态（用于监控和调试）
+func GetMigrationStatus(db *gorm.DB) ([]Migration, error) {
+	var migrations []Migration
+	err := db.Order("created_at ASC").Find(&migrations).Error
+	return migrations, err
+}
+
+// ResetDangerous 危险的重置函数 - 仅用于开发环境
+// 此函数会删除所有数据，请谨慎使用
+func ResetDangerous(db *gorm.DB) error {
+	ctx := context.Background()
+	logger.Warn("DANGEROUS: Starting database reset - ALL DATA WILL BE LOST!")
+
+	// 删除所有表（逆序删除以避免外键约束问题）
+	tables := []string{
+		"emergency_notifications",
+		"email_send_logs",
+		"email_notifications",
+		"transactions",
+		"compound_timelocks",
+		"openzeppelin_timelocks",
+		"user_assets",
+		"abis",
+		"support_chains",
+		"users",
+		"schema_migrations",
+	}
+
+	for _, table := range tables {
+		if err := db.WithContext(ctx).Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table)).Error; err != nil {
+			logger.Error("Failed to drop table", err, "table", table)
+			return fmt.Errorf("failed to drop table %s: %w", table, err)
+		}
+	}
+
+	logger.Warn("Database reset completed - all tables dropped")
 	return nil
 }
