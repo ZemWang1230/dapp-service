@@ -217,6 +217,33 @@ definitions:
     - abi_content
     - name
     type: object
+  types.CreateSponsorRequest:
+    properties:
+      description:
+        maxLength: 1000
+        type: string
+      link:
+        type: string
+      logo_url:
+        type: string
+      name:
+        maxLength: 200
+        type: string
+      sort_order:
+        type: integer
+      type:
+        allOf:
+        - $ref: '#/definitions/types.SponsorType'
+        enum:
+        - sponsor
+        - partner
+    required:
+    - description
+    - link
+    - logo_url
+    - name
+    - type
+    type: object
   types.CreateTimeLockRequest:
     properties:
       admin:
@@ -389,6 +416,30 @@ definitions:
     required:
     - execute_tx_hash
     - id
+    type: object
+  types.GetPublicSponsorsResponse:
+    properties:
+      partners:
+        items:
+          $ref: '#/definitions/types.SponsorInfo'
+        type: array
+      sponsors:
+        items:
+          $ref: '#/definitions/types.SponsorInfo'
+        type: array
+    type: object
+  types.GetSponsorsResponse:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+      sponsors:
+        items:
+          $ref: '#/definitions/types.Sponsor'
+        type: array
+      total:
+        type: integer
     type: object
   types.GetSupportChainsResponse:
     properties:
@@ -607,6 +658,65 @@ definitions:
     - id
     - new_pending_admin
     type: object
+  types.Sponsor:
+    properties:
+      created_at:
+        type: string
+      description:
+        description: 英文介绍
+        type: string
+      id:
+        type: integer
+      is_active:
+        description: 是否激活
+        type: boolean
+      link:
+        description: 链接
+        type: string
+      logo_url:
+        description: Logo URL
+        type: string
+      name:
+        description: 名称
+        type: string
+      sort_order:
+        description: 排序权重，数值越大越靠前
+        type: integer
+      type:
+        allOf:
+        - $ref: '#/definitions/types.SponsorType'
+        description: 类型：sponsor/partner
+      updated_at:
+        type: string
+    type: object
+  types.SponsorInfo:
+    properties:
+      description:
+        type: string
+      id:
+        type: integer
+      link:
+        type: string
+      logo_url:
+        type: string
+      name:
+        type: string
+      sort_order:
+        type: integer
+      type:
+        $ref: '#/definitions/types.SponsorType'
+    type: object
+  types.SponsorType:
+    enum:
+    - partner
+    - sponsor
+    type: string
+    x-enum-comments:
+      SponsorTypePartner: 生态伙伴
+      SponsorTypeSponsor: 赞助方
+    x-enum-varnames:
+    - SponsorTypePartner
+    - SponsorTypeSponsor
   types.SupportChain:
     properties:
       alchemy_rpc_template:
@@ -933,6 +1043,29 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  types.UpdateSponsorRequest:
+    properties:
+      description:
+        maxLength: 1000
+        type: string
+      is_active:
+        type: boolean
+      link:
+        type: string
+      logo_url:
+        type: string
+      name:
+        maxLength: 200
+        type: string
+      sort_order:
+        type: integer
+      type:
+        allOf:
+        - $ref: '#/definitions/types.SponsorType'
+        enum:
+        - sponsor
+        - partner
     type: object
   types.UpdateTimeLockRequest:
     properties:
@@ -1448,6 +1581,328 @@ paths:
       summary: 验证ABI格式
       tags:
       - ABI
+  /api/v1/admin/sponsors:
+    get:
+      consumes:
+      - application/json
+      description: 获取赞助方列表，支持分页和过滤。需要管理员权限。
+      parameters:
+      - description: 过滤类型
+        enum:
+        - sponsor
+        - partner
+        in: query
+        name: type
+        type: string
+      - description: 过滤激活状态
+        in: query
+        name: is_active
+        type: boolean
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: 每页大小
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取赞助方列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetSponsorsResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 获取赞助方列表失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取赞助方列表（管理用）
+      tags:
+      - Sponsors
+    post:
+      consumes:
+      - application/json
+      description: 创建新的赞助方或生态伙伴。需要管理员权限。
+      parameters:
+      - description: 创建赞助方请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.CreateSponsorRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 成功创建赞助方
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.Sponsor'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 创建赞助方失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 创建赞助方
+      tags:
+      - Sponsors
+  /api/v1/admin/sponsors/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定ID的赞助方（软删除，设置为不激活）。需要管理员权限。
+      parameters:
+      - description: 赞助方ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功删除赞助方
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 赞助方不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 删除赞助方失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 删除赞助方
+      tags:
+      - Sponsors
+    get:
+      consumes:
+      - application/json
+      description: 获取指定ID的赞助方详细信息。需要管理员权限。
+      parameters:
+      - description: 赞助方ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取赞助方信息
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.Sponsor'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 赞助方不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 获取赞助方失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 根据ID获取赞助方
+      tags:
+      - Sponsors
+    put:
+      consumes:
+      - application/json
+      description: 更新指定ID的赞助方信息。需要管理员权限。
+      parameters:
+      - description: 赞助方ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 更新赞助方请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.UpdateSponsorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功更新赞助方
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.Sponsor'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "404":
+          description: 赞助方不存在
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 更新赞助方失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 更新赞助方
+      tags:
+      - Sponsors
   /api/v1/assets:
     get:
       consumes:
@@ -2461,6 +2916,35 @@ paths:
       summary: 验证邮箱
       tags:
       - Email Notifications
+  /api/v1/sponsors/public:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有激活的赞助方和生态伙伴信息，用于在前端展示。返回的数据按照排序权重和创建时间排序。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取赞助方和生态伙伴列表
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetPublicSponsorsResponse'
+              type: object
+        "500":
+          description: 获取赞助方列表失败
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 获取公开的赞助方和生态伙伴列表
+      tags:
+      - Sponsors
   /api/v1/timelock/{standard}/{id}:
     delete:
       consumes:

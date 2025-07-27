@@ -80,6 +80,7 @@ func (h *MigrationHandler) runMigrations(ctx context.Context) error {
 		{"v1.0.1", "Create indexes", h.createIndexes},
 		{"v1.0.2", "Insert default chains data", h.insertSupportedChains},
 		{"v1.0.3", "Insert shared ABIs data", h.insertSharedABIs},
+		{"v1.0.4", "Insert default sponsors data", h.insertDefaultSponsors},
 	}
 
 	for _, migration := range migrations {
@@ -417,6 +418,28 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: emergency_notifications")
 	}
 
+	// 11. 赞助方和生态伙伴表
+	if !h.db.Migrator().HasTable("sponsors") {
+		createSponsorsTable := `
+		CREATE TABLE sponsors (
+			id BIGSERIAL PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			logo_url TEXT NOT NULL,
+			link TEXT NOT NULL,
+			description TEXT NOT NULL,
+			type VARCHAR(20) NOT NULL CHECK (type IN ('sponsor', 'partner')),
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`
+
+		if err := h.db.WithContext(ctx).Exec(createSponsorsTable).Error; err != nil {
+			return fmt.Errorf("failed to create sponsors table: %w", err)
+		}
+		logger.Info("Created table: sponsors")
+	}
+
 	logger.Info("All tables created successfully")
 	return nil
 }
@@ -497,6 +520,12 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_transaction_hash ON emergency_notifications(transaction_hash)",
 		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_is_completed ON emergency_notifications(is_completed)",
 		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_next_send_at ON emergency_notifications(next_send_at)",
+
+		// 赞助方表索引
+		"CREATE INDEX IF NOT EXISTS idx_sponsors_type ON sponsors(type)",
+		"CREATE INDEX IF NOT EXISTS idx_sponsors_is_active ON sponsors(is_active)",
+		"CREATE INDEX IF NOT EXISTS idx_sponsors_sort_order ON sponsors(sort_order DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_sponsors_created_at ON sponsors(created_at DESC)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -771,6 +800,7 @@ func ResetDangerous(db *gorm.DB) error {
 		"openzeppelin_timelocks",
 		"user_assets",
 		"abis",
+		"sponsors",
 		"support_chains",
 		"users",
 		"schema_migrations",
@@ -784,5 +814,126 @@ func ResetDangerous(db *gorm.DB) error {
 	}
 
 	logger.Warn("Database reset completed - all tables dropped")
+	return nil
+}
+
+// insertDefaultSponsors 插入默认赞助方数据（v1.0.4）
+func (h *MigrationHandler) insertDefaultSponsors(ctx context.Context) error {
+	logger.Info("Inserting default sponsors data...")
+
+	// 检查是否已有数据
+	var count int64
+	h.db.WithContext(ctx).Table("sponsors").Count(&count)
+	if count > 0 {
+		logger.Info("Sponsors data already exists, skipping insertion")
+		return nil
+	}
+
+	// 赞助方数据
+	sponsors := []map[string]interface{}{
+		{
+			"name":        "AAVE",
+			"logo_url":    "https://cryptologos.cc/logos/aave-aave-logo.png",
+			"link":        "https://aave.com",
+			"description": "Decentralized lending and borrowing protocol.",
+			"type":        "sponsor",
+			"sort_order":  100,
+			"is_active":   true,
+		},
+		{
+			"name":        "Lido",
+			"logo_url":    "https://cryptologos.cc/logos/lido-dao-ldo-logo.png",
+			"link":        "https://lido.fi",
+			"description": "Liquid staking solution for Ethereum.",
+			"type":        "sponsor",
+			"sort_order":  90,
+			"is_active":   true,
+		},
+		{
+			"name":        "EigenLayer",
+			"logo_url":    "https://avatars.githubusercontent.com/u/109748708?s=200&v=4",
+			"link":        "https://www.eigenlayer.xyz",
+			"description": "Restaking protocol for Ethereum.",
+			"type":        "sponsor",
+			"sort_order":  80,
+			"is_active":   true,
+		},
+	}
+
+	// 生态伙伴数据
+	partners := []map[string]interface{}{
+		{
+			"name":        "Ethena",
+			"logo_url":    "https://pbs.twimg.com/profile_images/1640705336799555586/NneTmvXi_400x400.jpg",
+			"link":        "https://ethena.fi",
+			"description": "Synthetic dollar protocol.",
+			"type":        "partner",
+			"sort_order":  100,
+			"is_active":   true,
+		},
+		{
+			"name":        "Uniswap",
+			"logo_url":    "https://cryptologos.cc/logos/uniswap-uni-logo.png",
+			"link":        "https://uniswap.org",
+			"description": "Decentralized exchange protocol.",
+			"type":        "partner",
+			"sort_order":  90,
+			"is_active":   true,
+		},
+		{
+			"name":        "MakerDAO",
+			"logo_url":    "https://cryptologos.cc/logos/maker-mkr-logo.png",
+			"link":        "https://makerdao.com",
+			"description": "Decentralized autonomous organization behind the DAI stablecoin.",
+			"type":        "partner",
+			"sort_order":  80,
+			"is_active":   true,
+		},
+		{
+			"name":        "Morpho",
+			"logo_url":    "https://pbs.twimg.com/profile_images/1628728924651220993/Zg5uXQP9_400x400.jpg",
+			"link":        "https://morpho.org",
+			"description": "Optimized lending and borrowing protocol.",
+			"type":        "partner",
+			"sort_order":  70,
+			"is_active":   true,
+		},
+		{
+			"name":        "Pendle",
+			"logo_url":    "https://pbs.twimg.com/profile_images/1605227735799472129/JB8JbPOP_400x400.jpg",
+			"link":        "https://pendle.finance",
+			"description": "Yield-trading protocol.",
+			"type":        "partner",
+			"sort_order":  60,
+			"is_active":   true,
+		},
+		{
+			"name":        "Compound",
+			"logo_url":    "https://cryptologos.cc/logos/compound-comp-logo.png",
+			"link":        "https://compound.finance",
+			"description": "Decentralized lending protocol.",
+			"type":        "partner",
+			"sort_order":  50,
+			"is_active":   true,
+		},
+	}
+
+	// 插入赞助方数据
+	for _, sponsor := range sponsors {
+		if err := h.db.WithContext(ctx).Table("sponsors").Create(sponsor).Error; err != nil {
+			logger.Error("Failed to insert sponsor", err, "name", sponsor["name"])
+			return fmt.Errorf("failed to insert sponsor %s: %w", sponsor["name"], err)
+		}
+	}
+
+	// 插入生态伙伴数据
+	for _, partner := range partners {
+		if err := h.db.WithContext(ctx).Table("sponsors").Create(partner).Error; err != nil {
+			logger.Error("Failed to insert partner", err, "name", partner["name"])
+			return fmt.Errorf("failed to insert partner %s: %w", partner["name"], err)
+		}
+	}
+
+	logger.Info("Inserted all sponsors and partners successfully")
 	return nil
 }

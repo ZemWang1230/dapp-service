@@ -14,6 +14,7 @@ import (
 	authHandler "timelocker-backend/internal/api/auth"
 	chainHandler "timelocker-backend/internal/api/chain"
 	emailNotificationHandler "timelocker-backend/internal/api/email_notification"
+	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 	transactionHandler "timelocker-backend/internal/api/transaction"
 	"timelocker-backend/internal/config"
@@ -21,6 +22,7 @@ import (
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	emailNotificationRepo "timelocker-backend/internal/repository/email_notification"
+	sponsorRepo "timelocker-backend/internal/repository/sponsor"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 	transactionRepo "timelocker-backend/internal/repository/transaction"
 	userRepo "timelocker-backend/internal/repository/user"
@@ -29,6 +31,7 @@ import (
 	authService "timelocker-backend/internal/service/auth"
 	chainService "timelocker-backend/internal/service/chain"
 	emailNotificationService "timelocker-backend/internal/service/email_notification"
+	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
 	transactionService "timelocker-backend/internal/service/transaction"
 	"timelocker-backend/pkg/blockchain"
@@ -99,6 +102,7 @@ func main() {
 	chainRepository := chainRepo.NewRepository(db)
 	assetRepository := assetRepo.NewRepository(db)
 	abiRepository := abiRepo.NewRepository(db)
+	sponsorRepository := sponsorRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
 	transactionRepository := transactionRepo.NewRepository(db)
 	emailNotificationRepository := emailNotificationRepo.NewRepository(db)
@@ -124,6 +128,7 @@ func main() {
 	)
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
+	sponsorSvc := sponsorService.NewService(sponsorRepository)
 	timelockSvc := timelockService.NewService(timelockRepository)
 	transactionSvc := transactionService.NewService(transactionRepository, timelockRepository)
 	emailNotificationSvc := emailNotificationService.NewService(emailNotificationRepository, emailSvc, &cfg.Email)
@@ -141,6 +146,7 @@ func main() {
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
 	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
 	chainHandler := chainHandler.NewHandler(chainSvc)
+	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc, authSvc)
 	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
 	transactionHandler := transactionHandler.NewHandler(transactionSvc, authSvc)
 	emailNotificationHdl := emailNotificationHandler.NewHandler(emailNotificationSvc, authSvc)
@@ -172,6 +178,7 @@ func main() {
 		assetHandler.RegisterRoutes(v1)
 		abiHandler.RegisterRoutes(v1)
 		chainHandler.RegisterRoutes(v1)
+		sponsorHdl.RegisterRoutes(v1)
 		timelockHandler.RegisterRoutes(v1)
 		transactionHandler.RegisterRoutes(v1)
 		emailNotificationHdl.RegisterRoutes(v1)

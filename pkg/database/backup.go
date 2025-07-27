@@ -37,6 +37,7 @@ type BackupData struct {
 	EmailNotifications     []map[string]interface{} `json:"email_notifications"`
 	EmailSendLogs          []map[string]interface{} `json:"email_send_logs"`
 	EmergencyNotifications []map[string]interface{} `json:"emergency_notifications"`
+	Sponsors               []map[string]interface{} `json:"sponsors"`
 }
 
 // CreateBackup 创建完整数据备份
@@ -100,6 +101,11 @@ func (bm *BackupManager) CreateBackup(backupPath string) error {
 		return fmt.Errorf("failed to backup emergency_notifications: %w", err)
 	}
 
+	// 备份赞助方数据
+	if err := bm.backupTable(ctx, "sponsors", &backup.Sponsors); err != nil {
+		return fmt.Errorf("failed to backup sponsors: %w", err)
+	}
+
 	// 写入备份文件
 	file, err := os.Create(backupPath)
 	if err != nil {
@@ -124,6 +130,7 @@ func (bm *BackupManager) CreateBackup(backupPath string) error {
 		"openzeppelin_timelocks", len(backup.OpenzeppelinTimelocks),
 		"transactions", len(backup.Transactions),
 		"email_notifications", len(backup.EmailNotifications),
+		"sponsors", len(backup.Sponsors),
 	)
 
 	return nil
@@ -207,6 +214,11 @@ func (bm *BackupManager) RestoreBackup(backupPath string, options RestoreOptions
 		// 恢复应急通知记录
 		if err := bm.restoreTable(ctx, tx, "emergency_notifications", backup.EmergencyNotifications, options.OnConflict); err != nil {
 			return fmt.Errorf("failed to restore emergency_notifications: %w", err)
+		}
+
+		// 恢复赞助方数据
+		if err := bm.restoreTable(ctx, tx, "sponsors", backup.Sponsors, options.OnConflict); err != nil {
+			return fmt.Errorf("failed to restore sponsors: %w", err)
 		}
 
 		return nil
@@ -416,6 +428,7 @@ func (bm *BackupManager) clearUserData(ctx context.Context, tx *gorm.DB) error {
 
 	// 按依赖关系顺序删除
 	tables := []string{
+		"sponsors",
 		"emergency_notifications",
 		"email_send_logs",
 		"email_notifications",
@@ -519,6 +532,7 @@ func (bm *BackupManager) GetBackupInfo(backupPath string) (*BackupData, error) {
 	backup.EmailNotifications = nil
 	backup.EmailSendLogs = nil
 	backup.EmergencyNotifications = nil
+	backup.Sponsors = nil
 
 	return &backup, nil
 }
