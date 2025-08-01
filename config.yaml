@@ -23,7 +23,7 @@ jwt:
 
 # Covalent API配置
 covalent:
-  api_key: "cqt_rQy6bmwRdmhwtfCBRXBdxWkVtrVg"  # 请设置你的Covalent API Key
+  api_key: "cqt_rQXqqXvWg974FTjvbx6grv7RQHWj"  # 请设置你的Covalent API Key
   base_url: "https://api.covalenthq.com/v1"
   request_timeout: "30s"
   cache_prefix: "asset:"
@@ -65,4 +65,4 @@ email:
   emergency_max_attempts: 10             # 应急邮件最大发送次数
   
   # 邮件模板配置
-  base_url: "http://localhost:8080"      # 前端基础URL，用于生成邮件中的链接 
+  base_url: "http://16.163.43.186:8080"      # 前端基础URL，用于生成邮件中的链接 

@@ -45,7 +45,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 		// 获取钱包插件添加链的配置数据
 		// GET /api/v1/chain/wallet-config/:chain_id
-		// http://localhost:8080/api/v1/chain/wallet-config/137
+		// http://localhost:8080/api/v1/chain/wallet-config/1
 		chainGroup.GET("/wallet-config/:chain_id", h.GetWalletChainConfig)
 	}
 }
