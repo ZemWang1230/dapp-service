@@ -826,7 +826,8 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"rpc_enabled":              true,
 		},
 		{
-			"chain_name":               "ronin-mainnet",
+			// ronin-mainnet
+			"chain_name":               "axie-mainnet",
 			"display_name":             "Ronin",
 			"chain_id":                 2020,
 			"native_currency_name":     "RON",
