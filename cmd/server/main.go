@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,30 +12,29 @@ import (
 	assetHandler "timelocker-backend/internal/api/asset"
 	authHandler "timelocker-backend/internal/api/auth"
 	chainHandler "timelocker-backend/internal/api/chain"
-	emailNotificationHandler "timelocker-backend/internal/api/email_notification"
+
 	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
-	transactionHandler "timelocker-backend/internal/api/transaction"
+
 	"timelocker-backend/internal/config"
 	abiRepo "timelocker-backend/internal/repository/abi"
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
-	emailNotificationRepo "timelocker-backend/internal/repository/email_notification"
+
 	sponsorRepo "timelocker-backend/internal/repository/sponsor"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
-	transactionRepo "timelocker-backend/internal/repository/transaction"
+
 	userRepo "timelocker-backend/internal/repository/user"
 	abiService "timelocker-backend/internal/service/abi"
 	assetService "timelocker-backend/internal/service/asset"
 	authService "timelocker-backend/internal/service/auth"
 	chainService "timelocker-backend/internal/service/chain"
-	emailNotificationService "timelocker-backend/internal/service/email_notification"
+
 	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
-	transactionService "timelocker-backend/internal/service/transaction"
-	"timelocker-backend/pkg/blockchain"
+
 	"timelocker-backend/pkg/database"
-	"timelocker-backend/pkg/email"
+
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
 
@@ -104,8 +102,6 @@ func main() {
 	abiRepository := abiRepo.NewRepository(db)
 	sponsorRepository := sponsorRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
-	transactionRepository := transactionRepo.NewRepository(db)
-	emailNotificationRepository := emailNotificationRepo.NewRepository(db)
 
 	// 5. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
@@ -113,9 +109,6 @@ func main() {
 		cfg.JWT.AccessExpiry,
 		cfg.JWT.RefreshExpiry,
 	)
-
-	// 6. 初始化邮件服务
-	emailSvc := email.NewService(&cfg.Email)
 
 	// 7. 初始化服务层
 	authSvc := authService.NewService(userRepository, jwtManager)
@@ -130,34 +123,22 @@ func main() {
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
 	timelockSvc := timelockService.NewService(timelockRepository)
-	transactionSvc := transactionService.NewService(transactionRepository, timelockRepository)
-	emailNotificationSvc := emailNotificationService.NewService(emailNotificationRepository, emailSvc, &cfg.Email)
 
-	// 7. 初始化区块链监听器
-	eventListener := blockchain.NewEventListener(cfg, transactionSvc, emailNotificationSvc, chainRepository, timelockRepository, db)
-	go func() {
-		if err := eventListener.Start(context.Background()); err != nil {
-			logger.Error("Failed to start event listener: ", err)
-		}
-	}()
-
-	// 8. 初始化处理器
+	// 6. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
 	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
 	chainHandler := chainHandler.NewHandler(chainSvc)
 	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc, authSvc)
 	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
-	transactionHandler := transactionHandler.NewHandler(transactionSvc, authSvc)
-	emailNotificationHdl := emailNotificationHandler.NewHandler(emailNotificationSvc, authSvc)
 
-	// 9. 设置Gin模式
+	// 7. 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
-	// 10. 创建路由器
+	// 8. 创建路由器
 	router := gin.Default()
 
-	// 11. 添加CORS中间件
+	// 9. 添加CORS中间件
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -171,7 +152,7 @@ func main() {
 		c.Next()
 	})
 
-	// 12. 注册API路由
+	// 10. 注册API路由
 	v1 := router.Group("/api/v1")
 	{
 		authHandler.RegisterRoutes(v1)
@@ -180,20 +161,19 @@ func main() {
 		chainHandler.RegisterRoutes(v1)
 		sponsorHdl.RegisterRoutes(v1)
 		timelockHandler.RegisterRoutes(v1)
-		transactionHandler.RegisterRoutes(v1)
-		emailNotificationHdl.RegisterRoutes(v1)
+
 	}
 
-	// 13. Swagger API文档端点
+	// 11. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
 	docs.SwaggerInfo.Title = "TimeLocker Backend API v2.0"
-	docs.SwaggerInfo.Description = "TimeLocker Backend API with Transaction Management"
+	docs.SwaggerInfo.Description = "TimeLocker Backend API"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 14. 健康检查端点
+	// 12. 健康检查端点
 	router.GET("/health", healthCheck)
 
-	// 15. 系统状态端点
+	// 13. 系统状态端点
 	router.GET("/api/v1/system/rpc-status", func(c *gin.Context) {
 		// 从数据库获取启用RPC的链配置
 		chains, err := chainRepository.GetRPCEnabledChains(c.Request.Context(), cfg.RPC.IncludeTestnets)
@@ -251,7 +231,7 @@ func main() {
 		})
 	})
 
-	// 16. 设置优雅关闭
+	// 14. 设置优雅关闭
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -259,13 +239,10 @@ func main() {
 		<-sigCh
 		logger.Info("Received shutdown signal, stopping services...")
 
-		// 停止区块链监听器
-		eventListener.Stop()
-
 		os.Exit(0)
 	}()
 
-	// 17. 启动服务器
+	// 15. 启动服务器
 	addr := ":" + cfg.Server.Port
 	logger.Info("Starting server on ", "address", addr)
 	logger.Info("Swagger documentation available at: http://localhost:" + cfg.Server.Port + "/swagger/index.html")

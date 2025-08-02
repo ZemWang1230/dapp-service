@@ -60,9 +60,8 @@ email:
   
   # 邮件通知功能配置
   verification_code_expiry: "10m"        # 验证码过期时间
-  enable_emergency_mode: true            # 是否启用应急模式
-  emergency_resend_interval: "2h"        # 应急邮件重发间隔
-  emergency_max_attempts: 10             # 应急邮件最大发送次数
+  email_resend_interval: "2h"        # 邮件重发间隔
+  email_max_attempts: 10             # 邮件最大发送次数
   
   # 邮件模板配置
   base_url: "http://16.163.43.186:8080"      # 前端基础URL，用于生成邮件中的链接 

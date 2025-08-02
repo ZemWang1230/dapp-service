@@ -310,115 +310,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: openzeppelin_timelocks")
 	}
 
-	// 7. 交易记录表
-	if !h.db.Migrator().HasTable("transactions") {
-		createTransactionsTable := `
-		CREATE TABLE transactions (
-			id BIGSERIAL PRIMARY KEY,
-			creator_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-			chain_id INTEGER NOT NULL,
-			chain_name VARCHAR(50) NOT NULL,
-			timelock_address VARCHAR(42) NOT NULL,
-			timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
-			tx_hash VARCHAR(66) NOT NULL UNIQUE,
-			tx_data TEXT NOT NULL,
-			target VARCHAR(42) NOT NULL,
-			value VARCHAR(100) NOT NULL DEFAULT '0',
-			function_sig VARCHAR(200),
-			eta BIGINT NOT NULL,
-			queued_at TIMESTAMP WITH TIME ZONE,
-			executed_at TIMESTAMP WITH TIME ZONE,
-			canceled_at TIMESTAMP WITH TIME ZONE,
-			status VARCHAR(20) NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'ready', 'executed', 'expired', 'canceled')),
-			description VARCHAR(500) DEFAULT '',
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createTransactionsTable).Error; err != nil {
-			return fmt.Errorf("failed to create transactions table: %w", err)
-		}
-		logger.Info("Created table: transactions")
-	}
-
-	// 8. 邮件通知配置表
-	if !h.db.Migrator().HasTable("email_notifications") {
-		createEmailNotificationsTable := `
-		CREATE TABLE email_notifications (
-			id BIGSERIAL PRIMARY KEY,
-			wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-			email VARCHAR(255) NOT NULL,
-			email_remark VARCHAR(200) DEFAULT '',
-			timelock_contracts TEXT NOT NULL DEFAULT '[]',
-			is_verified BOOLEAN NOT NULL DEFAULT false,
-			verification_code VARCHAR(6),
-			verification_expires_at TIMESTAMP WITH TIME ZONE,
-			is_active BOOLEAN NOT NULL DEFAULT true,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(wallet_address, email)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createEmailNotificationsTable).Error; err != nil {
-			return fmt.Errorf("failed to create email_notifications table: %w", err)
-		}
-		logger.Info("Created table: email_notifications")
-	}
-
-	// 9. 邮件发送记录表
-	if !h.db.Migrator().HasTable("email_send_logs") {
-		createEmailSendLogsTable := `
-		CREATE TABLE email_send_logs (
-			id BIGSERIAL PRIMARY KEY,
-			email_notification_id BIGINT NOT NULL REFERENCES email_notifications(id) ON DELETE CASCADE,
-			email VARCHAR(255) NOT NULL,
-			timelock_address VARCHAR(42) NOT NULL,
-			transaction_hash VARCHAR(66),
-			event_type VARCHAR(50) NOT NULL,
-			subject VARCHAR(500) NOT NULL,
-			content TEXT NOT NULL,
-			is_emergency BOOLEAN NOT NULL DEFAULT false,
-			emergency_reply_token VARCHAR(64),
-			is_replied BOOLEAN NOT NULL DEFAULT false,
-			replied_at TIMESTAMP WITH TIME ZONE,
-			send_status VARCHAR(20) NOT NULL DEFAULT 'pending',
-			send_attempts INTEGER NOT NULL DEFAULT 0,
-			error_message TEXT,
-			sent_at TIMESTAMP WITH TIME ZONE,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createEmailSendLogsTable).Error; err != nil {
-			return fmt.Errorf("failed to create email_send_logs table: %w", err)
-		}
-		logger.Info("Created table: email_send_logs")
-	}
-
-	// 10. 应急通知追踪表
-	if !h.db.Migrator().HasTable("emergency_notifications") {
-		createEmergencyNotificationsTable := `
-		CREATE TABLE emergency_notifications (
-			id BIGSERIAL PRIMARY KEY,
-			timelock_address VARCHAR(42) NOT NULL,
-			transaction_hash VARCHAR(66) NOT NULL,
-			event_type VARCHAR(50) NOT NULL,
-			replied_emails INTEGER NOT NULL DEFAULT 0,
-			is_completed BOOLEAN NOT NULL DEFAULT false,
-			next_send_at TIMESTAMP WITH TIME ZONE,
-			send_count INTEGER NOT NULL DEFAULT 1,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(timelock_address, transaction_hash, event_type)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createEmergencyNotificationsTable).Error; err != nil {
-			return fmt.Errorf("failed to create emergency_notifications table: %w", err)
-		}
-		logger.Info("Created table: emergency_notifications")
-	}
-
-	// 11. 赞助方和生态伙伴表
+	// 7. 赞助方和生态伙伴表
 	if !h.db.Migrator().HasTable("sponsors") {
 		createSponsorsTable := `
 		CREATE TABLE sponsors (
@@ -487,39 +379,6 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_contract_address ON openzeppelin_timelocks(contract_address)",
 		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status)",
 		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_emergency_mode ON openzeppelin_timelocks(emergency_mode)",
-
-		// 交易记录表索引
-		"CREATE INDEX IF NOT EXISTS idx_transactions_creator_address ON transactions(creator_address)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_chain_id ON transactions(chain_id)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_timelock_address ON transactions(timelock_address)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_timelock_standard ON transactions(timelock_standard)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_tx_hash ON transactions(tx_hash)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_eta ON transactions(eta)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_updated_at ON transactions(updated_at DESC)",
-
-		// 邮件通知配置表索引
-		"CREATE INDEX IF NOT EXISTS idx_email_notifications_wallet_address ON email_notifications(wallet_address)",
-		"CREATE INDEX IF NOT EXISTS idx_email_notifications_email ON email_notifications(email)",
-		"CREATE INDEX IF NOT EXISTS idx_email_notifications_is_verified ON email_notifications(is_verified)",
-		"CREATE INDEX IF NOT EXISTS idx_email_notifications_is_active ON email_notifications(is_active)",
-
-		// 邮件发送记录表索引
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_email_notification_id ON email_send_logs(email_notification_id)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_timelock_address ON email_send_logs(timelock_address)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_transaction_hash ON email_send_logs(transaction_hash)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_event_type ON email_send_logs(event_type)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_is_emergency ON email_send_logs(is_emergency)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_is_replied ON email_send_logs(is_replied)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_send_status ON email_send_logs(send_status)",
-		"CREATE INDEX IF NOT EXISTS idx_email_send_logs_sent_at ON email_send_logs(sent_at DESC)",
-
-		// 应急通知追踪表索引
-		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_timelock_address ON emergency_notifications(timelock_address)",
-		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_transaction_hash ON emergency_notifications(transaction_hash)",
-		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_is_completed ON emergency_notifications(is_completed)",
-		"CREATE INDEX IF NOT EXISTS idx_emergency_notifications_next_send_at ON emergency_notifications(next_send_at)",
 
 		// 赞助方表索引
 		"CREATE INDEX IF NOT EXISTS idx_sponsors_type ON sponsors(type)",
@@ -985,10 +844,6 @@ func ResetDangerous(db *gorm.DB) error {
 
 	// 删除所有表（逆序删除以避免外键约束问题）
 	tables := []string{
-		"emergency_notifications",
-		"email_send_logs",
-		"email_notifications",
-		"transactions",
 		"compound_timelocks",
 		"openzeppelin_timelocks",
 		"user_assets",
