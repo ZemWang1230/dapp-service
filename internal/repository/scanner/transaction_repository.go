@@ -6,6 +6,7 @@ import (
 	"timelocker-backend/pkg/logger"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // TransactionRepository 交易记录仓库接口
@@ -38,7 +39,9 @@ func NewTransactionRepository(db *gorm.DB) TransactionRepository {
 
 // CreateCompoundTransaction 创建Compound交易记录
 func (r *transactionRepository) CreateCompoundTransaction(ctx context.Context, tx *types.CompoundTimelockTransaction) error {
-	if err := r.db.WithContext(ctx).Create(tx).Error; err != nil {
+	if err := r.db.WithContext(ctx).Clauses(
+		clause.OnConflict{DoNothing: true},
+	).Create(tx).Error; err != nil {
 		logger.Error("CreateCompoundTransaction Error", err, "tx_hash", tx.TxHash, "event_type", tx.EventType)
 		return err
 	}
@@ -81,7 +84,9 @@ func (r *transactionRepository) GetCompoundTransactionByHash(ctx context.Context
 
 // CreateOpenZeppelinTransaction 创建OpenZeppelin交易记录
 func (r *transactionRepository) CreateOpenZeppelinTransaction(ctx context.Context, tx *types.OpenZeppelinTimelockTransaction) error {
-	if err := r.db.WithContext(ctx).Create(tx).Error; err != nil {
+	if err := r.db.WithContext(ctx).Clauses(
+		clause.OnConflict{DoNothing: true},
+	).Create(tx).Error; err != nil {
 		logger.Error("CreateOpenZeppelinTransaction Error", err, "tx_hash", tx.TxHash, "event_type", tx.EventType)
 		return err
 	}
@@ -129,7 +134,10 @@ func (r *transactionRepository) BatchCreateCompoundTransactions(ctx context.Cont
 		return nil
 	}
 
-	if err := r.db.WithContext(ctx).CreateInBatches(&txs, 100).Error; err != nil {
+	// 使用 ON CONFLICT DO NOTHING 来避免重复插入错误
+	if err := r.db.WithContext(ctx).Clauses(
+		clause.OnConflict{DoNothing: true},
+	).CreateInBatches(&txs, 100).Error; err != nil {
 		logger.Error("BatchCreateCompoundTransactions Error", err, "count", len(txs))
 		return err
 	}
@@ -143,7 +151,10 @@ func (r *transactionRepository) BatchCreateOpenZeppelinTransactions(ctx context.
 		return nil
 	}
 
-	if err := r.db.WithContext(ctx).CreateInBatches(&txs, 100).Error; err != nil {
+	// 使用 ON CONFLICT DO NOTHING 来避免重复插入错误
+	if err := r.db.WithContext(ctx).Clauses(
+		clause.OnConflict{DoNothing: true},
+	).CreateInBatches(&txs, 100).Error; err != nil {
 		logger.Error("BatchCreateOpenZeppelinTransactions Error", err, "count", len(txs))
 		return err
 	}

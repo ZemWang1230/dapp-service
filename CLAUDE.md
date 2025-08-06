@@ -84,7 +84,9 @@ Environment variables can override config values using the `TIMELOCKER_` prefix.
 
 **Timelock Contracts**: Supports both Compound and OpenZeppelin timelock standards with contract deployment and management capabilities.
 
-**Database Design**: Uses PostgreSQL with GORM. Auto-migration system handles schema updates safely without data loss via `pkg/database/migrations/init_tables.go`.
+**Chain Scanner System**: Multi-threaded blockchain event monitoring system that tracks timelock-related transactions across all supported chains. Each chain runs an independent scanner with health monitoring and restart capabilities.
+
+**Database Design**: Uses PostgreSQL with GORM. Version-controlled migration system in `pkg/database/migrations/init_tables.go` handles schema updates safely without data loss.
 
 ## Development Workflow
 
@@ -105,13 +107,19 @@ Environment variables can override config values using the `TIMELOCKER_` prefix.
    - `/api/v1/assets` - Get user assets (auto-refresh)
    - `/api/v1/assets/refresh` - Manual refresh from Covalent API
 
+6. **Chain Scanner System**:
+   - Background service that monitors blockchain events
+   - Individual scanners per chain with independent progress tracking
+   - Manager coordinates all scanners with health monitoring
+   - Supports chain-specific restart and rescan operations
+
 ## Important Notes
 
-- **No Traditional Tests**: This codebase doesn't appear to have unit tests. Consider adding them in a `*_test.go` pattern.
-- **Security**: Never commit API keys. Use environment variables for sensitive configuration.
-- **Database Migrations**: The migration system is version-controlled and safe. Don't bypass it with manual schema changes.
-- **Multi-chain**: When adding new chains, update the migration data in `insertSupportedChains()`.
+- **Version-Controlled Migrations**: The migration system uses version tracking with rollback safety. All schema changes go through `pkg/database/migrations/init_tables.go`.
+- **Chain Scanner Architecture**: The scanning system uses a manager-worker pattern with individual scanners per chain. Each scanner maintains its own progress tracking and can be restarted independently.
+- **Multi-chain**: When adding new chains, update the migration data in `insertSupportedChains()` and ensure RPC endpoints are configured.
 - **Caching**: Asset data is cached in Redis with configurable expiry (default 5 minutes).
+- **Ethereum Integration**: Uses go-ethereum for cryptographic signature validation and smart contract interactions.
 
 ## API Key Requirements
 
