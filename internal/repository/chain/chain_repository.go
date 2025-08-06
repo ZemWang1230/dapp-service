@@ -175,7 +175,7 @@ func (r *repository) GetRPCEnabledChains(ctx context.Context, includeTestnets bo
 	}
 
 	err := query.
-		Select("chain_name, display_name, chain_id, alchemy_rpc_template, infura_rpc_template, rpc_enabled, is_testnet").
+		Select("chain_name, display_name, chain_id, alchemy_rpc_template, infura_rpc_template, official_rpc_urls, rpc_enabled, is_testnet").
 		Find(&chains).Error
 
 	if err != nil {

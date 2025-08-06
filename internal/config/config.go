@@ -20,6 +20,7 @@ type Config struct {
 	Covalent CovalentConfig `mapstructure:"covalent"`
 	RPC      RPCConfig      `mapstructure:"rpc"`
 	Email    EmailConfig    `mapstructure:"email"`
+	Scanner  ScannerConfig  `mapstructure:"scanner"`
 }
 
 type ServerConfig struct {
@@ -83,6 +84,25 @@ type EmailConfig struct {
 	BaseURL                 string        `mapstructure:"base_url"`
 }
 
+// ScannerConfig 扫链配置（简化版）
+type ScannerConfig struct {
+	// RPC配置（简化，去掉健康检查）
+	RPCTimeout    time.Duration `mapstructure:"rpc_timeout"`
+	RPCRetryMax   int           `mapstructure:"rpc_retry_max"`
+	RPCRetryDelay time.Duration `mapstructure:"rpc_retry_delay"`
+
+	// 扫块配置
+	ScanBatchSize     int           `mapstructure:"scan_batch_size"`
+	ScanInterval      time.Duration `mapstructure:"scan_interval"`
+	ScanIntervalSlow  time.Duration `mapstructure:"scan_interval_slow"`
+	ScanConfirmations int           `mapstructure:"scan_confirmations"`
+	MaxScanWorkers    int           `mapstructure:"max_scan_workers"`
+
+	// 事件处理配置
+	EventBatchSize int `mapstructure:"event_batch_size"`
+	EventRetryMax  int `mapstructure:"event_retry_max"`
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -129,6 +149,19 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("email.emergency_resend_interval", time.Hour*2)
 	viper.SetDefault("email.emergency_max_attempts", 10)
 	viper.SetDefault("email.base_url", "http://localhost:8080")
+
+	// Scanner defaults
+	viper.SetDefault("scanner.rpc_health_check_interval", time.Second*30)
+	viper.SetDefault("scanner.rpc_timeout", time.Second*10)
+	viper.SetDefault("scanner.rpc_retry_max", 3)
+	viper.SetDefault("scanner.rpc_retry_delay", time.Second*1)
+	viper.SetDefault("scanner.scan_batch_size", 100)
+	viper.SetDefault("scanner.scan_interval", time.Second*5)
+	viper.SetDefault("scanner.scan_interval_slow", time.Second*30)
+	viper.SetDefault("scanner.scan_confirmations", 12)
+	viper.SetDefault("scanner.max_scan_workers", 20)
+	viper.SetDefault("scanner.event_batch_size", 50)
+	viper.SetDefault("scanner.event_retry_max", 3)
 
 	// Read environment variables
 	viper.AutomaticEnv()

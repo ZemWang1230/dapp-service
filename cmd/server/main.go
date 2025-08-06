@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ import (
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
 
+	scannerRepo "timelocker-backend/internal/repository/scanner"
 	sponsorRepo "timelocker-backend/internal/repository/sponsor"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 
@@ -30,6 +32,7 @@ import (
 	authService "timelocker-backend/internal/service/auth"
 	chainService "timelocker-backend/internal/service/chain"
 
+	scannerService "timelocker-backend/internal/service/scanner"
 	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
 
@@ -103,6 +106,12 @@ func main() {
 	sponsorRepository := sponsorRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
 
+	// 扫链相关仓库
+	progressRepository := scannerRepo.NewProgressRepository(db)
+	transactionRepository := scannerRepo.NewTransactionRepository(db)
+	flowRepository := scannerRepo.NewFlowRepository(db)
+	relationRepository := scannerRepo.NewRelationRepository(db)
+
 	// 5. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
 		cfg.JWT.Secret,
@@ -123,6 +132,18 @@ func main() {
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
 	timelockSvc := timelockService.NewService(timelockRepository)
+
+	// 8. 初始化扫链系统
+	rpcManager := scannerService.NewRPCManager(cfg, chainRepository)
+	scannerManager := scannerService.NewManager(
+		cfg,
+		chainRepository,
+		progressRepository,
+		transactionRepository,
+		flowRepository,
+		relationRepository,
+		rpcManager,
+	)
 
 	// 6. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
@@ -231,7 +252,26 @@ func main() {
 		})
 	})
 
-	// 14. 设置优雅关闭
+	// 14. 启动扫链系统
+	ctx := context.Background()
+
+	// 启动RPC管理器
+	if err := rpcManager.Start(ctx); err != nil {
+		logger.Error("Failed to start RPC manager", err)
+		// 不退出，继续启动其他服务
+	} else {
+		logger.Info("RPC Manager started successfully")
+	}
+
+	// 启动扫链管理器
+	if err := scannerManager.Start(ctx); err != nil {
+		logger.Error("Failed to start scanner manager", err)
+		// 不退出，继续启动其他服务
+	} else {
+		logger.Info("Scanner Manager started successfully")
+	}
+
+	// 15. 设置优雅关闭
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -239,10 +279,17 @@ func main() {
 		<-sigCh
 		logger.Info("Received shutdown signal, stopping services...")
 
+		// 停止扫链系统
+		logger.Info("Stopping scanner manager...")
+		scannerManager.Stop()
+
+		logger.Info("Stopping RPC manager...")
+		rpcManager.Stop()
+
 		os.Exit(0)
 	}()
 
-	// 15. 启动服务器
+	// 16. 启动服务器
 	addr := ":" + cfg.Server.Port
 	logger.Info("Starting server on ", "address", addr)
 	logger.Info("Swagger documentation available at: http://localhost:" + cfg.Server.Port + "/swagger/index.html")

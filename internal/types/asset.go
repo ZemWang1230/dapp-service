@@ -175,6 +175,7 @@ type ChainRPCInfo struct {
 	ChainID            int     `json:"chain_id" db:"chain_id"`
 	AlchemyRPCTemplate *string `json:"alchemy_rpc_template" db:"alchemy_rpc_template"`
 	InfuraRPCTemplate  *string `json:"infura_rpc_template" db:"infura_rpc_template"`
+	OfficialRPCUrls    string  `json:"official_rpc_urls" db:"official_rpc_urls"`
 	RPCEnabled         bool    `json:"rpc_enabled" db:"rpc_enabled"`
 	IsTestnet          bool    `json:"is_testnet" db:"is_testnet"`
 }

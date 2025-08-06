@@ -332,6 +332,150 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: sponsors")
 	}
 
+	// 8. 区块扫描进度表
+	if !h.db.Migrator().HasTable("block_scan_progress") {
+		createBlockScanProgressTable := `
+		CREATE TABLE block_scan_progress (
+			id BIGSERIAL PRIMARY KEY,
+			chain_id INTEGER NOT NULL UNIQUE,
+			chain_name VARCHAR(50) NOT NULL,
+			last_scanned_block BIGINT NOT NULL DEFAULT 0,
+			latest_network_block BIGINT DEFAULT 0,
+			scan_status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (scan_status IN ('running', 'paused', 'error')),
+			error_message TEXT,
+			last_update_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`
+
+		if err := h.db.WithContext(ctx).Exec(createBlockScanProgressTable).Error; err != nil {
+			return fmt.Errorf("failed to create block_scan_progress table: %w", err)
+		}
+		logger.Info("Created table: block_scan_progress")
+	}
+
+	// 9. Compound Timelock 交易记录表
+	if !h.db.Migrator().HasTable("compound_timelock_transactions") {
+		createCompoundTimelockTransactionsTable := `
+		CREATE TABLE compound_timelock_transactions (
+			id BIGSERIAL PRIMARY KEY,
+			tx_hash VARCHAR(66) NOT NULL,
+			block_number BIGINT NOT NULL,
+			block_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+			chain_id INTEGER NOT NULL,
+			chain_name VARCHAR(50) NOT NULL,
+			contract_address VARCHAR(42) NOT NULL,
+			from_address VARCHAR(42) NOT NULL,
+			to_address VARCHAR(42) NOT NULL,
+			event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('QueueTransaction', 'ExecuteTransaction', 'CancelTransaction', 'NewDelay', 'NewAdmin', 'NewPendingAdmin')),
+			event_data JSONB NOT NULL,
+			proposal_id VARCHAR(128),
+			target_address VARCHAR(42),
+			function_signature VARCHAR(200),
+			call_data BYTEA,
+			eta BIGINT,
+			value DECIMAL(36,0) DEFAULT 0,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(tx_hash, contract_address, event_type)
+		)`
+
+		if err := h.db.WithContext(ctx).Exec(createCompoundTimelockTransactionsTable).Error; err != nil {
+			return fmt.Errorf("failed to create compound_timelock_transactions table: %w", err)
+		}
+		logger.Info("Created table: compound_timelock_transactions")
+	}
+
+	// 10. OpenZeppelin Timelock 交易记录表
+	if !h.db.Migrator().HasTable("openzeppelin_timelock_transactions") {
+		createOpenzeppelinTimelockTransactionsTable := `
+		CREATE TABLE openzeppelin_timelock_transactions (
+			id BIGSERIAL PRIMARY KEY,
+			tx_hash VARCHAR(66) NOT NULL,
+			block_number BIGINT NOT NULL,
+			block_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+			chain_id INTEGER NOT NULL,
+			chain_name VARCHAR(50) NOT NULL,
+			contract_address VARCHAR(42) NOT NULL,
+			from_address VARCHAR(42) NOT NULL,
+			to_address VARCHAR(42) NOT NULL,
+			event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('CallScheduled', 'CallExecuted', 'Cancelled', 'MinDelayChange', 'RoleGranted', 'RoleRevoked')),
+			event_data JSONB NOT NULL,
+			operation_id VARCHAR(66),
+			target_address VARCHAR(42),
+			function_signature VARCHAR(200),
+			call_data BYTEA,
+			delay BIGINT,
+			value DECIMAL(36,0) DEFAULT 0,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(tx_hash, contract_address, event_type)
+		)`
+
+		if err := h.db.WithContext(ctx).Exec(createOpenzeppelinTimelockTransactionsTable).Error; err != nil {
+			return fmt.Errorf("failed to create openzeppelin_timelock_transactions table: %w", err)
+		}
+		logger.Info("Created table: openzeppelin_timelock_transactions")
+	}
+
+	// 11. Timelock 交易流程关联表
+	if !h.db.Migrator().HasTable("timelock_transaction_flows") {
+		createTimelockTransactionFlowsTable := `
+		CREATE TABLE timelock_transaction_flows (
+			id BIGSERIAL PRIMARY KEY,
+			flow_id VARCHAR(128) NOT NULL,
+			timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
+			chain_id INTEGER NOT NULL,
+			contract_address VARCHAR(42) NOT NULL,
+			status VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'queued', 'executed', 'cancelled', 'expired')),
+			propose_tx_id BIGINT,
+			queue_tx_id BIGINT,
+			execute_tx_id BIGINT,
+			cancel_tx_id BIGINT,
+			proposed_at TIMESTAMP WITH TIME ZONE,
+			queued_at TIMESTAMP WITH TIME ZONE,
+			executed_at TIMESTAMP WITH TIME ZONE,
+			cancelled_at TIMESTAMP WITH TIME ZONE,
+			eta TIMESTAMP WITH TIME ZONE,
+			target_address VARCHAR(42),
+			function_signature VARCHAR(200),
+			call_data BYTEA,
+			value DECIMAL(36,0) DEFAULT 0,
+			description TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(flow_id, timelock_standard, chain_id, contract_address)
+		)`
+
+		if err := h.db.WithContext(ctx).Exec(createTimelockTransactionFlowsTable).Error; err != nil {
+			return fmt.Errorf("failed to create timelock_transaction_flows table: %w", err)
+		}
+		logger.Info("Created table: timelock_transaction_flows")
+	}
+
+	// 12. 用户-合约关联表
+	if !h.db.Migrator().HasTable("user_timelock_relations") {
+		createUserTimelockRelationsTable := `
+		CREATE TABLE user_timelock_relations (
+			id BIGSERIAL PRIMARY KEY,
+			user_address VARCHAR(42) NOT NULL,
+			chain_id INTEGER NOT NULL,
+			contract_address VARCHAR(42) NOT NULL,
+			timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
+			relation_type VARCHAR(20) NOT NULL CHECK (relation_type IN ('creator', 'admin', 'pending_admin', 'proposer', 'executor', 'canceller')),
+			related_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			UNIQUE(user_address, chain_id, contract_address, relation_type)
+		)`
+
+		if err := h.db.WithContext(ctx).Exec(createUserTimelockRelationsTable).Error; err != nil {
+			return fmt.Errorf("failed to create user_timelock_relations table: %w", err)
+		}
+		logger.Info("Created table: user_timelock_relations")
+	}
+
 	logger.Info("All tables created successfully")
 	return nil
 }
@@ -385,6 +529,39 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_sponsors_is_active ON sponsors(is_active)",
 		"CREATE INDEX IF NOT EXISTS idx_sponsors_sort_order ON sponsors(sort_order DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_sponsors_created_at ON sponsors(created_at DESC)",
+
+		// 区块扫描进度表索引
+		"CREATE INDEX IF NOT EXISTS idx_block_scan_progress_chain_id ON block_scan_progress(chain_id)",
+		"CREATE INDEX IF NOT EXISTS idx_block_scan_progress_status ON block_scan_progress(scan_status)",
+
+		// Compound交易表索引
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelock_transactions_block_number ON compound_timelock_transactions(block_number)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelock_transactions_contract_address ON compound_timelock_transactions(contract_address)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelock_transactions_from_address ON compound_timelock_transactions(from_address)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelock_transactions_event_type ON compound_timelock_transactions(event_type)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelock_transactions_proposal_id ON compound_timelock_transactions(proposal_id)",
+		"CREATE INDEX IF NOT EXISTS idx_compound_timelock_transactions_chain_block ON compound_timelock_transactions(chain_id, block_number)",
+
+		// OpenZeppelin交易表索引
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelock_transactions_block_number ON openzeppelin_timelock_transactions(block_number)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelock_transactions_contract_address ON openzeppelin_timelock_transactions(contract_address)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelock_transactions_from_address ON openzeppelin_timelock_transactions(from_address)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelock_transactions_event_type ON openzeppelin_timelock_transactions(event_type)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelock_transactions_operation_id ON openzeppelin_timelock_transactions(operation_id)",
+		"CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelock_transactions_chain_block ON openzeppelin_timelock_transactions(chain_id, block_number)",
+
+		// 交易流程关联表索引
+		"CREATE INDEX IF NOT EXISTS idx_timelock_transaction_flows_flow_id ON timelock_transaction_flows(flow_id)",
+		"CREATE INDEX IF NOT EXISTS idx_timelock_transaction_flows_contract_address ON timelock_transaction_flows(contract_address)",
+		"CREATE INDEX IF NOT EXISTS idx_timelock_transaction_flows_status ON timelock_transaction_flows(status)",
+		"CREATE INDEX IF NOT EXISTS idx_timelock_transaction_flows_chain_contract ON timelock_transaction_flows(chain_id, contract_address)",
+
+		// 用户关联表索引
+		"CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user_address ON user_timelock_relations(user_address)",
+		"CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_contract_address ON user_timelock_relations(contract_address)",
+		"CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_relation_type ON user_timelock_relations(relation_type)",
+		"CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_is_active ON user_timelock_relations(is_active)",
+		"CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user_chain ON user_timelock_relations(user_address, chain_id)",
 	}
 
 	for _, indexSQL := range indexes {
