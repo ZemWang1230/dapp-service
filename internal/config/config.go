@@ -65,7 +65,6 @@ type RPCConfig struct {
 	Provider           string        `mapstructure:"provider"`
 	PollInterval       time.Duration `mapstructure:"poll_interval"`
 	BlockConfirmations int           `mapstructure:"block_confirmations"`
-	MaxBlockRange      int           `mapstructure:"max_block_range"` // 单次RPC请求的最大区块范围
 	IncludeTestnets    bool          `mapstructure:"include_testnets"`
 }
 
@@ -92,11 +91,12 @@ type ScannerConfig struct {
 	RPCRetryDelay time.Duration `mapstructure:"rpc_retry_delay"`
 
 	// 扫块配置
-	ScanBatchSize     int           `mapstructure:"scan_batch_size"`
-	ScanInterval      time.Duration `mapstructure:"scan_interval"`
-	ScanIntervalSlow  time.Duration `mapstructure:"scan_interval_slow"`
-	ScanConfirmations int           `mapstructure:"scan_confirmations"`
-	MaxScanWorkers    int           `mapstructure:"max_scan_workers"`
+	ScanBatchSize           int           `mapstructure:"scan_batch_size"`
+	ScanInterval            time.Duration `mapstructure:"scan_interval"`
+	ScanIntervalSlow        time.Duration `mapstructure:"scan_interval_slow"`
+	ScanConfirmations       int           `mapstructure:"scan_confirmations"`
+	MaxScanWorkers          int           `mapstructure:"max_scan_workers"`
+	ProgressUpdateInterval  int           `mapstructure:"progress_update_interval"`
 
 	// 事件处理配置
 	EventBatchSize int `mapstructure:"event_batch_size"`
@@ -160,6 +160,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("scanner.scan_interval_slow", time.Second*30)
 	viper.SetDefault("scanner.scan_confirmations", 12)
 	viper.SetDefault("scanner.max_scan_workers", 20)
+	viper.SetDefault("scanner.progress_update_interval", 10)
 	viper.SetDefault("scanner.event_batch_size", 50)
 	viper.SetDefault("scanner.event_retry_max", 3)
 

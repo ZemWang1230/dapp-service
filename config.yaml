@@ -44,7 +44,6 @@ rpc:
   # 监听配置
   poll_interval: "30s"  # 轮询间隔
   block_confirmations: 12  # 区块确认数
-  max_block_range: 500  # 单次RPC请求的最大区块范围（alchemy限制为500）
   
   # 是否包含测试网
   include_testnets: true
@@ -74,11 +73,12 @@ scanner:
   rpc_retry_delay: "2s"               # RPC重试延迟（出错时等待时间）
   
   # 扫块配置
-  scan_batch_size: 100                # 每批扫描的区块数量
+  scan_batch_size: 500                # 每批扫描的区块数量
   scan_interval: "5s"                 # 快速扫描间隔
   scan_interval_slow: "30s"           # 慢速扫描间隔（到达最新块后）
   scan_confirmations: 12              # 区块确认数
   max_scan_workers: 20                # 最大扫描协程数
+  progress_update_interval: 50        # 进度更新间隔（每N个区块更新一次）,scan_batch_size的10%
   
   # 事件处理配置
   event_batch_size: 50                # 每批处理的事件数量

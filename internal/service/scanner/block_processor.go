@@ -159,8 +159,6 @@ func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, receipt *ethtype
 		return nil
 	}
 
-	logger.Debug("Found Compound timelock event", "type", eventType, "contract", log.Address.Hex(), "tx_hash", receipt.TxHash.Hex())
-
 	// 获取交易发送者和接收者
 	tx := bp.getTransactionFromBlock(block, receipt.TxHash)
 	fromAddress := ""
@@ -209,8 +207,6 @@ func (bp *BlockProcessor) parseOpenZeppelinEvent(log *ethtypes.Log, receipt *eth
 	if eventType == "" {
 		return nil
 	}
-
-	logger.Debug("Found OpenZeppelin timelock event", "type", eventType, "contract", log.Address.Hex(), "tx_hash", receipt.TxHash.Hex())
 
 	// 获取交易发送者和接收者
 	tx := bp.getTransactionFromBlock(block, receipt.TxHash)

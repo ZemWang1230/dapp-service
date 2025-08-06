@@ -142,6 +142,11 @@ func (cs *ChainScanner) scanLoop(ctx context.Context) {
 					return
 				}
 			} else {
+				// 扫描成功，确保状态为running（处理从错误状态恢复的情况）
+				if cs.progress.ScanStatus != "running" && cs.progress.ErrorMessage != nil {
+					cs.updateProgressStatus("running", "")
+				}
+
 				// 根据是否跟上最新区块调整扫描间隔
 				interval := cs.getScanInterval()
 				select {
@@ -194,8 +199,9 @@ func (cs *ChainScanner) scanBlocks(ctx context.Context) error {
 				return fmt.Errorf("failed to scan block %d: %w", currentBlock, err)
 			}
 
-			// 更新进度（但不要太频繁）
-			if currentBlock%10 == 0 || currentBlock == toBlock {
+			// 更新进度（使用配置的间隔）
+			progressInterval := int64(cs.config.Scanner.ProgressUpdateInterval)
+			if currentBlock%progressInterval == 0 || currentBlock == toBlock {
 				cs.progress.LastScannedBlock = currentBlock
 				cs.progress.LastUpdateTime = time.Now()
 				cs.lastUpdate = time.Now()
@@ -230,8 +236,6 @@ func (cs *ChainScanner) scanSingleBlock(ctx context.Context, client *ethclient.C
 	}
 
 	if len(events) > 0 {
-		logger.Info("Found timelock events", "chain_id", cs.chainInfo.ChainID, "block", blockNumber, "events_count", len(events))
-
 		// 处理事件
 		if err := cs.eventProcessor.ProcessEvents(ctx, cs.chainInfo.ChainID, cs.chainInfo.ChainName, events); err != nil {
 			return fmt.Errorf("failed to process events: %w", err)
