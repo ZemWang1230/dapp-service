@@ -399,7 +399,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			contract_address VARCHAR(42) NOT NULL,
 			from_address VARCHAR(42) NOT NULL,
 			to_address VARCHAR(42) NOT NULL,
-			event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('CallScheduled', 'CallExecuted', 'Cancelled', 'MinDelayChange', 'RoleGranted', 'RoleRevoked')),
+			event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('CallScheduled', 'CallExecuted', 'Cancelled', 'MinDelayChange')),
 			event_data JSONB NOT NULL,
 			operation_id VARCHAR(66),
 			target_address VARCHAR(42),

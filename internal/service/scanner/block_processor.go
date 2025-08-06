@@ -65,8 +65,6 @@ func (bp *BlockProcessor) initEventSignatures() {
 	bp.ozEventSignatures["CallExecuted"] = crypto.Keccak256Hash([]byte("CallExecuted(bytes32,uint256,address,uint256,bytes)"))
 	bp.ozEventSignatures["Cancelled"] = crypto.Keccak256Hash([]byte("Cancelled(bytes32)"))
 	bp.ozEventSignatures["MinDelayChange"] = crypto.Keccak256Hash([]byte("MinDelayChange(uint256,uint256)"))
-	bp.ozEventSignatures["RoleGranted"] = crypto.Keccak256Hash([]byte("RoleGranted(bytes32,address,address)"))
-	bp.ozEventSignatures["RoleRevoked"] = crypto.Keccak256Hash([]byte("RoleRevoked(bytes32,address,address)"))
 }
 
 // GetBlockData 获取区块数据
@@ -349,16 +347,6 @@ func (bp *BlockProcessor) extractOpenZeppelinEventFields(event *types.OpenZeppel
 			newDur := newDuration.Uint64()
 			event.OldDuration = &oldDur
 			event.NewDuration = &newDur
-		}
-
-	case "RoleGranted", "RoleRevoked":
-		if len(log.Topics) >= 4 {
-			role := log.Topics[1].Hex()
-			account := log.Topics[2].Hex()
-			sender := log.Topics[3].Hex()
-			event.Role = &role
-			event.Account = &account
-			event.Sender = &sender
 		}
 	}
 }

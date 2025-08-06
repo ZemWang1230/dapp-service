@@ -332,14 +332,8 @@ func (ep *EventProcessor) processUserRelations(ctx context.Context, chainID int,
 		relationType = types.RelationExecutor
 	case "CancelTransaction", "Cancelled":
 		relationType = types.RelationCanceller
-	case "NewAdmin", "RoleGranted":
-		// 需要进一步分析是否是管理员角色
-		if eventType == "RoleGranted" {
-			// 这里需要检查角色类型，简化处理
-			relationType = types.RelationAdmin
-		} else {
-			relationType = types.RelationAdmin
-		}
+	case "NewAdmin":
+		relationType = types.RelationAdmin
 	case "NewPendingAdmin":
 		relationType = types.RelationPendingAdmin
 	default:

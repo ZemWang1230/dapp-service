@@ -202,11 +202,6 @@ type OpenZeppelinTimelockEvent struct {
 	// MinDelayChange
 	OldDuration *uint64 `json:"old_duration,omitempty"`
 	NewDuration *uint64 `json:"new_duration,omitempty"`
-
-	// RoleGranted / RoleRevoked
-	Role    *string `json:"role,omitempty"`
-	Account *string `json:"account,omitempty"`
-	Sender  *string `json:"sender,omitempty"`
 }
 
 // 实现TimelockEvent接口
@@ -405,8 +400,6 @@ const (
 	EventCallExecuted   = "CallExecuted"
 	EventCancelled      = "Cancelled"
 	EventMinDelayChange = "MinDelayChange"
-	EventRoleGranted    = "RoleGranted"
-	EventRoleRevoked    = "RoleRevoked"
 )
 
 // Flow Status 流程状态枚举
