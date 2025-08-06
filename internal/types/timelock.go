@@ -35,7 +35,6 @@ type CompoundTimeLock struct {
 	Remark          string         `json:"remark" gorm:"size:500"`                                // 备注
 	Status          TimeLockStatus `json:"status" gorm:"size:20;not null;default:'active';index"` // 状态
 	IsImported      bool           `json:"is_imported" gorm:"not null;default:false"`             // 是否导入的合约
-	EmergencyMode   bool           `json:"emergency_mode" gorm:"not null;default:false;index"`    // 是否启用应急模式
 	CreatedAt       time.Time      `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -60,7 +59,6 @@ type OpenzeppelinTimeLock struct {
 	Remark          string         `json:"remark" gorm:"size:500"`                                // 备注
 	Status          TimeLockStatus `json:"status" gorm:"size:20;not null;default:'active';index"` // 状态
 	IsImported      bool           `json:"is_imported" gorm:"not null;default:false"`             // 是否导入的合约
-	EmergencyMode   bool           `json:"emergency_mode" gorm:"not null;default:false;index"`    // 是否启用应急模式
 	CreatedAt       time.Time      `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time      `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -74,6 +72,15 @@ func (OpenzeppelinTimeLock) TableName() string {
 type TimeLockPermission struct {
 	Standard   TimeLockStandard `json:"standard"`
 	Permission string           `json:"permission"` // creator, admin, pending_admin, proposer, executor, canceller
+}
+
+// CreateOrImportTimelockContractRequest 创建或导入合约请求
+type CreateOrImportTimelockContractRequest struct {
+	UserAddress     string `json:"user_address" binding:"required"`
+	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
+	ContractAddress string `json:"contract_address" binding:"required"`
+	ChainID         int    `json:"chain_id" binding:"required"`
+	Remark          string `json:"remark" binding:"max=500"`
 }
 
 // CreateTimeLockRequest 创建timelock合约请求

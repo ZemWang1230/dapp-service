@@ -26,25 +26,26 @@ func (BlockScanProgress) TableName() string {
 
 // CompoundTimelockTransaction Compound Timelock 交易记录模型
 type CompoundTimelockTransaction struct {
-	ID                int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	TxHash            string    `json:"tx_hash" gorm:"size:66;not null;index"`
-	BlockNumber       int64     `json:"block_number" gorm:"not null;index"`
-	BlockTimestamp    time.Time `json:"block_timestamp" gorm:"not null"`
-	ChainID           int       `json:"chain_id" gorm:"not null;index"`
-	ChainName         string    `json:"chain_name" gorm:"size:50;not null"`
-	ContractAddress   string    `json:"contract_address" gorm:"size:42;not null;index"`
-	FromAddress       string    `json:"from_address" gorm:"size:42;not null;index"`
-	ToAddress         string    `json:"to_address" gorm:"size:42;not null"`
-	EventType         string    `json:"event_type" gorm:"size:50;not null;index"`
-	EventData         string    `json:"event_data" gorm:"type:jsonb;not null"`
-	ProposalID        *string   `json:"proposal_id" gorm:"size:128;index"`
-	TargetAddress     *string   `json:"target_address" gorm:"size:42"`
-	FunctionSignature *string   `json:"function_signature" gorm:"size:200"`
-	CallData          []byte    `json:"call_data" gorm:"type:bytea"`
-	Eta               *int64    `json:"eta"`
-	Value             string    `json:"value" gorm:"type:decimal(36,0);default:0"`
-	CreatedAt         time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt         time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	ID                     int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	TxHash                 string    `json:"tx_hash" gorm:"size:66;not null;index"`              // 交易哈希
+	BlockNumber            int64     `json:"block_number" gorm:"not null;index"`                 // 区块高度
+	BlockTimestamp         time.Time `json:"block_timestamp" gorm:"not null"`                    // 区块时间
+	ChainID                int       `json:"chain_id" gorm:"not null;index"`                     // 链ID
+	ChainName              string    `json:"chain_name" gorm:"size:50;not null"`                 // 链名称
+	ContractAddress        string    `json:"contract_address" gorm:"size:42;not null;index"`     // 合约地址
+	FromAddress            string    `json:"from_address" gorm:"size:42;not null;index"`         // 发起地址
+	ToAddress              string    `json:"to_address" gorm:"size:42;not null"`                 // 接收地址
+	TxStatus               string    `json:"tx_status" gorm:"size:20;not null;default:'failed'"` // 交易状态（success, failed）
+	EventType              string    `json:"event_type" gorm:"size:50;not null;index"`           // 事件类型（QueueTransaction, ExecuteTransaction, CancelTransaction）
+	EventData              string    `json:"event_data" gorm:"type:jsonb;not null"`              // 事件数据
+	EventTxHash            *string   `json:"event_tx_hash" gorm:"size:128;index"`                // 事件交易哈希
+	EventTarget            *string   `json:"event_target" gorm:"size:42"`                        // 事件目标地址
+	EventValue             string    `json:"event_value" gorm:"type:decimal(36,0);default:0"`    // 事件价值
+	EventFunctionSignature *string   `json:"event_function_signature" gorm:"size:200"`           // 事件函数签名
+	EventCallData          []byte    `json:"event_call_data" gorm:"type:bytea"`                  // 事件调用参数数据
+	EventEta               *int64    `json:"event_eta"`                                          // 事件ETA（预计执行时间）
+	CreatedAt              time.Time `json:"created_at" gorm:"autoCreateTime"`                   // 创建时间
+	UpdatedAt              time.Time `json:"updated_at" gorm:"autoUpdateTime"`                   // 更新时间
 }
 
 // TableName 设置表名
@@ -54,25 +55,27 @@ func (CompoundTimelockTransaction) TableName() string {
 
 // OpenZeppelinTimelockTransaction OpenZeppelin Timelock 交易记录模型
 type OpenZeppelinTimelockTransaction struct {
-	ID                int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	TxHash            string    `json:"tx_hash" gorm:"size:66;not null;index"`
-	BlockNumber       int64     `json:"block_number" gorm:"not null;index"`
-	BlockTimestamp    time.Time `json:"block_timestamp" gorm:"not null"`
-	ChainID           int       `json:"chain_id" gorm:"not null;index"`
-	ChainName         string    `json:"chain_name" gorm:"size:50;not null"`
-	ContractAddress   string    `json:"contract_address" gorm:"size:42;not null;index"`
-	FromAddress       string    `json:"from_address" gorm:"size:42;not null;index"`
-	ToAddress         string    `json:"to_address" gorm:"size:42;not null"`
-	EventType         string    `json:"event_type" gorm:"size:50;not null;index"`
-	EventData         string    `json:"event_data" gorm:"type:jsonb;not null"`
-	OperationID       *string   `json:"operation_id" gorm:"size:66;index"`
-	TargetAddress     *string   `json:"target_address" gorm:"size:42"`
-	FunctionSignature *string   `json:"function_signature" gorm:"size:200"`
-	CallData          []byte    `json:"call_data" gorm:"type:bytea"`
-	Delay             *int64    `json:"delay"`
-	Value             string    `json:"value" gorm:"type:decimal(36,0);default:0"`
-	CreatedAt         time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt         time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	ID               int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	TxHash           string    `json:"tx_hash" gorm:"size:66;not null;index"`              // 交易哈希
+	BlockNumber      int64     `json:"block_number" gorm:"not null;index"`                 // 区块高度
+	BlockTimestamp   time.Time `json:"block_timestamp" gorm:"not null"`                    // 区块时间
+	ChainID          int       `json:"chain_id" gorm:"not null;index"`                     // 链ID
+	ChainName        string    `json:"chain_name" gorm:"size:50;not null"`                 // 链名称
+	ContractAddress  string    `json:"contract_address" gorm:"size:42;not null;index"`     // 合约地址
+	FromAddress      string    `json:"from_address" gorm:"size:42;not null;index"`         // 发起地址
+	ToAddress        string    `json:"to_address" gorm:"size:42;not null"`                 // 接收地址
+	TxStatus         string    `json:"tx_status" gorm:"size:20;not null;default:'failed'"` // 交易状态（success, failed）
+	EventType        string    `json:"event_type" gorm:"size:50;not null;index"`           // 事件类型（CallScheduled, CallExecuted, Cancelled）
+	EventData        string    `json:"event_data" gorm:"type:jsonb;not null"`              // 事件数据
+	EventID          *string   `json:"event_id" gorm:"size:66"`                            // 事件ID
+	EventIndex       int       `json:"event_index"`                                        // 事件索引
+	EventTarget      *string   `json:"event_target" gorm:"size:42"`                        // 事件目标地址
+	EventValue       string    `json:"event_value" gorm:"type:decimal(36,0);default:0"`    // 事件价值
+	EventCallData    []byte    `json:"event_call_data" gorm:"type:bytea"`                  // 事件调用数据（包含函数签名和参数）
+	EventPredecessor *string   `json:"event_predecessor" gorm:"size:66"`                   // 事件前驱（包含前驱交易哈希）
+	EventDelay       *int64    `json:"event_delay"`                                        // 事件延迟
+	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`                   // 创建时间
+	UpdatedAt        time.Time `json:"updated_at" gorm:"autoUpdateTime"`                   // 更新时间
 }
 
 // TableName 设置表名
@@ -82,28 +85,26 @@ func (OpenZeppelinTimelockTransaction) TableName() string {
 
 // TimelockTransactionFlow Timelock 交易流程关联模型
 type TimelockTransactionFlow struct {
-	ID                int64      `json:"id" gorm:"primaryKey;autoIncrement"`
-	FlowID            string     `json:"flow_id" gorm:"size:128;not null;index"`
-	TimelockStandard  string     `json:"timelock_standard" gorm:"size:20;not null"`
-	ChainID           int        `json:"chain_id" gorm:"not null;index"`
-	ContractAddress   string     `json:"contract_address" gorm:"size:42;not null;index"`
-	Status            string     `json:"status" gorm:"size:20;not null;default:'proposed';index"`
-	ProposeTxID       *int64     `json:"propose_tx_id"`
-	QueueTxID         *int64     `json:"queue_tx_id"`
-	ExecuteTxID       *int64     `json:"execute_tx_id"`
-	CancelTxID        *int64     `json:"cancel_tx_id"`
-	ProposedAt        *time.Time `json:"proposed_at"`
-	QueuedAt          *time.Time `json:"queued_at"`
-	ExecutedAt        *time.Time `json:"executed_at"`
-	CancelledAt       *time.Time `json:"cancelled_at"`
-	Eta               *time.Time `json:"eta"`
-	TargetAddress     *string    `json:"target_address" gorm:"size:42"`
-	FunctionSignature *string    `json:"function_signature" gorm:"size:200"`
-	CallData          []byte     `json:"call_data" gorm:"type:bytea"`
-	Value             string     `json:"value" gorm:"type:decimal(36,0);default:0"`
-	Description       *string    `json:"description" gorm:"type:text"`
-	CreatedAt         time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt         time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	ID               int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	FlowID           string     `json:"flow_id" gorm:"size:128;not null;index"`                  // 流程ID
+	TimelockStandard string     `json:"timelock_standard" gorm:"size:20;not null"`               // Timelock标准
+	ChainID          int        `json:"chain_id" gorm:"not null;index"`                          // 链ID
+	ContractAddress  string     `json:"contract_address" gorm:"size:42;not null;index"`          // 合约地址
+	Status           string     `json:"status" gorm:"size:20;not null;default:'proposed';index"` // 流程状态
+	ProposeTxHash    string     `json:"propose_tx_hash" gorm:"size:66;not null;index"`           // 提议交易哈希
+	QueueTxHash      string     `json:"queue_tx_hash" gorm:"size:66;not null;index"`             // 队列交易哈希
+	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`           // 执行交易哈希
+	CancelTxHash     string     `json:"cancel_tx_hash" gorm:"size:66;not null;index"`            // 取消交易哈希
+	ProposedAt       *time.Time `json:"proposed_at"`                                             // 提议时间
+	QueuedAt         *time.Time `json:"queued_at"`                                               // 队列时间
+	ExecutedAt       *time.Time `json:"executed_at"`                                             // 执行时间
+	CancelledAt      *time.Time `json:"cancelled_at"`                                            // 取消时间
+	Eta              *time.Time `json:"eta"`                                                     // 预计执行时间（Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay）
+	TargetAddress    *string    `json:"target_address" gorm:"size:42"`                           // 目标地址
+	CallData         []byte     `json:"call_data" gorm:"type:bytea"`                             // 调用数据（包含函数签名和参数）
+	Value            string     `json:"value" gorm:"type:decimal(36,0);default:0"`               // 价值
+	CreatedAt        time.Time  `json:"created_at" gorm:"autoCreateTime"`                        // 创建时间
+	UpdatedAt        time.Time  `json:"updated_at" gorm:"autoUpdateTime"`                        // 更新时间
 }
 
 // TableName 设置表名
@@ -114,15 +115,15 @@ func (TimelockTransactionFlow) TableName() string {
 // UserTimelockRelation 用户-合约关联模型
 type UserTimelockRelation struct {
 	ID               int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserAddress      string    `json:"user_address" gorm:"size:42;not null;index"`
-	ChainID          int       `json:"chain_id" gorm:"not null;index"`
-	ContractAddress  string    `json:"contract_address" gorm:"size:42;not null;index"`
-	TimelockStandard string    `json:"timelock_standard" gorm:"size:20;not null"`
-	RelationType     string    `json:"relation_type" gorm:"size:20;not null;index"`
-	RelatedAt        time.Time `json:"related_at" gorm:"not null"`
-	IsActive         bool      `json:"is_active" gorm:"not null;default:true;index"`
-	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt        time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	UserAddress      string    `json:"user_address" gorm:"size:42;not null;index"`     // 用户地址
+	ChainID          int       `json:"chain_id" gorm:"not null;index"`                 // 链ID
+	ContractAddress  string    `json:"contract_address" gorm:"size:42;not null;index"` // 合约地址
+	TimelockStandard string    `json:"timelock_standard" gorm:"size:20;not null"`      // Timelock标准
+	RelationType     string    `json:"relation_type" gorm:"size:20;not null;index"`    // 关联类型（creator, admin, pending_admin, proposer, executor, canceller）
+	RelatedAt        time.Time `json:"related_at" gorm:"not null"`                     // 关联建立时间
+	IsActive         bool      `json:"is_active" gorm:"not null;default:true;index"`   // 是否有效
+	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`               // 创建时间
+	UpdatedAt        time.Time `json:"updated_at" gorm:"autoUpdateTime"`               // 更新时间
 }
 
 // TableName 设置表名
@@ -132,31 +133,25 @@ func (UserTimelockRelation) TableName() string {
 
 // CompoundTimelockEvent Compound Timelock 事件结构
 type CompoundTimelockEvent struct {
-	EventType       string                 `json:"event_type"`
-	TxHash          string                 `json:"tx_hash"`
-	BlockNumber     uint64                 `json:"block_number"`
-	BlockTimestamp  uint64                 `json:"block_timestamp"`
-	ContractAddress string                 `json:"contract_address"`
-	ChainID         int                    `json:"chain_id"`
-	ChainName       string                 `json:"chain_name"`
-	FromAddress     string                 `json:"from_address"`
-	ToAddress       string                 `json:"to_address"`
-	EventData       map[string]interface{} `json:"event_data"`
+	EventType       string `json:"event_type"`       // QueueTransaction, ExecuteTransaction, CancelTransaction
+	TxHash          string `json:"tx_hash"`          // 交易哈希
+	BlockNumber     uint64 `json:"block_number"`     // 区块高度
+	BlockTimestamp  uint64 `json:"block_timestamp"`  // 区块时间
+	ContractAddress string `json:"contract_address"` // 合约地址
+	ChainID         int    `json:"chain_id"`         // 链ID
+	ChainName       string `json:"chain_name"`       // 链名称
+	FromAddress     string `json:"from_address"`     // 发起地址
+	ToAddress       string `json:"to_address"`       // 接收地址
+	EventData       string `json:"event_data"`       // 事件数据
 
 	// QueueTransaction / ExecuteTransaction / CancelTransaction
-	ProposalID        *string `json:"proposal_id,omitempty"`
-	TargetAddress     *string `json:"target_address,omitempty"`
-	Value             *string `json:"value,omitempty"`
-	FunctionSignature *string `json:"function_signature,omitempty"`
-	CallData          *string `json:"call_data,omitempty"`
-	Eta               *uint64 `json:"eta,omitempty"`
-
-	// NewDelay
-	NewDelay *uint64 `json:"new_delay,omitempty"`
-
-	// NewAdmin / NewPendingAdmin
-	NewAdmin        *string `json:"new_admin,omitempty"`
-	NewPendingAdmin *string `json:"new_pending_admin,omitempty"`
+	// bytes32 indexed txHash, address indexed target, uint value, string signature,  bytes data, uint eta
+	EventTxHash            *string `json:"event_tx_hash"`            // 事件交易哈希
+	EventTarget            *string `json:"event_target"`             // 事件目标地址
+	EventValue             string  `json:"event_value"`              // 事件价值
+	EventFunctionSignature *string `json:"event_function_signature"` // 事件函数签名
+	EventCallData          []byte  `json:"event_call_data"`          // 事件调用参数数据
+	EventEta               *int64  `json:"event_eta"`                // 事件ETA（预计执行时间）
 }
 
 // 实现TimelockEvent接口
@@ -178,30 +173,30 @@ func (e *CompoundTimelockEvent) GetBlockNumber() uint64 {
 
 // OpenZeppelinTimelockEvent OpenZeppelin Timelock 事件结构
 type OpenZeppelinTimelockEvent struct {
-	EventType       string                 `json:"event_type"`
-	TxHash          string                 `json:"tx_hash"`
-	BlockNumber     uint64                 `json:"block_number"`
-	BlockTimestamp  uint64                 `json:"block_timestamp"`
-	ContractAddress string                 `json:"contract_address"`
-	ChainID         int                    `json:"chain_id"`
-	ChainName       string                 `json:"chain_name"`
-	FromAddress     string                 `json:"from_address"`
-	ToAddress       string                 `json:"to_address"`
-	EventData       map[string]interface{} `json:"event_data"`
+	EventType       string                 `json:"event_type"`       // CallScheduled, CallExecuted, Cancelled
+	TxHash          string                 `json:"tx_hash"`          // 交易哈希
+	BlockNumber     uint64                 `json:"block_number"`     // 区块高度
+	BlockTimestamp  uint64                 `json:"block_timestamp"`  // 区块时间
+	ContractAddress string                 `json:"contract_address"` // 合约地址
+	ChainID         int                    `json:"chain_id"`         // 链ID
+	ChainName       string                 `json:"chain_name"`       // 链名称
+	FromAddress     string                 `json:"from_address"`     // 发起地址
+	ToAddress       string                 `json:"to_address"`       // 接收地址
+	EventData       map[string]interface{} `json:"event_data"`       // 事件数据
 
-	// CallScheduled / CallExecuted / Cancelled
-	OperationID       *string `json:"operation_id,omitempty"`
-	Index             *uint64 `json:"index,omitempty"`
-	TargetAddress     *string `json:"target_address,omitempty"`
-	Value             *string `json:"value,omitempty"`
-	CallData          *string `json:"call_data,omitempty"`
-	FunctionSignature *string `json:"function_signature,omitempty"`
-	Predecessor       *string `json:"predecessor,omitempty"`
-	Delay             *uint64 `json:"delay,omitempty"`
-
-	// MinDelayChange
-	OldDuration *uint64 `json:"old_duration,omitempty"`
-	NewDuration *uint64 `json:"new_duration,omitempty"`
+	// CallScheduled
+	// bytes32 indexed id,uint256 indexed index,address target,uint256 value,bytes data,bytes32 predecessor,uint256 delay
+	// CallExecuted
+	// bytes32 indexed id, uint256 indexed index, address target, uint256 value, bytes data
+	// Cancelled
+	// bytes32 indexed id
+	EventID          *string `json:"event_id"`          // 事件ID
+	EventIndex       int     `json:"event_index"`       // 事件索引
+	EventTarget      *string `json:"event_target"`      // 事件目标地址
+	EventValue       string  `json:"event_value"`       // 事件价值
+	EventCallData    []byte  `json:"event_call_data"`   // 事件调用数据（包含函数签名和参数）
+	EventPredecessor *string `json:"event_predecessor"` // 事件前驱（包含前驱交易哈希）
+	EventDelay       *int64  `json:"event_delay"`       // 事件延迟
 }
 
 // 实现TimelockEvent接口
@@ -239,62 +234,6 @@ type OpenZeppelinTimelockInfo struct {
 	Admin     *string  `json:"admin"`     // 管理员 (可能为空)
 }
 
-// ImportTimelockContractRequest 导入合约请求
-type ImportTimelockContractRequest struct {
-	UserAddress     string `json:"user_address" binding:"required"`
-	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
-	ContractAddress string `json:"contract_address" binding:"required"`
-	ChainID         int    `json:"chain_id" binding:"required"`
-	Remark          string `json:"remark" binding:"max=500"`
-}
-
-// TimelockContractInfo 合约信息详情
-type TimelockContractInfo struct {
-	// 基本信息
-	ContractAddress string `json:"contract_address"`
-	Standard        string `json:"standard"`
-	ChainID         int    `json:"chain_id"`
-	ChainName       string `json:"chain_name"`
-
-	// 链上获取的信息
-	MinDelay      *big.Int `json:"min_delay"`
-	CreationBlock *uint64  `json:"creation_block,omitempty"`
-	CreationTx    *string  `json:"creation_tx,omitempty"`
-
-	// Compound 特有
-	Admin        *string  `json:"admin,omitempty"`
-	PendingAdmin *string  `json:"pending_admin,omitempty"`
-	GracePeriod  *big.Int `json:"grace_period,omitempty"`
-	MaxDelay     *big.Int `json:"max_delay,omitempty"`
-
-	// OpenZeppelin 特有
-	Proposers  []string `json:"proposers,omitempty"`
-	Executors  []string `json:"executors,omitempty"`
-	Cancellers []string `json:"cancellers,omitempty"`
-
-	// 验证状态
-	IsValid         bool    `json:"is_valid"`
-	ValidationError *string `json:"validation_error,omitempty"`
-}
-
-// GetUserTimelockTransactionsRequest 获取用户相关的timelock交易请求
-type GetUserTimelockTransactionsRequest struct {
-	UserAddress string  `json:"user_address" binding:"required"`
-	ChainID     *int    `json:"chain_id,omitempty"`
-	Standard    *string `json:"standard,omitempty"`
-	Status      *string `json:"status,omitempty"`
-	Page        int     `json:"page" binding:"min=1"`
-	PageSize    int     `json:"page_size" binding:"min=1,max=100"`
-}
-
-// GetUserTimelockTransactionsResponse 获取用户相关的timelock交易响应
-type GetUserTimelockTransactionsResponse struct {
-	Transactions []UserTimelockTransaction `json:"transactions"`
-	Total        int64                     `json:"total"`
-	Page         int                       `json:"page"`
-	PageSize     int                       `json:"page_size"`
-}
-
 // UserTimelockTransaction 用户相关的timelock交易详情
 type UserTimelockTransaction struct {
 	// 基本交易信息
@@ -309,73 +248,39 @@ type UserTimelockTransaction struct {
 	Standard        string `json:"standard"`
 
 	// 用户角色和关系
-	UserRole     string `json:"user_role"`     // creator, admin, proposer, executor, etc.
-	UserRelation string `json:"user_relation"` // 用户与该交易的关系
+	UserRole string `json:"user_role"` // creator, admin, pending_admin, proposer, executor, canceller
 
 	// 交易详情
-	EventType     string  `json:"event_type"`
-	FlowID        *string `json:"flow_id,omitempty"`
-	FlowStatus    *string `json:"flow_status,omitempty"`
-	TargetAddress *string `json:"target_address,omitempty"`
-	FunctionSig   *string `json:"function_signature,omitempty"`
-	Value         *string `json:"value,omitempty"`
-	Description   *string `json:"description,omitempty"`
+	EventType     string  `json:"event_type"`                // 事件类型
+	FlowID        *string `json:"flow_id,omitempty"`         // 流程ID
+	FlowStatus    *string `json:"flow_status,omitempty"`     // 流程状态
+	TargetAddress *string `json:"target_address,omitempty"`  // 目标地址
+	EventCallData []byte  `json:"event_call_data,omitempty"` // 事件调用数据（包含函数签名和参数）
+	EventValue    string  `json:"event_value,omitempty"`     // 事件价值
 
 	// 时间信息
-	ProposedAt   *time.Time `json:"proposed_at,omitempty"`
-	ExecutableAt *time.Time `json:"executable_at,omitempty"`
-	ExecutedAt   *time.Time `json:"executed_at,omitempty"`
-	CancelledAt  *time.Time `json:"cancelled_at,omitempty"`
+	ProposedAt   *time.Time `json:"proposed_at,omitempty"`   // 提议时间
+	ExecutableAt *time.Time `json:"executable_at,omitempty"` // 可执行时间
+	ExecutedAt   *time.Time `json:"executed_at,omitempty"`   // 执行时间
+	CancelledAt  *time.Time `json:"cancelled_at,omitempty"`  // 取消时间
+	Eta          *time.Time `json:"eta,omitempty"`           // 预计执行时间(Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay)
 }
 
 // RescanRequest 重扫请求
 type RescanRequest struct {
-	ChainID         int     `json:"chain_id" binding:"required"`
-	FromBlock       uint64  `json:"from_block" binding:"required"`
-	ToBlock         *uint64 `json:"to_block,omitempty"` // 空表示扫到最新
-	ForceRescan     bool    `json:"force_rescan"`       // 是否强制重扫已扫描的区块
-	CleanupExisting bool    `json:"cleanup_existing"`   // 是否清理现有数据
+	ChainID     int     `json:"chain_id" binding:"required"`   // 链ID
+	FromBlock   uint64  `json:"from_block" binding:"required"` // 开始区块
+	ToBlock     *uint64 `json:"to_block,omitempty"`            // 结束区块(空表示扫到最新)
+	ForceRescan bool    `json:"force_rescan"`                  // 是否强制重扫已扫描的区块
 }
 
 // RescanResponse 重扫响应
 type RescanResponse struct {
-	TaskID    string          `json:"task_id"`
-	Status    string          `json:"status"`
-	StartTime time.Time       `json:"start_time"`
-	Progress  *RescanProgress `json:"progress,omitempty"`
-}
-
-// RescanProgress 重扫进度
-type RescanProgress struct {
-	CurrentBlock    uint64  `json:"current_block"`
-	TargetBlock     uint64  `json:"target_block"`
-	ProcessedBlocks uint64  `json:"processed_blocks"`
-	FoundEvents     uint64  `json:"found_events"`
-	ProcessedEvents uint64  `json:"processed_events"`
-	ErrorCount      uint64  `json:"error_count"`
-	ProgressPercent float64 `json:"progress_percent"`
-}
-
-// NotificationEvent 通知事件 (预留)
-type NotificationEvent struct {
-	EventType       string `json:"event_type"`
-	UserAddress     string `json:"user_address"`
-	ChainID         int    `json:"chain_id"`
-	ContractAddress string `json:"contract_address"`
-
-	// 事件详情
-	FlowID      *string `json:"flow_id,omitempty"`
-	TxHash      string  `json:"tx_hash"`
-	BlockNumber uint64  `json:"block_number"`
-
-	// 通知内容
-	Title    string `json:"title"`
-	Message  string `json:"message"`
-	Severity string `json:"severity"` // info, warning, critical
-
-	// 时间信息
-	OccurredAt     time.Time `json:"occurred_at"`
-	NotificationAt time.Time `json:"notification_at"`
+	TaskID    string  `json:"task_id"`    // 任务ID
+	ChainID   int     `json:"chain_id"`   // 链ID
+	FromBlock uint64  `json:"from_block"` // 开始区块
+	ToBlock   *uint64 `json:"to_block"`   // 结束区块(空表示扫到最新)
+	Status    string  `json:"status"`     // 任务状态(success, failed)
 }
 
 // ScannerStatus 扫链状态枚举
@@ -391,15 +296,11 @@ const (
 	EventQueueTransaction   = "QueueTransaction"
 	EventExecuteTransaction = "ExecuteTransaction"
 	EventCancelTransaction  = "CancelTransaction"
-	EventNewDelay           = "NewDelay"
-	EventNewAdmin           = "NewAdmin"
-	EventNewPendingAdmin    = "NewPendingAdmin"
 
 	// OpenZeppelin Timelock Events
-	EventCallScheduled  = "CallScheduled"
-	EventCallExecuted   = "CallExecuted"
-	EventCancelled      = "Cancelled"
-	EventMinDelayChange = "MinDelayChange"
+	EventCallScheduled = "CallScheduled"
+	EventCallExecuted  = "CallExecuted"
+	EventCancelled     = "Cancelled"
 )
 
 // Flow Status 流程状态枚举

@@ -56,15 +56,11 @@ func (bp *BlockProcessor) initEventSignatures() {
 	bp.compoundEventSignatures["QueueTransaction"] = crypto.Keccak256Hash([]byte("QueueTransaction(bytes32,address,uint256,string,bytes,uint256)"))
 	bp.compoundEventSignatures["ExecuteTransaction"] = crypto.Keccak256Hash([]byte("ExecuteTransaction(bytes32,address,uint256,string,bytes,uint256)"))
 	bp.compoundEventSignatures["CancelTransaction"] = crypto.Keccak256Hash([]byte("CancelTransaction(bytes32,address,uint256,string,bytes,uint256)"))
-	bp.compoundEventSignatures["NewDelay"] = crypto.Keccak256Hash([]byte("NewDelay(uint256)"))
-	bp.compoundEventSignatures["NewAdmin"] = crypto.Keccak256Hash([]byte("NewAdmin(address)"))
-	bp.compoundEventSignatures["NewPendingAdmin"] = crypto.Keccak256Hash([]byte("NewPendingAdmin(address)"))
 
 	// OpenZeppelin Timelock 事件签名
 	bp.ozEventSignatures["CallScheduled"] = crypto.Keccak256Hash([]byte("CallScheduled(bytes32,uint256,address,uint256,bytes,bytes32,uint256)"))
 	bp.ozEventSignatures["CallExecuted"] = crypto.Keccak256Hash([]byte("CallExecuted(bytes32,uint256,address,uint256,bytes)"))
 	bp.ozEventSignatures["Cancelled"] = crypto.Keccak256Hash([]byte("Cancelled(bytes32)"))
-	bp.ozEventSignatures["MinDelayChange"] = crypto.Keccak256Hash([]byte("MinDelayChange(uint256,uint256)"))
 }
 
 // GetBlockData 获取区块数据
@@ -146,51 +142,8 @@ func (bp *BlockProcessor) processTransactionReceipt(receipt *ethtypes.Receipt, b
 
 // parseCompoundEvent 解析Compound Timelock事件
 func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, receipt *ethtypes.Receipt, block *ethtypes.Block, eventSignature common.Hash) TimelockEvent {
-	// 查找匹配的事件类型
-	var eventType string
-	for name, signature := range bp.compoundEventSignatures {
-		if signature == eventSignature {
-			eventType = name
-			break
-		}
-	}
-
-	if eventType == "" {
-		return nil
-	}
-
-	// 获取交易发送者和接收者
-	tx := bp.getTransactionFromBlock(block, receipt.TxHash)
-	fromAddress := ""
-	toAddress := ""
-	if tx != nil {
-		if tx.To() != nil {
-			toAddress = tx.To().Hex()
-		}
-		// 通过sender获取from地址 (需要解析签名，这里简化处理)
-		fromAddress = log.Address.Hex() // 简化：使用合约地址
-	}
-
-	// 创建Compound事件
-	event := &types.CompoundTimelockEvent{
-		EventType:       eventType,
-		TxHash:          receipt.TxHash.Hex(),
-		BlockNumber:     block.Number().Uint64(),
-		BlockTimestamp:  block.Time(),
-		ChainID:         bp.chainInfo.ChainID,
-		ChainName:       bp.chainInfo.ChainName,
-		ContractAddress: log.Address.Hex(),
-		FromAddress:     fromAddress,
-		ToAddress:       toAddress,
-
-		// 解析事件数据
-		EventData: bp.parseCompoundEventData(eventType, log),
-	}
-
-	// 根据事件类型解析特定字段
-	bp.extractCompoundEventFields(event, log)
-
-	return event
+	// 完善流程
+	return nil
 }
 
 // parseOpenZeppelinEvent 解析OpenZeppelin Timelock事件
@@ -276,75 +229,12 @@ func (bp *BlockProcessor) parseOpenZeppelinEventData(eventType string, log *etht
 
 // extractCompoundEventFields 提取Compound事件特定字段
 func (bp *BlockProcessor) extractCompoundEventFields(event *types.CompoundTimelockEvent, log *ethtypes.Log) {
-	switch event.EventType {
-	case "QueueTransaction", "ExecuteTransaction", "CancelTransaction":
-		if len(log.Topics) >= 2 {
-			// txHash (bytes32)
-			proposalID := log.Topics[1].Hex()
-			event.ProposalID = &proposalID
-		}
-
-		// 解析data中的其他字段 (target, value, signature, data, eta)
-		// 这里简化处理，实际应该使用ABI解码
-		if len(log.Data) > 0 {
-			// 简化版本，实际需要完整的ABI解析
-			event.TargetAddress = extractAddressFromData(log.Data, 0)
-			event.FunctionSignature = extractStringFromData(log.Data, 96) // 简化
-		}
-
-	case "NewDelay":
-		if len(log.Data) >= 32 {
-			delay := new(big.Int).SetBytes(log.Data[:32])
-			newDelay := delay.Uint64()
-			event.NewDelay = &newDelay
-		}
-
-	case "NewAdmin":
-		if len(log.Topics) >= 2 {
-			newAdmin := log.Topics[1].Hex()
-			event.NewAdmin = &newAdmin
-		}
-
-	case "NewPendingAdmin":
-		if len(log.Topics) >= 2 {
-			newPendingAdmin := log.Topics[1].Hex()
-			event.NewPendingAdmin = &newPendingAdmin
-		}
-	}
+	// 完善流程
 }
 
 // extractOpenZeppelinEventFields 提取OpenZeppelin事件特定字段
 func (bp *BlockProcessor) extractOpenZeppelinEventFields(event *types.OpenZeppelinTimelockEvent, log *ethtypes.Log) {
-	switch event.EventType {
-	case "CallScheduled", "CallExecuted":
-		if len(log.Topics) >= 2 {
-			// operationId (bytes32)
-			operationID := log.Topics[1].Hex()
-			event.OperationID = &operationID
-		}
-
-		// 解析其他字段
-		if len(log.Data) > 0 {
-			// 简化版本，实际需要完整的ABI解析
-			event.TargetAddress = extractAddressFromData(log.Data, 32) // index之后
-		}
-
-	case "Cancelled":
-		if len(log.Topics) >= 2 {
-			operationID := log.Topics[1].Hex()
-			event.OperationID = &operationID
-		}
-
-	case "MinDelayChange":
-		if len(log.Data) >= 64 {
-			oldDuration := new(big.Int).SetBytes(log.Data[:32])
-			newDuration := new(big.Int).SetBytes(log.Data[32:64])
-			oldDur := oldDuration.Uint64()
-			newDur := newDuration.Uint64()
-			event.OldDuration = &oldDur
-			event.NewDuration = &newDur
-		}
-	}
+	// 完善流程
 }
 
 // extractAddressFromData 从data中提取地址 (简化版本)
