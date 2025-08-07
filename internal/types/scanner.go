@@ -86,26 +86,25 @@ func (OpenZeppelinTimelockTransaction) TableName() string {
 // TimelockTransactionFlow Timelock 交易流程关联模型
 type TimelockTransactionFlow struct {
 	ID               int64      `json:"id" gorm:"primaryKey;autoIncrement"`
-	FlowID           string     `json:"flow_id" gorm:"size:128;not null;index"`                  // 流程ID（Compound的是TxHash,OpenZeppelin的是EventID）
-	TimelockStandard string     `json:"timelock_standard" gorm:"size:20;not null"`               // Timelock标准
-	ChainID          int        `json:"chain_id" gorm:"not null;index"`                          // 链ID
-	ContractAddress  string     `json:"contract_address" gorm:"size:42;not null;index"`          // 合约地址
-	Status           string     `json:"status" gorm:"size:20;not null;default:'proposed';index"` // 流程状态（proposed, queued, executed, cancelled, expired）
-	ProposeTxHash    string     `json:"propose_tx_hash" gorm:"size:66;not null;index"`           // 提议交易哈希
-	QueueTxHash      string     `json:"queue_tx_hash" gorm:"size:66;not null;index"`             // 队列交易哈希
-	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`           // 执行交易哈希
-	CancelTxHash     string     `json:"cancel_tx_hash" gorm:"size:66;not null;index"`            // 取消交易哈希
-	ProposedAt       *time.Time `json:"proposed_at"`                                             // 提议时间
-	QueuedAt         *time.Time `json:"queued_at"`                                               // 队列时间
-	ExecutedAt       *time.Time `json:"executed_at"`                                             // 执行时间
-	CancelledAt      *time.Time `json:"cancelled_at"`                                            // 取消时间
-	Eta              *time.Time `json:"eta"`                                                     // 预计执行时间（Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay）
-	ExpiredAt        *time.Time `json:"expired_at"`                                              // 过期时间（Compound的有过期时间ETA+GracePeriod，OpenZeppelin没有）
-	TargetAddress    *string    `json:"target_address" gorm:"size:42"`                           // 目标地址
-	CallData         []byte     `json:"call_data" gorm:"type:bytea"`                             // 调用数据（包含函数签名和参数）
-	Value            string     `json:"value" gorm:"type:decimal(36,0);default:0"`               // 价值
-	CreatedAt        time.Time  `json:"created_at" gorm:"autoCreateTime"`                        // 创建时间
-	UpdatedAt        time.Time  `json:"updated_at" gorm:"autoUpdateTime"`                        // 更新时间
+	FlowID           string     `json:"flow_id" gorm:"size:128;not null;index"`                 // 流程ID（Compound的是TxHash,OpenZeppelin的是EventID）
+	TimelockStandard string     `json:"timelock_standard" gorm:"size:20;not null"`              // Timelock标准
+	ChainID          int        `json:"chain_id" gorm:"not null;index"`                         // 链ID
+	ContractAddress  string     `json:"contract_address" gorm:"size:42;not null;index"`         // 合约地址
+	Status           string     `json:"status" gorm:"size:20;not null;default:'waiting';index"` // 流程状态（waiting提案等待中, ready提案能够执行了, executed执行完成了, cancelled取消, expired过期只有Compound有）
+	ProposeTxHash    string     `json:"propose_tx_hash" gorm:"size:66;not null;index"`          // 提议交易哈希
+	QueueTxHash      string     `json:"queue_tx_hash" gorm:"size:66;not null;index"`            // 队列交易哈希
+	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`          // 执行交易哈希
+	CancelTxHash     string     `json:"cancel_tx_hash" gorm:"size:66;not null;index"`           // 取消交易哈希
+	ProposedAt       *time.Time `json:"proposed_at"`                                            // 提议时间
+	ExecutedAt       *time.Time `json:"executed_at"`                                            // 执行时间
+	CancelledAt      *time.Time `json:"cancelled_at"`                                           // 取消时间
+	Eta              *time.Time `json:"eta"`                                                    // 预计执行时间（Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay）
+	ExpiredAt        *time.Time `json:"expired_at"`                                             // 过期时间（Compound的有过期时间ETA+GracePeriod，OpenZeppelin没有）
+	TargetAddress    *string    `json:"target_address" gorm:"size:42"`                          // 目标地址
+	CallData         []byte     `json:"call_data" gorm:"type:bytea"`                            // 调用数据（包含函数签名和参数）
+	Value            string     `json:"value" gorm:"type:decimal(36,0);default:0"`              // 价值
+	CreatedAt        time.Time  `json:"created_at" gorm:"autoCreateTime"`                       // 创建时间
+	UpdatedAt        time.Time  `json:"updated_at" gorm:"autoUpdateTime"`                       // 更新时间
 }
 
 // TableName 设置表名

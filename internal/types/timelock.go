@@ -11,7 +11,6 @@ type CompoundTimeLock struct {
 	ChainID         int       `json:"chain_id" gorm:"not null;index"`                        // 所在链ID
 	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index"`              // 链名称
 	ContractAddress string    `json:"contract_address" gorm:"size:42;not null;index"`        // 合约地址
-	TxHash          *string   `json:"tx_hash" gorm:"size:66"`                                // 创建交易hash（创建时）
 	Delay           int64     `json:"delay" gorm:"not null"`                                 // 延迟时间（秒），从链上读取
 	Admin           string    `json:"admin" gorm:"size:42;not null;index"`                   // 管理员地址，从链上读取
 	PendingAdmin    *string   `json:"pending_admin" gorm:"size:42;index"`                    // 待定管理员地址，从链上读取
@@ -37,7 +36,6 @@ type OpenzeppelinTimeLock struct {
 	ChainID         int       `json:"chain_id" gorm:"not null;index"`                        // 所在链ID
 	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index"`              // 链名称
 	ContractAddress string    `json:"contract_address" gorm:"size:42;not null;index"`        // 合约地址
-	TxHash          *string   `json:"tx_hash" gorm:"size:66"`                                // 创建交易hash（创建时）
 	Delay           int64     `json:"delay" gorm:"not null"`                                 // 延迟时间（秒），从链上读取
 	Admin           string    `json:"admin" gorm:"size:42;not null;index"`                   // 管理员地址，从链上读取
 	Proposers       string    `json:"proposers" gorm:"type:text;not null"`                   // 提议者地址列表（JSON），从链上读取
