@@ -174,7 +174,7 @@ func (bp *BlockProcessor) processLog(ctx context.Context, client *ethclient.Clie
 	}
 
 	// 3. eth_getBlockByNumber 获取区块信息（用于时间戳）
-	block, err := bp.getBlockByNumberSafe(ctx, client, log.BlockNumber)
+	blockTimestamp, err := bp.getBlockTimestamp(ctx, client, log.BlockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block %d: %w", log.BlockNumber, err)
 	}
@@ -192,87 +192,26 @@ func (bp *BlockProcessor) processLog(ctx context.Context, client *ethclient.Clie
 	}
 
 	// 6. 检查是否是Compound事件
-	if event := bp.parseCompoundEvent(log, eventSignature, fromAddress, txStatus, block); event != nil {
+	if event := bp.parseCompoundEvent(log, eventSignature, fromAddress, txStatus, blockTimestamp); event != nil {
 		return event, nil
 	}
 
 	// 7. 检查是否是OpenZeppelin事件
-	if event := bp.parseOpenZeppelinEvent(log, eventSignature, fromAddress, txStatus, block); event != nil {
+	if event := bp.parseOpenZeppelinEvent(log, eventSignature, fromAddress, txStatus, blockTimestamp); event != nil {
 		return event, nil
 	}
 
 	return nil, fmt.Errorf("unknown event signature: %s", eventSignature.Hex())
 }
 
-// getBlockByNumberSafe 安全地获取区块信息，适配不同链的差异
-func (bp *BlockProcessor) getBlockByNumberSafe(ctx context.Context, client *ethclient.Client, blockNumber uint64) (*ethtypes.Block, error) {
-	switch bp.chainInfo.ChainID {
-	// arbitrum
-	// transaction type not supported
-	case 42161:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// worldchain
-	case 480:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// zksync
-	case 324:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// unichain
-	case 130:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// base
-	case 8453:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// scroll
-	case 534352:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// ink
-	case 57073:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	// celo
-	// server returned empty uncle list but block header indicates uncles
-	case 42220:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			return nil, err
-		}
-		return block, nil
-	default:
-		block, err := client.BlockByNumber(ctx, big.NewInt(int64(blockNumber)))
-		if err != nil {
-			logger.Warn("Failed to get block by number", "block", blockNumber, "chain", bp.chainInfo.ChainName, "error", err)
-			return nil, err
-		}
-		return block, nil
+// getBlockTimestamp 获取区块时间戳
+func (bp *BlockProcessor) getBlockTimestamp(ctx context.Context, client *ethclient.Client, blockNumber uint64) (uint64, error) {
+	header, err := client.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
+	if err != nil {
+		logger.Warn("Failed to get block header by number", "block", blockNumber, "chain", bp.chainInfo.ChainName, "error", err)
+		return 0, err
 	}
+	return header.Time, nil
 }
 
 // getTransactionSender 获取交易发送者地址
@@ -287,7 +226,7 @@ func (bp *BlockProcessor) getTransactionSender(tx *ethtypes.Transaction) (string
 }
 
 // parseCompoundEvent 解析Compound Timelock事件
-func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, eventSignature common.Hash, fromAddress, txStatus string, block *ethtypes.Block) TimelockEvent {
+func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, eventSignature common.Hash, fromAddress, txStatus string, blockTimestamp uint64) TimelockEvent {
 	// 查找匹配的事件类型
 	var eventType string
 	for name, signature := range bp.compoundEventSignatures {
@@ -313,7 +252,7 @@ func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, eventSignature c
 		EventType:       eventType,
 		TxHash:          log.TxHash.Hex(),
 		BlockNumber:     log.BlockNumber,
-		BlockTimestamp:  block.Time(),
+		BlockTimestamp:  blockTimestamp,
 		ChainID:         bp.chainInfo.ChainID,
 		ChainName:       bp.chainInfo.ChainName,
 		ContractAddress: log.Address.Hex(),
@@ -330,7 +269,7 @@ func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, eventSignature c
 }
 
 // parseOpenZeppelinEvent 解析OpenZeppelin Timelock事件
-func (bp *BlockProcessor) parseOpenZeppelinEvent(log *ethtypes.Log, eventSignature common.Hash, fromAddress, txStatus string, block *ethtypes.Block) TimelockEvent {
+func (bp *BlockProcessor) parseOpenZeppelinEvent(log *ethtypes.Log, eventSignature common.Hash, fromAddress, txStatus string, blockTimestamp uint64) TimelockEvent {
 	// 查找匹配的事件类型
 	var eventType string
 	for name, signature := range bp.ozEventSignatures {
@@ -356,7 +295,7 @@ func (bp *BlockProcessor) parseOpenZeppelinEvent(log *ethtypes.Log, eventSignatu
 		EventType:       eventType,
 		TxHash:          log.TxHash.Hex(),
 		BlockNumber:     log.BlockNumber,
-		BlockTimestamp:  block.Time(),
+		BlockTimestamp:  blockTimestamp,
 		ChainID:         bp.chainInfo.ChainID,
 		ChainName:       bp.chainInfo.ChainName,
 		ContractAddress: log.Address.Hex(),
