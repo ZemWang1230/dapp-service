@@ -86,12 +86,11 @@ func (OpenZeppelinTimelockTransaction) TableName() string {
 // TimelockTransactionFlow Timelock 交易流程关联模型
 type TimelockTransactionFlow struct {
 	ID               int64      `json:"id" gorm:"primaryKey;autoIncrement"`
-	FlowID           string     `json:"flow_id" gorm:"size:128;not null;index"`                  // 流程ID
+	FlowID           string     `json:"flow_id" gorm:"size:128;not null;index"`                  // 流程ID（Compound的是TxHash,OpenZeppelin的是EventID）
 	TimelockStandard string     `json:"timelock_standard" gorm:"size:20;not null"`               // Timelock标准
 	ChainID          int        `json:"chain_id" gorm:"not null;index"`                          // 链ID
 	ContractAddress  string     `json:"contract_address" gorm:"size:42;not null;index"`          // 合约地址
-	Status           string     `json:"status" gorm:"size:20;not null;default:'proposed';index"` // 流程状态
-	TxID             *string    `json:"tx_id" gorm:"size:128;not null;index"`                    // 交易的标识符（Compound的是TxHash,OpenZeppelin的是EventID）
+	Status           string     `json:"status" gorm:"size:20;not null;default:'proposed';index"` // 流程状态（proposed, queued, executed, cancelled, expired）
 	ProposeTxHash    string     `json:"propose_tx_hash" gorm:"size:66;not null;index"`           // 提议交易哈希
 	QueueTxHash      string     `json:"queue_tx_hash" gorm:"size:66;not null;index"`             // 队列交易哈希
 	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`           // 执行交易哈希
@@ -101,6 +100,7 @@ type TimelockTransactionFlow struct {
 	ExecutedAt       *time.Time `json:"executed_at"`                                             // 执行时间
 	CancelledAt      *time.Time `json:"cancelled_at"`                                            // 取消时间
 	Eta              *time.Time `json:"eta"`                                                     // 预计执行时间（Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay）
+	ExpiredAt        *time.Time `json:"expired_at"`                                              // 过期时间（Compound的有过期时间ETA+GracePeriod，OpenZeppelin没有）
 	TargetAddress    *string    `json:"target_address" gorm:"size:42"`                           // 目标地址
 	CallData         []byte     `json:"call_data" gorm:"type:bytea"`                             // 调用数据（包含函数签名和参数）
 	Value            string     `json:"value" gorm:"type:decimal(36,0);default:0"`               // 价值
@@ -111,25 +111,6 @@ type TimelockTransactionFlow struct {
 // TableName 设置表名
 func (TimelockTransactionFlow) TableName() string {
 	return "timelock_transaction_flows"
-}
-
-// UserTimelockRelation 用户-合约关联模型
-type UserTimelockRelation struct {
-	ID               int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserAddress      string    `json:"user_address" gorm:"size:42;not null;index"`     // 用户地址
-	ChainID          int       `json:"chain_id" gorm:"not null;index"`                 // 链ID
-	ContractAddress  string    `json:"contract_address" gorm:"size:42;not null;index"` // 合约地址
-	TimelockStandard string    `json:"timelock_standard" gorm:"size:20;not null"`      // Timelock标准
-	RelationType     string    `json:"relation_type" gorm:"size:20;not null;index"`    // 关联类型（creator, admin, pending_admin, proposer, executor, canceller）
-	RelatedAt        time.Time `json:"related_at" gorm:"not null"`                     // 关联建立时间
-	IsActive         bool      `json:"is_active" gorm:"not null;default:true;index"`   // 是否有效
-	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`               // 创建时间
-	UpdatedAt        time.Time `json:"updated_at" gorm:"autoUpdateTime"`               // 更新时间
-}
-
-// TableName 设置表名
-func (UserTimelockRelation) TableName() string {
-	return "user_timelock_relations"
 }
 
 // CompoundTimelockEvent Compound Timelock 事件结构

@@ -119,8 +119,6 @@ func (bp *BlockProcessor) ScanBlockRange(ctx context.Context, client *ethclient.
 		return nil, fmt.Errorf("failed to filter logs from block %d to %d: %w", fromBlock, toBlock, err)
 	}
 
-	logger.Debug("Found logs", "count", len(logs), "fromBlock", fromBlock, "toBlock", toBlock, "chainID", bp.chainInfo.ChainID)
-
 	// 处理每个日志
 	for _, log := range logs {
 		event, err := bp.processLog(ctx, client, &log)

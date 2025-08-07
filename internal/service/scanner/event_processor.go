@@ -17,7 +17,6 @@ type EventProcessor struct {
 	config       *config.Config
 	txRepo       scanner.TransactionRepository
 	flowRepo     scanner.FlowRepository
-	relationRepo scanner.RelationRepository
 }
 
 // NewEventProcessor 创建新的事件处理器
@@ -25,13 +24,11 @@ func NewEventProcessor(
 	cfg *config.Config,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
-	relationRepo scanner.RelationRepository,
 ) *EventProcessor {
 	return &EventProcessor{
 		config:       cfg,
 		txRepo:       txRepo,
 		flowRepo:     flowRepo,
-		relationRepo: relationRepo,
 	}
 }
 

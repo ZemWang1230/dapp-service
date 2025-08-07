@@ -10,6 +10,8 @@ import (
 	"timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
+
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // ChainScanner 单链扫描器
@@ -21,7 +23,6 @@ type ChainScanner struct {
 	progressRepo scanner.ProgressRepository
 	txRepo       scanner.TransactionRepository
 	flowRepo     scanner.FlowRepository
-	relationRepo scanner.RelationRepository
 
 	blockProcessor *BlockProcessor
 	eventProcessor *EventProcessor
@@ -55,7 +56,6 @@ func NewChainScanner(
 	progressRepo scanner.ProgressRepository,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
-	relationRepo scanner.RelationRepository,
 ) *ChainScanner {
 	cs := &ChainScanner{
 		config:       cfg,
@@ -65,14 +65,13 @@ func NewChainScanner(
 		progressRepo: progressRepo,
 		txRepo:       txRepo,
 		flowRepo:     flowRepo,
-		relationRepo: relationRepo,
 		stopCh:       make(chan struct{}),
 		lastUpdate:   time.Now(),
 	}
 
 	// 创建处理器
 	cs.blockProcessor = NewBlockProcessor(cfg, cs.chainInfo)
-	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo, relationRepo)
+	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo)
 
 	return cs
 }
@@ -103,13 +102,34 @@ func (cs *ChainScanner) Stop() {
 		return
 	}
 
-	// 发送停止信号
-	close(cs.stopCh)
+	logger.Info("Stopping chain scanner", "chain_id", cs.chainInfo.ChainID)
+
+	// 先设置为停止状态，避免新的异步数据库更新
+	cs.isRunning = false
+
+	// 安全地关闭channel
+	select {
+	case <-cs.stopCh:
+		// channel已经关闭
+	default:
+		close(cs.stopCh)
+	}
 
 	// 等待协程结束
 	cs.wg.Wait()
 
-	cs.isRunning = false
+	// 更新本地状态为 paused (等扫链器完全停止后再更新)
+	cs.progress.ScanStatus = "paused"
+	cs.progress.ErrorMessage = nil
+	cs.progress.LastUpdateTime = time.Now()
+
+	// 同步更新数据库状态
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	if err := cs.progressRepo.UpdateProgress(ctx, cs.progress); err != nil {
+		logger.Error("Failed to update progress status during stop", err, "chain_id", cs.chainInfo.ChainID)
+	}
+
 	logger.Info("Chain scanner stopped", "chain_id", cs.chainInfo.ChainID)
 }
 
@@ -140,7 +160,7 @@ func (cs *ChainScanner) scanLoop(ctx context.Context) {
 				}
 			} else {
 				// 扫描成功，确保状态为running（处理从错误状态恢复的情况）
-				if cs.progress.ScanStatus != "running" && cs.progress.ErrorMessage != nil {
+				if cs.progress.ScanStatus == "error" || cs.progress.ErrorMessage != nil {
 					cs.updateProgressStatus("running", "")
 				}
 
@@ -160,14 +180,14 @@ func (cs *ChainScanner) scanLoop(ctx context.Context) {
 
 // scanBlocks 扫描区块
 func (cs *ChainScanner) scanBlocks(ctx context.Context) error {
-	// 获取RPC客户端
-	client, err := cs.rpcManager.GetOrCreateClient(ctx, cs.chainInfo.ChainID)
-	if err != nil {
-		return fmt.Errorf("failed to get RPC client: %w", err)
-	}
+	var latestBlock uint64
 
-	// 获取最新网络区块号
-	latestBlock, err := client.BlockNumber(ctx)
+	// 使用RPC管理器的重试机制获取最新区块号
+	err := cs.rpcManager.ExecuteWithRetry(ctx, cs.chainInfo.ChainID, func(client *ethclient.Client) error {
+		var err error
+		latestBlock, err = client.BlockNumber(ctx)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get latest block number: %w", err)
 	}
@@ -191,7 +211,14 @@ func (cs *ChainScanner) scanBlocks(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
-		events, err := cs.blockProcessor.ScanBlockRange(ctx, client, fromBlock, toBlock)
+		var events []TimelockEvent
+
+		// 使用RPC管理器的重试机制扫描区块范围
+		err := cs.rpcManager.ExecuteWithRetry(ctx, cs.chainInfo.ChainID, func(client *ethclient.Client) error {
+			var err error
+			events, err = cs.blockProcessor.ScanBlockRange(ctx, client, fromBlock, toBlock)
+			return err
+		})
 		if err != nil {
 			return fmt.Errorf("failed to scan block range %d-%d: %w", fromBlock, toBlock, err)
 		}
@@ -267,8 +294,21 @@ func (cs *ChainScanner) updateProgressStatus(status string, errorMsg string) {
 	}
 	cs.progress.LastUpdateTime = time.Now()
 
-	// 异步更新数据库
+	// 异步更新数据库，但要管理goroutine
+	// 检查是否正在停止中，如果是则不启动新的goroutine
+	if !cs.isRunning {
+		// 扫描器已经停止或正在停止，同步更新
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		defer cancel()
+		if err := cs.progressRepo.UpdateProgress(ctx, cs.progress); err != nil {
+			logger.Error("Failed to update progress status during stop", err, "chain_id", cs.chainInfo.ChainID)
+		}
+		return
+	}
+
+	cs.wg.Add(1)
 	go func() {
+		defer cs.wg.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 

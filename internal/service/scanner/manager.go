@@ -20,7 +20,6 @@ type Manager struct {
 	progressRepo  scanner.ProgressRepository
 	txRepo        scanner.TransactionRepository
 	flowRepo      scanner.FlowRepository
-	relationRepo  scanner.RelationRepository
 	rpcManager    *RPCManager
 	chainScanners map[int]*ChainScanner
 	mutex         sync.RWMutex
@@ -36,7 +35,6 @@ func NewManager(
 	progressRepo scanner.ProgressRepository,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
-	relationRepo scanner.RelationRepository,
 	rpcManager *RPCManager,
 ) *Manager {
 	return &Manager{
@@ -45,7 +43,6 @@ func NewManager(
 		progressRepo:  progressRepo,
 		txRepo:        txRepo,
 		flowRepo:      flowRepo,
-		relationRepo:  relationRepo,
 		rpcManager:    rpcManager,
 		chainScanners: make(map[int]*ChainScanner),
 		stopCh:        make(chan struct{}),
@@ -102,16 +99,52 @@ func (m *Manager) Stop() {
 	close(m.stopCh)
 
 	// 停止所有链扫描器
+	var scannerWg sync.WaitGroup
 	for chainID, scanner := range m.chainScanners {
 		logger.Info("Stopping chain scanner", "chain_id", chainID)
-		scanner.Stop()
+		scannerWg.Add(1)
+		go func(s *ChainScanner, id int) {
+			defer scannerWg.Done()
+			s.Stop()
+			logger.Info("Chain scanner stopped", "chain_id", id)
+		}(scanner, chainID)
 	}
 
-	// 等待所有协程结束
-	m.wg.Wait()
+	// 等待所有链扫描器停止，带超时
+	logger.Info("Waiting for all chain scanners to stop...")
+	done := make(chan struct{})
+	go func() {
+		scannerWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info("All chain scanners stopped")
+	case <-time.After(10 * time.Second):
+		logger.Error("Timeout waiting for chain scanners to stop, continuing...", nil)
+	}
+
+	// 等待管理器自身的协程结束，带超时
+	logger.Info("Waiting for manager goroutines to stop...")
+	done = make(chan struct{})
+	go func() {
+		m.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info("Manager goroutines stopped")
+	case <-time.After(5 * time.Second):
+		logger.Error("Timeout waiting for manager goroutines to stop, continuing...", nil)
+	}
+
+	// 清理扫描器映射
+	m.chainScanners = make(map[int]*ChainScanner)
 
 	m.isRunning = false
-	logger.Info("Scanner Manager stopped")
+	logger.Info("Scanner Manager stopped successfully")
 }
 
 // startChainScanner 启动单链扫描器
@@ -131,7 +164,6 @@ func (m *Manager) startChainScanner(ctx context.Context, chainInfo *types.ChainR
 		m.progressRepo,
 		m.txRepo,
 		m.flowRepo,
-		m.relationRepo,
 	)
 
 	// 启动扫描器

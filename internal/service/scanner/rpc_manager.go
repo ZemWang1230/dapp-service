@@ -77,7 +77,10 @@ func (rm *RPCManager) Stop() {
 		}
 	}
 
-	logger.Info("RPC Manager stopped")
+	// 清理客户端映射
+	rm.clients = make(map[int]*ethclient.Client)
+
+	logger.Info("RPC Manager stopped successfully")
 }
 
 // GetClient 获取指定链的RPC客户端

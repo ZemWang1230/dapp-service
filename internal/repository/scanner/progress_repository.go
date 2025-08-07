@@ -15,6 +15,7 @@ type ProgressRepository interface {
 	CreateProgress(ctx context.Context, progress *types.BlockScanProgress) error
 	GetAllActiveProgress(ctx context.Context) ([]types.BlockScanProgress, error)
 	UpdateProgressBlock(ctx context.Context, chainID int, lastScannedBlock, latestNetworkBlock int64) error
+	UpdateAllRunningScannersToPaused(ctx context.Context) error
 }
 
 type progressRepository struct {
@@ -99,4 +100,23 @@ func (r *progressRepository) GetAllActiveProgress(ctx context.Context) ([]types.
 	}
 
 	return progressList, nil
+}
+
+// UpdateAllRunningScannersToPaused 将所有运行中的扫描器状态更新为暂停
+func (r *progressRepository) UpdateAllRunningScannersToPaused(ctx context.Context) error {
+	err := r.db.WithContext(ctx).
+		Model(&types.BlockScanProgress{}).
+		Where("scan_status = ?", "running").
+		Updates(map[string]interface{}{
+			"scan_status":      "paused",
+			"last_update_time": "NOW()",
+		}).Error
+
+	if err != nil {
+		logger.Error("UpdateAllRunningScannersToPaused Error", err)
+		return err
+	}
+
+	logger.Info("Updated all running scanners to paused status")
+	return nil
 }

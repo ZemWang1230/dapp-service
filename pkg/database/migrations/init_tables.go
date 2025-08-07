@@ -263,9 +263,12 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			chain_name VARCHAR(50) NOT NULL,
 			contract_address VARCHAR(42) NOT NULL,
 			tx_hash VARCHAR(66),
-			min_delay BIGINT NOT NULL,
+			delay BIGINT NOT NULL,
 			admin VARCHAR(42) NOT NULL,
 			pending_admin VARCHAR(42),
+			grace_period BIGINT NOT NULL,
+			minimum_delay BIGINT NOT NULL,
+			maximum_delay BIGINT NOT NULL,
 			remark VARCHAR(500) DEFAULT '',
 			status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
 			is_imported BOOLEAN NOT NULL DEFAULT false,
@@ -290,10 +293,10 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			chain_name VARCHAR(50) NOT NULL,
 			contract_address VARCHAR(42) NOT NULL,
 			tx_hash VARCHAR(66),
-			min_delay BIGINT NOT NULL,
+			delay BIGINT NOT NULL,
+			admin VARCHAR(42),
 			proposers TEXT NOT NULL,
 			executors TEXT NOT NULL,
-			cancellers TEXT NOT NULL,
 			remark VARCHAR(500) DEFAULT '',
 			status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'deleted')),
 			is_imported BOOLEAN NOT NULL DEFAULT false,
@@ -429,7 +432,6 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			chain_id INTEGER NOT NULL,
 			contract_address VARCHAR(42) NOT NULL,
 			status VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'queued', 'executed', 'cancelled', 'expired')),
-			tx_id VARCHAR(128),
 			propose_tx_hash VARCHAR(66),
 			queue_tx_hash VARCHAR(66),
 			execute_tx_hash VARCHAR(66),
@@ -439,6 +441,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			executed_at TIMESTAMP WITH TIME ZONE,
 			cancelled_at TIMESTAMP WITH TIME ZONE,
 			eta TIMESTAMP WITH TIME ZONE,
+			expired_at TIMESTAMP WITH TIME ZONE,
 			target_address VARCHAR(42),
 			call_data BYTEA,
 			value DECIMAL(36,0) DEFAULT 0,
@@ -453,29 +456,6 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: timelock_transaction_flows")
 	}
 
-	// 12. 用户-合约关联表
-	if !h.db.Migrator().HasTable("user_timelock_relations") {
-		createUserTimelockRelationsTable := `
-		CREATE TABLE user_timelock_relations (
-			id BIGSERIAL PRIMARY KEY,
-			user_address VARCHAR(42) NOT NULL,
-			chain_id INTEGER NOT NULL,
-			contract_address VARCHAR(42) NOT NULL,
-			timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
-			relation_type VARCHAR(20) NOT NULL CHECK (relation_type IN ('creator', 'admin', 'pending_admin', 'proposer', 'executor', 'canceller')),
-			related_at TIMESTAMP WITH TIME ZONE NOT NULL,
-			is_active BOOLEAN NOT NULL DEFAULT true,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(user_address, chain_id, contract_address, relation_type)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createUserTimelockRelationsTable).Error; err != nil {
-			return fmt.Errorf("failed to create user_timelock_relations table: %w", err)
-		}
-		logger.Info("Created table: user_timelock_relations")
-	}
-
 	logger.Info("All tables created successfully")
 	return nil
 }
@@ -486,150 +466,31 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 
 	indexes := []string{
 		// Users 表索引
-		`CREATE INDEX IF NOT EXISTS idx_users_wallet_address ON users(wallet_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_users_chain_id ON users(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login)`,
 
 		// Support Chains 表索引
-		`CREATE INDEX IF NOT EXISTS idx_support_chains_chain_name ON support_chains(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_support_chains_chain_id ON support_chains(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_support_chains_is_testnet ON support_chains(is_testnet)`,
-		`CREATE INDEX IF NOT EXISTS idx_support_chains_is_active ON support_chains(is_active)`,
-		`CREATE INDEX IF NOT EXISTS idx_support_chains_rpc_enabled ON support_chains(rpc_enabled)`,
 
 		// User Assets 表索引
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_wallet_address ON user_assets(wallet_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_chain_name ON user_assets(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_contract_address ON user_assets(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_token_symbol ON user_assets(token_symbol)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_is_native ON user_assets(is_native)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_usd_value ON user_assets(usd_value DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_last_updated ON user_assets(last_updated)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_wallet_chain ON user_assets(wallet_address, chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_wallet_value ON user_assets(wallet_address, usd_value DESC)`,
 
 		// ABIs 表索引
-		`CREATE INDEX IF NOT EXISTS idx_abis_name ON abis(name)`,
-		`CREATE INDEX IF NOT EXISTS idx_abis_owner ON abis(owner)`,
-		`CREATE INDEX IF NOT EXISTS idx_abis_is_shared ON abis(is_shared)`,
-		`CREATE INDEX IF NOT EXISTS idx_abis_owner_shared ON abis(owner, is_shared)`,
 
 		// Compound Timelocks 表索引
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_creator ON compound_timelocks(creator_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_chain_id ON compound_timelocks(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_chain_name ON compound_timelocks(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_contract ON compound_timelocks(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_admin ON compound_timelocks(admin)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_status ON compound_timelocks(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_is_imported ON compound_timelocks(is_imported)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_creator_chain ON compound_timelocks(creator_address, chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_chain_contract ON compound_timelocks(chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_created_at ON compound_timelocks(created_at DESC)`,
 
 		// OpenZeppelin Timelocks 表索引
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_creator ON openzeppelin_timelocks(creator_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_chain_id ON openzeppelin_timelocks(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_chain_name ON openzeppelin_timelocks(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_contract ON openzeppelin_timelocks(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_status ON openzeppelin_timelocks(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_is_imported ON openzeppelin_timelocks(is_imported)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_creator_chain ON openzeppelin_timelocks(creator_address, chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_chain_contract ON openzeppelin_timelocks(chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_timelocks_created_at ON openzeppelin_timelocks(created_at DESC)`,
 
 		// Sponsors 表索引
-		`CREATE INDEX IF NOT EXISTS idx_sponsors_type ON sponsors(type)`,
-		`CREATE INDEX IF NOT EXISTS idx_sponsors_is_active ON sponsors(is_active)`,
-		`CREATE INDEX IF NOT EXISTS idx_sponsors_sort_order ON sponsors(sort_order DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_sponsors_type_active ON sponsors(type, is_active)`,
-		`CREATE INDEX IF NOT EXISTS idx_sponsors_type_sort ON sponsors(type, sort_order DESC)`,
 
 		// Block Scan Progress 表索引
-		`CREATE INDEX IF NOT EXISTS idx_block_scan_progress_chain_id ON block_scan_progress(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_block_scan_progress_chain_name ON block_scan_progress(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_block_scan_progress_status ON block_scan_progress(scan_status)`,
-		`CREATE INDEX IF NOT EXISTS idx_block_scan_progress_last_update ON block_scan_progress(last_update_time DESC)`,
 
 		// Compound Timelock Transactions 表索引
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_hash ON compound_timelock_transactions(tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_block_number ON compound_timelock_transactions(block_number DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_block_timestamp ON compound_timelock_transactions(block_timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_chain_id ON compound_timelock_transactions(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_chain_name ON compound_timelock_transactions(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_contract ON compound_timelock_transactions(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_from_address ON compound_timelock_transactions(from_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_to_address ON compound_timelock_transactions(to_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_status ON compound_timelock_transactions(tx_status)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_event_type ON compound_timelock_transactions(event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_event_tx_hash ON compound_timelock_transactions(event_tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_event_target ON compound_timelock_transactions(event_target)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_event_eta ON compound_timelock_transactions(event_eta)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_contract_type ON compound_timelock_transactions(contract_address, event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_contract_timestamp ON compound_timelock_transactions(contract_address, block_timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_chain_block ON compound_timelock_transactions(chain_id, block_number DESC)`,
 
 		// OpenZeppelin Timelock Transactions 表索引
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_hash ON openzeppelin_timelock_transactions(tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_block_number ON openzeppelin_timelock_transactions(block_number DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_block_timestamp ON openzeppelin_timelock_transactions(block_timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_chain_id ON openzeppelin_timelock_transactions(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_chain_name ON openzeppelin_timelock_transactions(chain_name)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_contract ON openzeppelin_timelock_transactions(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_from_address ON openzeppelin_timelock_transactions(from_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_to_address ON openzeppelin_timelock_transactions(to_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_status ON openzeppelin_timelock_transactions(tx_status)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_event_type ON openzeppelin_timelock_transactions(event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_event_id ON openzeppelin_timelock_transactions(event_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_event_target ON openzeppelin_timelock_transactions(event_target)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_event_predecessor ON openzeppelin_timelock_transactions(event_predecessor)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_contract_type ON openzeppelin_timelock_transactions(contract_address, event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_contract_timestamp ON openzeppelin_timelock_transactions(contract_address, block_timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_chain_block ON openzeppelin_timelock_transactions(chain_id, block_number DESC)`,
 
 		// Timelock Transaction Flows 表索引
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_flow_id ON timelock_transaction_flows(flow_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_standard ON timelock_transaction_flows(timelock_standard)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_chain_id ON timelock_transaction_flows(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_contract ON timelock_transaction_flows(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_status ON timelock_transaction_flows(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_tx_id ON timelock_transaction_flows(tx_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_propose_tx ON timelock_transaction_flows(propose_tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_queue_tx ON timelock_transaction_flows(queue_tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_execute_tx ON timelock_transaction_flows(execute_tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_cancel_tx ON timelock_transaction_flows(cancel_tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_eta ON timelock_transaction_flows(eta)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_target ON timelock_transaction_flows(target_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_proposed_at ON timelock_transaction_flows(proposed_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_executed_at ON timelock_transaction_flows(executed_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_contract_status ON timelock_transaction_flows(contract_address, status)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_chain_contract ON timelock_transaction_flows(chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_tx_id_status ON timelock_transaction_flows(tx_id, status)`,
-
-		// User Timelock Relations 表索引
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user ON user_timelock_relations(user_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_chain_id ON user_timelock_relations(chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_contract ON user_timelock_relations(contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_standard ON user_timelock_relations(timelock_standard)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_type ON user_timelock_relations(relation_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_is_active ON user_timelock_relations(is_active)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_related_at ON user_timelock_relations(related_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user_chain ON user_timelock_relations(user_address, chain_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user_contract ON user_timelock_relations(user_address, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user_type ON user_timelock_relations(user_address, relation_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_contract_type ON user_timelock_relations(contract_address, relation_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user_active ON user_timelock_relations(user_address, is_active)`,
 
 		// 复合索引，用于优化常见查询
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_chain_contract_type ON compound_timelock_transactions(chain_id, contract_address, event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_chain_contract_type ON openzeppelin_timelock_transactions(chain_id, contract_address, event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_wallet_native_value ON user_assets(wallet_address, is_native, usd_value DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_contract_status_eta ON timelock_transaction_flows(contract_address, status, eta)`,
 
 		// JSONB 索引，用于事件数据查询
-		`CREATE INDEX IF NOT EXISTS idx_compound_tx_event_data_gin ON compound_timelock_transactions USING gin(event_data)`,
-		`CREATE INDEX IF NOT EXISTS idx_openzeppelin_tx_event_data_gin ON openzeppelin_timelock_transactions USING gin(event_data)`,
+
 	}
 
 	for _, indexSQL := range indexes {

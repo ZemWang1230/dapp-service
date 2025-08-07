@@ -6,14 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"math/big"
 	"regexp"
 	"strings"
+	"time"
 
+	"timelocker-backend/internal/config"
+	"timelocker-backend/internal/repository/chain"
 	"timelocker-backend/internal/repository/timelock"
+	"timelocker-backend/internal/service/scanner"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/crypto"
 	"timelocker-backend/pkg/logger"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"gorm.io/gorm"
 )
 
@@ -26,139 +35,100 @@ var (
 	ErrInvalidRemark         = errors.New("invalid remark content")
 	ErrInvalidContractParams = errors.New("invalid contract parameters")
 	ErrInvalidPermissions    = errors.New("insufficient permissions")
+	ErrChainNotSupported     = errors.New("chain not supported")
+	ErrRPCConnection         = errors.New("failed to connect to RPC")
+	ErrContractNotTimelock   = errors.New("contract is not a valid timelock")
 )
 
 // Service timelock服务接口
 type Service interface {
-	// 创建timelock合约
-	CreateTimeLock(ctx context.Context, userAddress string, req *types.CreateTimeLockRequest) (interface{}, error)
-
-	// 导入timelock合约
-	ImportTimeLock(ctx context.Context, userAddress string, req *types.ImportTimeLockRequest) (interface{}, error)
+	// 创建或导入timelock合约
+	CreateOrImportTimeLock(ctx context.Context, userAddress string, req *types.CreateOrImportTimelockContractRequest) (interface{}, error)
 
 	// 获取timelock列表（按权限筛选）
-	GetTimeLockList(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error)
+	GetTimeLockList(ctx context.Context, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error)
 
 	// 获取timelock详情
-	GetTimeLockDetail(ctx context.Context, userAddress string, standard types.TimeLockStandard, id int64) (*types.TimeLockDetailResponse, error)
+	GetTimeLockDetail(ctx context.Context, req *types.GetTimeLockDetailRequest) (*types.GetTimeLockDetailResponse, error)
 
 	// 更新timelock备注
-	UpdateTimeLock(ctx context.Context, userAddress string, req *types.UpdateTimeLockRequest) error
+	UpdateTimeLock(ctx context.Context, req *types.UpdateTimeLockRequest) error
 
 	// 删除timelock
-	DeleteTimeLock(ctx context.Context, userAddress string, req *types.DeleteTimeLockRequest) error
+	DeleteTimeLock(ctx context.Context, req *types.DeleteTimeLockRequest) error
 
-	// Compound特有功能 - 设置pending admin
-	SetPendingAdmin(ctx context.Context, userAddress string, req *types.SetPendingAdminRequest) error
+	// 刷新用户所有timelock合约权限
+	RefreshTimeLockPermissions(ctx context.Context, req *types.TimeLockPermissionRefreshRequest) error
 
-	// Compound特有功能 - 接受admin权限
-	AcceptAdmin(ctx context.Context, userAddress string, req *types.AcceptAdminRequest) error
-
-	// 检查用户对compound timelock的admin权限
-	CheckAdminPermissions(ctx context.Context, userAddress string, req *types.CheckAdminPermissionRequest) (*types.CheckAdminPermissionResponse, error)
+	// 刷新所有timelock合约数据（定时任务）
+	RefreshAllTimeLockData(ctx context.Context) error
 }
 
 type service struct {
 	timeLockRepo timelock.Repository
+	chainRepo    chain.Repository
+	rpcManager   *scanner.RPCManager
+	config       *config.Config
 }
 
 // NewService 创建timelock服务实例
-func NewService(timeLockRepo timelock.Repository) Service {
+func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, rpcManager *scanner.RPCManager, config *config.Config) Service {
 	return &service{
 		timeLockRepo: timeLockRepo,
+		chainRepo:    chainRepo,
+		rpcManager:   rpcManager,
+		config:       config,
 	}
 }
 
-// CreateTimeLock 创建timelock合约记录
-func (s *service) CreateTimeLock(ctx context.Context, userAddress string, req *types.CreateTimeLockRequest) (interface{}, error) {
-	logger.Info("CreateTimeLock: ", "user_address", userAddress, "contract_address", req.ContractAddress, "standard", req.Standard)
-
+// CreateOrImportTimeLock 创建或导入timelock合约记录
+func (s *service) CreateOrImportTimeLock(ctx context.Context, userAddress string, req *types.CreateOrImportTimelockContractRequest) (interface{}, error) {
 	// 标准化地址
 	normalizedUser := crypto.NormalizeAddress(userAddress)
 	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
 	// 验证请求参数
-	if err := s.validateCreateRequest(req); err != nil {
-		logger.Error("CreateTimeLock Validation Error: ", err, "user_address", normalizedUser)
+	if err := s.validateCreateOrImportRequest(req); err != nil {
+		logger.Error("CreateOrImportTimeLock validation error", err, "user_address", normalizedUser)
 		return nil, err
 	}
 
 	// 检查合约是否已存在
 	if err := s.checkContractExists(ctx, req.Standard, req.ChainID, normalizedContract); err != nil {
-		logger.Error("CreateTimeLock Check Exists Error: ", err, "user_address", normalizedUser)
+		logger.Error("CreateOrImportTimeLock check exists error", err, "user_address", normalizedUser)
 		return nil, err
 	}
 
+	// 获取链信息
+	chainInfo, err := s.chainRepo.GetChainByChainID(ctx, int64(req.ChainID))
+	if err != nil {
+		logger.Error("Failed to get chain info", err, "chain_id", req.ChainID)
+		return nil, fmt.Errorf("failed to get chain info: %w", err)
+	}
+
+	// 从链上读取合约数据并验证
 	switch req.Standard {
-	case types.CompoundStandard:
-		logger.Info("CreateTimeLock Compound Standard: ", "user_address", normalizedUser, "contract_address", normalizedContract)
-		return s.createCompoundTimeLock(ctx, normalizedUser, normalizedContract, req)
-	case types.OpenzeppelinStandard:
-		logger.Info("CreateTimeLock Openzeppelin Standard: ", "user_address", normalizedUser, "contract_address", normalizedContract)
-		return s.createOpenzeppelinTimeLock(ctx, normalizedUser, normalizedContract, req)
+	case "compound":
+		return s.createOrImportCompoundTimeLock(ctx, normalizedUser, normalizedContract, req, chainInfo)
+	case "openzeppelin":
+		return s.createOrImportOpenzeppelinTimeLock(ctx, normalizedUser, normalizedContract, req, chainInfo)
 	default:
-		logger.Error("CreateTimeLock Error: ", fmt.Errorf("invalid standard: %s", req.Standard))
+		logger.Error("Invalid standard", fmt.Errorf("invalid standard: %s", req.Standard))
 		return nil, ErrInvalidStandard
 	}
 }
 
-// ImportTimeLock 导入timelock合约
-func (s *service) ImportTimeLock(ctx context.Context, userAddress string, req *types.ImportTimeLockRequest) (interface{}, error) {
-	logger.Info("ImportTimeLock: ", "user_address", userAddress, "contract_address", req.ContractAddress, "standard", req.Standard)
+// GetTimeLockList 获取timelock列表（根据用户权限筛选）
+func (s *service) GetTimeLockList(ctx context.Context, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error) {
+	logger.Info("GetTimeLockList", "user_address", req.UserAddress, "standard", req.Standard, "status", req.Status)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
-	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
+	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
 
-	// 验证请求参数
-	if err := s.validateImportRequest(req); err != nil {
-		logger.Error("ImportTimeLock Validation Error: ", err, "user_address", normalizedUser)
-		return nil, err
-	}
-
-	// 检查合约是否已存在
-	if err := s.checkContractExists(ctx, req.Standard, req.ChainID, normalizedContract); err != nil {
-		logger.Error("ImportTimeLock Check Exists Error: ", err, "user_address", normalizedUser)
-		return nil, err
-	}
-
-	switch req.Standard {
-	case types.CompoundStandard:
-		logger.Info("ImportTimeLock Compound Standard: ", "user_address", normalizedUser, "contract_address", normalizedContract)
-		return s.importCompoundTimeLock(ctx, normalizedUser, normalizedContract, req)
-	case types.OpenzeppelinStandard:
-		logger.Info("ImportTimeLock Openzeppelin Standard: ", "user_address", normalizedUser, "contract_address", normalizedContract)
-		return s.importOpenzeppelinTimeLock(ctx, normalizedUser, normalizedContract, req)
-	default:
-		logger.Error("ImportTimeLock Error: ", fmt.Errorf("invalid standard: %s", req.Standard))
-		return nil, ErrInvalidStandard
-	}
-}
-
-// GetTimeLockList 获取timelock列表（根据用户权限筛选，所有链）
-func (s *service) GetTimeLockList(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error) {
-	logger.Info("GetTimeLockList: ", "user_address", userAddress, "standard", req.Standard, "status", req.Status)
-
-	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
-
-	// 如果指定了standard，只查询对应类型
-	if req.Standard != nil {
-		switch *req.Standard {
-		case types.CompoundStandard:
-			return s.getCompoundTimeLockList(ctx, normalizedUser, req)
-		case types.OpenzeppelinStandard:
-			return s.getOpenzeppelinTimeLockList(ctx, normalizedUser, req)
-		default:
-			logger.Error("GetTimeLockList Error: ", fmt.Errorf("invalid standard: %s", *req.Standard))
-			return nil, ErrInvalidStandard
-		}
-	}
-
-	// 查询所有有权限的timelock（所有链）
+	// 查询所有有权限的timelock
 	compoundList, openzeppelinList, total, err := s.timeLockRepo.GetTimeLocksByUserPermissions(ctx, normalizedUser, req)
 	if err != nil {
-		logger.Error("GetTimeLockList Error: ", err, "user_address", normalizedUser)
+		logger.Error("GetTimeLockList error", err, "user_address", normalizedUser)
 		return nil, fmt.Errorf("failed to get timelock list: %w", err)
 	}
 
@@ -168,75 +138,77 @@ func (s *service) GetTimeLockList(ctx context.Context, userAddress string, req *
 		Total:                 total,
 	}
 
-	logger.Info("GetTimeLockList Success: ", "user_address", normalizedUser, "total", total, "compound_count", len(compoundList), "openzeppelin_count", len(openzeppelinList))
+	logger.Info("GetTimeLockList success", "user_address", normalizedUser, "total", total, "compound_count", len(compoundList), "openzeppelin_count", len(openzeppelinList))
 	return response, nil
 }
 
 // GetTimeLockDetail 获取timelock详情
-func (s *service) GetTimeLockDetail(ctx context.Context, userAddress string, standard types.TimeLockStandard, id int64) (*types.TimeLockDetailResponse, error) {
-	logger.Info("GetTimeLockDetail: ", "user_address", userAddress, "standard", standard, "timelock_id", id)
+func (s *service) GetTimeLockDetail(ctx context.Context, req *types.GetTimeLockDetailRequest) (*types.GetTimeLockDetailResponse, error) {
+	logger.Info("GetTimeLockDetail", "user_address", req.UserAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
+	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
-	switch standard {
-	case types.CompoundStandard:
-		return s.getCompoundTimeLockDetail(ctx, normalizedUser, id)
-	case types.OpenzeppelinStandard:
-		return s.getOpenzeppelinTimeLockDetail(ctx, normalizedUser, id)
+	switch req.Standard {
+	case "compound":
+		return s.getCompoundTimeLockDetail(ctx, normalizedUser, req.ChainID, normalizedContract)
+	case "openzeppelin":
+		return s.getOpenzeppelinTimeLockDetail(ctx, normalizedUser, req.ChainID, normalizedContract)
 	default:
-		logger.Error("GetTimeLockDetail Error: ", fmt.Errorf("invalid standard: %s", standard))
+		logger.Error("Invalid standard", fmt.Errorf("invalid standard: %s", req.Standard))
 		return nil, ErrInvalidStandard
 	}
 }
 
 // UpdateTimeLock 更新timelock备注
-func (s *service) UpdateTimeLock(ctx context.Context, userAddress string, req *types.UpdateTimeLockRequest) error {
-	logger.Info("UpdateTimeLock: ", "user_address", userAddress, "standard", req.Standard, "timelock_id", req.ID)
+func (s *service) UpdateTimeLock(ctx context.Context, req *types.UpdateTimeLockRequest) error {
+	logger.Info("UpdateTimeLock", "user_address", req.UserAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
+	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
 	// 验证备注
 	if err := s.validateRemark(req.Remark); err != nil {
-		logger.Error("UpdateTimeLock Remark Validation Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+		logger.Error("UpdateTimeLock remark validation error", err, "user_address", normalizedUser)
 		return err
 	}
 
 	sanitizedRemark := html.EscapeString(strings.TrimSpace(req.Remark))
 
 	switch req.Standard {
-	case types.CompoundStandard:
-		// 验证所有权
-		isOwner, err := s.timeLockRepo.ValidateCompoundOwnership(ctx, req.ID, normalizedUser)
+	case "compound":
+		// 验证所有权（创建者或导入者）
+		isOwner, err := s.timeLockRepo.ValidateCompoundOwnership(ctx, req.ChainID, normalizedContract, normalizedUser)
 		if err != nil {
-			logger.Error("UpdateTimeLock Validate Ownership Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("UpdateTimeLock validate ownership error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to validate ownership: %w", err)
 		}
 		if !isOwner {
-			logger.Error("UpdateTimeLock Error: ", ErrUnauthorized, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("UpdateTimeLock unauthorized", ErrUnauthorized, "user_address", normalizedUser)
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.UpdateCompoundTimeLockRemark(ctx, req.ID, sanitizedRemark); err != nil {
-			logger.Error("UpdateTimeLock Repository Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+		if err := s.timeLockRepo.UpdateCompoundTimeLockRemark(ctx, req.ChainID, normalizedContract, sanitizedRemark); err != nil {
+			logger.Error("UpdateTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to update timelock: %w", err)
 		}
 
-	case types.OpenzeppelinStandard:
-		// 验证所有权
-		isOwner, err := s.timeLockRepo.ValidateOpenzeppelinOwnership(ctx, req.ID, normalizedUser)
+	case "openzeppelin":
+		// 验证所有权（创建者或导入者）
+		isOwner, err := s.timeLockRepo.ValidateOpenzeppelinOwnership(ctx, req.ChainID, normalizedContract, normalizedUser)
 		if err != nil {
-			logger.Error("UpdateTimeLock Validate Ownership Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("UpdateTimeLock validate ownership error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to validate ownership: %w", err)
 		}
 		if !isOwner {
-			logger.Error("UpdateTimeLock Error: ", ErrUnauthorized, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("UpdateTimeLock unauthorized", ErrUnauthorized, "user_address", normalizedUser)
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.UpdateOpenzeppelinTimeLockRemark(ctx, req.ID, sanitizedRemark); err != nil {
-			logger.Error("UpdateTimeLock Repository Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+		if err := s.timeLockRepo.UpdateOpenzeppelinTimeLockRemark(ctx, req.ChainID, normalizedContract, sanitizedRemark); err != nil {
+			logger.Error("UpdateTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to update timelock: %w", err)
 		}
 
@@ -244,49 +216,50 @@ func (s *service) UpdateTimeLock(ctx context.Context, userAddress string, req *t
 		return ErrInvalidStandard
 	}
 
-	logger.Info("UpdateTimeLock Success: ", "timelock_id", req.ID, "user_address", normalizedUser)
+	logger.Info("UpdateTimeLock success", "user_address", normalizedUser)
 	return nil
 }
 
 // DeleteTimeLock 删除timelock
-func (s *service) DeleteTimeLock(ctx context.Context, userAddress string, req *types.DeleteTimeLockRequest) error {
-	logger.Info("DeleteTimeLock: ", "user_address", userAddress, "standard", req.Standard, "timelock_id", req.ID)
+func (s *service) DeleteTimeLock(ctx context.Context, req *types.DeleteTimeLockRequest) error {
+	logger.Info("DeleteTimeLock", "user_address", req.UserAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
+	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
 	switch req.Standard {
-	case types.CompoundStandard:
-		// 验证所有权
-		isOwner, err := s.timeLockRepo.ValidateCompoundOwnership(ctx, req.ID, normalizedUser)
+	case "compound":
+		// 验证所有权（创建者或导入者）
+		isOwner, err := s.timeLockRepo.ValidateCompoundOwnership(ctx, req.ChainID, normalizedContract, normalizedUser)
 		if err != nil {
-			logger.Error("DeleteTimeLock Validate Ownership Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("DeleteTimeLock validate ownership error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to validate ownership: %w", err)
 		}
 		if !isOwner {
-			logger.Error("DeleteTimeLock Error: ", ErrUnauthorized, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("DeleteTimeLock unauthorized", ErrUnauthorized, "user_address", normalizedUser)
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.DeleteCompoundTimeLock(ctx, req.ID); err != nil {
-			logger.Error("DeleteTimeLock Repository Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+		if err := s.timeLockRepo.DeleteCompoundTimeLock(ctx, req.ChainID, normalizedContract); err != nil {
+			logger.Error("DeleteTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to delete timelock: %w", err)
 		}
 
-	case types.OpenzeppelinStandard:
-		// 验证所有权
-		isOwner, err := s.timeLockRepo.ValidateOpenzeppelinOwnership(ctx, req.ID, normalizedUser)
+	case "openzeppelin":
+		// 验证所有权（创建者或导入者）
+		isOwner, err := s.timeLockRepo.ValidateOpenzeppelinOwnership(ctx, req.ChainID, normalizedContract, normalizedUser)
 		if err != nil {
-			logger.Error("DeleteTimeLock Validate Ownership Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("DeleteTimeLock validate ownership error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to validate ownership: %w", err)
 		}
 		if !isOwner {
-			logger.Error("DeleteTimeLock Error: ", ErrUnauthorized, "timelock_id", req.ID, "user_address", normalizedUser)
+			logger.Error("DeleteTimeLock unauthorized", ErrUnauthorized, "user_address", normalizedUser)
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.DeleteOpenzeppelinTimeLock(ctx, req.ID); err != nil {
-			logger.Error("DeleteTimeLock Repository Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
+		if err := s.timeLockRepo.DeleteOpenzeppelinTimeLock(ctx, req.ChainID, normalizedContract); err != nil {
+			logger.Error("DeleteTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to delete timelock: %w", err)
 		}
 
@@ -294,319 +267,522 @@ func (s *service) DeleteTimeLock(ctx context.Context, userAddress string, req *t
 		return ErrInvalidStandard
 	}
 
-	logger.Info("DeleteTimeLock Success: ", "timelock_id", req.ID, "user_address", normalizedUser)
+	logger.Info("DeleteTimeLock success", "user_address", normalizedUser)
 	return nil
 }
 
-// SetPendingAdmin 设置pending admin（仅限compound）
-func (s *service) SetPendingAdmin(ctx context.Context, userAddress string, req *types.SetPendingAdminRequest) error {
-	logger.Info("SetPendingAdmin: ", "user_address", userAddress, "timelock_id", req.ID, "new_pending_admin", req.NewPendingAdmin)
+// RefreshTimeLockPermissions 刷新用户所有timelock合约权限
+func (s *service) RefreshTimeLockPermissions(ctx context.Context, req *types.TimeLockPermissionRefreshRequest) error {
+	logger.Info("RefreshTimeLockPermissions", "user_address", req.UserAddress)
 
-	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
-	normalizedPendingAdmin := crypto.NormalizeAddress(req.NewPendingAdmin)
+	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
 
-	// 验证地址格式
-	if !crypto.ValidateEthereumAddress(req.NewPendingAdmin) {
-		logger.Error("SetPendingAdmin Error: ", fmt.Errorf("%w: invalid pending admin address", ErrInvalidContractParams))
-		return fmt.Errorf("%w: invalid pending admin address", ErrInvalidContractParams)
-	}
-
-	// 检查权限
-	canSetPendingAdmin, _, err := s.timeLockRepo.CheckCompoundAdminPermissions(ctx, req.ID, normalizedUser)
+	// 获取用户所有的timelock合约
+	compoundTimelocks, err := s.timeLockRepo.GetAllCompoundTimeLocksByUser(ctx, normalizedUser)
 	if err != nil {
-		logger.Error("SetPendingAdmin Check Permissions Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
-		return fmt.Errorf("failed to check permissions: %w", err)
-	}
-	if !canSetPendingAdmin {
-		logger.Error("SetPendingAdmin Error: ", ErrInvalidPermissions, "timelock_id", req.ID, "user_address", normalizedUser)
-		return ErrInvalidPermissions
+		logger.Error("Failed to get compound timelocks", err, "user_address", normalizedUser)
+		return fmt.Errorf("failed to get compound timelocks: %w", err)
 	}
 
-	// 设置pending admin
-	if err := s.timeLockRepo.SetPendingAdmin(ctx, req.ID, normalizedPendingAdmin); err != nil {
-		logger.Error("SetPendingAdmin Repository Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
-		return fmt.Errorf("failed to set pending admin: %w", err)
+	openzeppelinTimelocks, err := s.timeLockRepo.GetAllOpenzeppelinTimeLocksByUser(ctx, normalizedUser)
+	if err != nil {
+		logger.Error("Failed to get openzeppelin timelocks", err, "user_address", normalizedUser)
+		return fmt.Errorf("failed to get openzeppelin timelocks: %w", err)
 	}
 
-	logger.Info("SetPendingAdmin Success: ", "timelock_id", req.ID, "user_address", normalizedUser, "new_pending_admin", normalizedPendingAdmin)
+	// 刷新Compound合约权限
+	for _, timeLock := range compoundTimelocks {
+		if err := s.refreshCompoundTimeLockData(ctx, &timeLock); err != nil {
+			logger.Error("Failed to refresh compound timelock", err, "contract_address", timeLock.ContractAddress)
+			continue
+		}
+	}
+
+	// 刷新OpenZeppelin合约权限
+	for _, timeLock := range openzeppelinTimelocks {
+		if err := s.refreshOpenzeppelinTimeLockData(ctx, &timeLock); err != nil {
+			logger.Error("Failed to refresh openzeppelin timelock", err, "contract_address", timeLock.ContractAddress)
+			continue
+		}
+	}
+
+	logger.Info("RefreshTimeLockPermissions success", "user_address", normalizedUser)
 	return nil
 }
 
-// AcceptAdmin 接受admin权限（仅限compound）
-func (s *service) AcceptAdmin(ctx context.Context, userAddress string, req *types.AcceptAdminRequest) error {
-	logger.Info("AcceptAdmin: ", "user_address", userAddress, "timelock_id", req.ID)
+// RefreshAllTimeLockData 刷新所有timelock合约数据（定时任务）
+func (s *service) RefreshAllTimeLockData(ctx context.Context) error {
+	logger.Info("RefreshAllTimeLockData started")
 
-	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
-
-	// 检查权限
-	_, canAcceptAdmin, err := s.timeLockRepo.CheckCompoundAdminPermissions(ctx, req.ID, normalizedUser)
+	// 获取所有活跃的Compound timelock合约
+	compoundTimelocks, err := s.timeLockRepo.GetAllActiveCompoundTimeLocks(ctx)
 	if err != nil {
-		logger.Error("AcceptAdmin Check Permissions Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
-		return fmt.Errorf("failed to check permissions: %w", err)
-	}
-	if !canAcceptAdmin {
-		logger.Error("AcceptAdmin Error: ", ErrInvalidPermissions, "timelock_id", req.ID, "user_address", normalizedUser)
-		return ErrInvalidPermissions
+		logger.Error("Failed to get all compound timelocks", err)
+		return fmt.Errorf("failed to get compound timelocks: %w", err)
 	}
 
-	// 接受admin权限
-	if err := s.timeLockRepo.AcceptAdmin(ctx, req.ID, normalizedUser); err != nil {
-		logger.Error("AcceptAdmin Repository Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
-		return fmt.Errorf("failed to accept admin: %w", err)
+	// 获取所有活跃的OpenZeppelin timelock合约
+	openzeppelinTimelocks, err := s.timeLockRepo.GetAllActiveOpenzeppelinTimeLocks(ctx)
+	if err != nil {
+		logger.Error("Failed to get all openzeppelin timelocks", err)
+		return fmt.Errorf("failed to get openzeppelin timelocks: %w", err)
 	}
 
-	logger.Info("AcceptAdmin Success: ", "timelock_id", req.ID, "user_address", normalizedUser)
+	// 刷新Compound合约数据
+	for _, timeLock := range compoundTimelocks {
+		if err := s.refreshCompoundTimeLockData(ctx, &timeLock); err != nil {
+			logger.Error("Failed to refresh compound timelock", err, "contract_address", timeLock.ContractAddress)
+			continue
+		}
+	}
+
+	// 刷新OpenZeppelin合约数据
+	for _, timeLock := range openzeppelinTimelocks {
+		if err := s.refreshOpenzeppelinTimeLockData(ctx, &timeLock); err != nil {
+			logger.Error("Failed to refresh openzeppelin timelock", err, "contract_address", timeLock.ContractAddress)
+			continue
+		}
+	}
+
+	logger.Info("RefreshAllTimeLockData completed", "compound_count", len(compoundTimelocks), "openzeppelin_count", len(openzeppelinTimelocks))
 	return nil
 }
 
-// CheckAdminPermissions 检查admin权限（仅限compound）
-func (s *service) CheckAdminPermissions(ctx context.Context, userAddress string, req *types.CheckAdminPermissionRequest) (*types.CheckAdminPermissionResponse, error) {
-	logger.Info("CheckAdminPermissions: ", "user_address", userAddress, "timelock_id", req.ID)
-
-	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(userAddress)
-
-	// 检查权限
-	canSetPendingAdmin, canAcceptAdmin, err := s.timeLockRepo.CheckCompoundAdminPermissions(ctx, req.ID, normalizedUser)
+// 私有方法 - 创建或导入Compound timelock
+func (s *service) createOrImportCompoundTimeLock(ctx context.Context, userAddress, contractAddress string, req *types.CreateOrImportTimelockContractRequest, chainInfo *types.SupportChain) (*types.CompoundTimeLock, error) {
+	// 从链上读取合约数据
+	contractData, err := s.readCompoundTimeLockFromChain(ctx, req.ChainID, contractAddress)
 	if err != nil {
-		logger.Error("CheckAdminPermissions Error: ", err, "timelock_id", req.ID, "user_address", normalizedUser)
-		return nil, fmt.Errorf("failed to check permissions: %w", err)
+		logger.Error("Failed to read compound timelock from chain", err, "contract_address", contractAddress)
+		return nil, fmt.Errorf("failed to read contract data: %w", err)
 	}
-
-	response := &types.CheckAdminPermissionResponse{
-		CanSetPendingAdmin: canSetPendingAdmin,
-		CanAcceptAdmin:     canAcceptAdmin,
-	}
-
-	logger.Info("CheckAdminPermissions Success: ", "timelock_id", req.ID, "user_address", normalizedUser, "can_set_pending_admin", canSetPendingAdmin, "can_accept_admin", canAcceptAdmin)
-	return response, nil
-}
-
-// 私有方法 - 创建Compound timelock
-func (s *service) createCompoundTimeLock(ctx context.Context, userAddress, contractAddress string, req *types.CreateTimeLockRequest) (*types.CompoundTimeLock, error) {
-	if req.Admin == nil {
-		logger.Error("createCompoundTimeLock Error: ", fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams))
-		return nil, fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams)
-	}
-
-	normalizedAdmin := crypto.NormalizeAddress(*req.Admin)
 
 	timeLock := &types.CompoundTimeLock{
 		CreatorAddress:  userAddress,
 		ChainID:         req.ChainID,
-		ChainName:       req.ChainName,
+		ChainName:       chainInfo.ChainName,
 		ContractAddress: contractAddress,
-		TxHash:          &req.TxHash,
-		MinDelay:        req.MinDelay,
-		Admin:           normalizedAdmin,
+		Delay:           contractData.Delay,
+		Admin:           contractData.Admin,
+		PendingAdmin:    contractData.PendingAdmin,
+		GracePeriod:     contractData.GracePeriod,
+		MinimumDelay:    contractData.MinimumDelay,
+		MaximumDelay:    contractData.MaximumDelay,
 		Remark:          html.EscapeString(strings.TrimSpace(req.Remark)),
-		Status:          types.TimeLockActive,
-		IsImported:      false,
+		Status:          "active",
+		IsImported:      req.IsImported,
 	}
 
 	if err := s.timeLockRepo.CreateCompoundTimeLock(ctx, timeLock); err != nil {
-		logger.Error("CreateCompoundTimeLock Error: ", fmt.Errorf("failed to create compound timelock: %w", err))
+		logger.Error("Failed to create compound timelock", err)
 		return nil, fmt.Errorf("failed to create compound timelock: %w", err)
 	}
 
-	logger.Info("CreateCompoundTimeLock Success: ", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
+	logger.Info("CreateOrImportCompoundTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
 	return timeLock, nil
 }
 
-// 私有方法 - 创建OpenZeppelin timelock
-func (s *service) createOpenzeppelinTimeLock(ctx context.Context, userAddress, contractAddress string, req *types.CreateTimeLockRequest) (*types.OpenzeppelinTimeLock, error) {
-	if len(req.Proposers) == 0 || len(req.Executors) == 0 || len(req.Cancellers) == 0 {
-		logger.Error("createOpenzeppelinTimeLock Error: ", fmt.Errorf("%w: proposers, executors and cancellers are required for openzeppelin standard", ErrInvalidContractParams))
-		return nil, fmt.Errorf("%w: proposers, executors and cancellers are required for openzeppelin standard", ErrInvalidContractParams)
-	}
-
-	// 标准化地址列表
-	normalizedProposers := make([]string, len(req.Proposers))
-	for i, addr := range req.Proposers {
-		normalizedProposers[i] = crypto.NormalizeAddress(addr)
-	}
-
-	normalizedExecutors := make([]string, len(req.Executors))
-	for i, addr := range req.Executors {
-		normalizedExecutors[i] = crypto.NormalizeAddress(addr)
-	}
-
-	normalizedCancellers := make([]string, len(req.Cancellers))
-	for i, addr := range req.Cancellers {
-		normalizedCancellers[i] = crypto.NormalizeAddress(addr)
+// 私有方法 - 创建或导入OpenZeppelin timelock
+func (s *service) createOrImportOpenzeppelinTimeLock(ctx context.Context, userAddress, contractAddress string, req *types.CreateOrImportTimelockContractRequest, chainInfo *types.SupportChain) (*types.OpenzeppelinTimeLock, error) {
+	// 从链上读取合约数据
+	contractData, err := s.readOpenzeppelinTimeLockFromChain(ctx, req.ChainID, contractAddress)
+	if err != nil {
+		logger.Error("Failed to read openzeppelin timelock from chain", err, "contract_address", contractAddress)
+		return nil, fmt.Errorf("failed to read contract data: %w", err)
 	}
 
 	// JSON序列化
-	proposersJSON, _ := json.Marshal(normalizedProposers)
-	executorsJSON, _ := json.Marshal(normalizedExecutors)
-	cancellersJSON, _ := json.Marshal(normalizedCancellers)
+	proposersJSON, _ := json.Marshal(contractData.Proposers)
+	executorsJSON, _ := json.Marshal(contractData.Executors)
+
+	var adminAddr string
+	if contractData.Admin != nil {
+		adminAddr = *contractData.Admin
+	}
 
 	timeLock := &types.OpenzeppelinTimeLock{
 		CreatorAddress:  userAddress,
 		ChainID:         req.ChainID,
-		ChainName:       req.ChainName,
+		ChainName:       chainInfo.ChainName,
 		ContractAddress: contractAddress,
-		TxHash:          &req.TxHash,
-		MinDelay:        req.MinDelay,
+		Delay:           contractData.Delay,
+		Admin:           adminAddr,
 		Proposers:       string(proposersJSON),
 		Executors:       string(executorsJSON),
-		Cancellers:      string(cancellersJSON),
 		Remark:          html.EscapeString(strings.TrimSpace(req.Remark)),
-		Status:          types.TimeLockActive,
-		IsImported:      false,
+		Status:          "active",
+		IsImported:      req.IsImported,
 	}
 
 	if err := s.timeLockRepo.CreateOpenzeppelinTimeLock(ctx, timeLock); err != nil {
-		logger.Error("CreateOpenzeppelinTimeLock Error: ", fmt.Errorf("failed to create openzeppelin timelock: %w", err))
+		logger.Error("Failed to create openzeppelin timelock", err)
 		return nil, fmt.Errorf("failed to create openzeppelin timelock: %w", err)
 	}
 
-	logger.Info("CreateOpenzeppelinTimeLock Success: ", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
+	logger.Info("CreateOrImportOpenzeppelinTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
 	return timeLock, nil
-}
-
-// 私有方法 - 导入Compound timelock
-func (s *service) importCompoundTimeLock(ctx context.Context, userAddress, contractAddress string, req *types.ImportTimeLockRequest) (*types.CompoundTimeLock, error) {
-	if req.Admin == nil {
-		logger.Error("importCompoundTimeLock Error: ", fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams))
-		return nil, fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams)
-	}
-
-	normalizedAdmin := crypto.NormalizeAddress(*req.Admin)
-
-	timeLock := &types.CompoundTimeLock{
-		CreatorAddress:  userAddress,
-		ChainID:         req.ChainID,
-		ChainName:       req.ChainName,
-		ContractAddress: contractAddress,
-		MinDelay:        req.MinDelay,
-		Admin:           normalizedAdmin,
-		Remark:          html.EscapeString(strings.TrimSpace(req.Remark)),
-		Status:          types.TimeLockActive,
-		IsImported:      true,
-	}
-
-	if req.PendingAdmin != nil {
-		normalizedPendingAdmin := crypto.NormalizeAddress(*req.PendingAdmin)
-		timeLock.PendingAdmin = &normalizedPendingAdmin
-	}
-
-	if err := s.timeLockRepo.CreateCompoundTimeLock(ctx, timeLock); err != nil {
-		logger.Error("ImportCompoundTimeLock Error: ", fmt.Errorf("failed to import compound timelock: %w", err))
-		return nil, fmt.Errorf("failed to import compound timelock: %w", err)
-	}
-
-	logger.Info("ImportCompoundTimeLock Success: ", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
-	return timeLock, nil
-}
-
-// 私有方法 - 导入OpenZeppelin timelock
-func (s *service) importOpenzeppelinTimeLock(ctx context.Context, userAddress, contractAddress string, req *types.ImportTimeLockRequest) (*types.OpenzeppelinTimeLock, error) {
-	if len(req.Proposers) == 0 || len(req.Executors) == 0 || len(req.Cancellers) == 0 {
-		logger.Error("importOpenzeppelinTimeLock Error: ", fmt.Errorf("%w: proposers, executors and cancellers are required for openzeppelin standard", ErrInvalidContractParams))
-		return nil, fmt.Errorf("%w: proposers, executors and cancellers are required for openzeppelin standard", ErrInvalidContractParams)
-	}
-
-	// 标准化地址列表
-	normalizedProposers := make([]string, len(req.Proposers))
-	for i, addr := range req.Proposers {
-		normalizedProposers[i] = crypto.NormalizeAddress(addr)
-	}
-
-	normalizedExecutors := make([]string, len(req.Executors))
-	for i, addr := range req.Executors {
-		normalizedExecutors[i] = crypto.NormalizeAddress(addr)
-	}
-
-	normalizedCancellers := make([]string, len(req.Cancellers))
-	for i, addr := range req.Cancellers {
-		normalizedCancellers[i] = crypto.NormalizeAddress(addr)
-	}
-
-	// JSON序列化
-	proposersJSON, _ := json.Marshal(normalizedProposers)
-	executorsJSON, _ := json.Marshal(normalizedExecutors)
-	cancellersJSON, _ := json.Marshal(normalizedCancellers)
-
-	timeLock := &types.OpenzeppelinTimeLock{
-		CreatorAddress:  userAddress,
-		ChainID:         req.ChainID,
-		ChainName:       req.ChainName,
-		ContractAddress: contractAddress,
-		MinDelay:        req.MinDelay,
-		Proposers:       string(proposersJSON),
-		Executors:       string(executorsJSON),
-		Cancellers:      string(cancellersJSON),
-		Remark:          html.EscapeString(strings.TrimSpace(req.Remark)),
-		Status:          types.TimeLockActive,
-		IsImported:      true,
-	}
-
-	if err := s.timeLockRepo.CreateOpenzeppelinTimeLock(ctx, timeLock); err != nil {
-		logger.Error("ImportOpenzeppelinTimeLock Error: ", fmt.Errorf("failed to import openzeppelin timelock: %w", err))
-		return nil, fmt.Errorf("failed to import openzeppelin timelock: %w", err)
-	}
-
-	logger.Info("ImportOpenzeppelinTimeLock Success: ", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
-	return timeLock, nil
-}
-
-// 私有方法 - 获取Compound timelock列表
-func (s *service) getCompoundTimeLockList(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error) {
-	compoundList, _, _, err := s.timeLockRepo.GetTimeLocksByUserPermissions(ctx, userAddress, req)
-	if err != nil {
-		logger.Error("getCompoundTimeLockList Error: ", err)
-		return nil, err
-	}
-
-	// 只返回compound类型
-	return &types.GetTimeLockListResponse{
-		CompoundTimeLocks:     compoundList,
-		OpenzeppelinTimeLocks: []types.OpenzeppelinTimeLockWithPermission{}, // 空数组
-		Total:                 int64(len(compoundList)),
-	}, nil
-}
-
-// 私有方法 - 获取OpenZeppelin timelock列表
-func (s *service) getOpenzeppelinTimeLockList(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error) {
-	_, openzeppelinList, _, err := s.timeLockRepo.GetTimeLocksByUserPermissions(ctx, userAddress, req)
-	if err != nil {
-		logger.Error("getOpenzeppelinTimeLockList Error: ", err)
-		return nil, err
-	}
-
-	// 只返回openzeppelin类型
-	return &types.GetTimeLockListResponse{
-		CompoundTimeLocks:     []types.CompoundTimeLockWithPermission{}, // 空数组
-		OpenzeppelinTimeLocks: openzeppelinList,
-		Total:                 int64(len(openzeppelinList)),
-	}, nil
 }
 
 // 私有方法 - 获取Compound timelock详情
-func (s *service) getCompoundTimeLockDetail(ctx context.Context, userAddress string, id int64) (*types.TimeLockDetailResponse, error) {
-	timeLock, err := s.timeLockRepo.GetCompoundTimeLockByID(ctx, id)
+func (s *service) getCompoundTimeLockDetail(ctx context.Context, userAddress string, chainID int, contractAddress string) (*types.GetTimeLockDetailResponse, error) {
+	timeLock, err := s.timeLockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrTimeLockNotFound
 		}
-		logger.Error("getCompoundTimeLockDetail Error: ", err)
+		logger.Error("Failed to get compound timelock", err)
 		return nil, fmt.Errorf("failed to get timelock: %w", err)
 	}
 
-	// 检查用户是否有权限查看（创建者、管理员或待定管理员）
-	hasPermission := timeLock.CreatorAddress == userAddress ||
-		timeLock.Admin == userAddress ||
-		(timeLock.PendingAdmin != nil && *timeLock.PendingAdmin == userAddress)
-
+	// 检查用户是否有权限查看
+	hasPermission := s.checkCompoundPermission(timeLock, userAddress)
 	if !hasPermission {
-		logger.Error("getCompoundTimeLockDetail Error: ", ErrUnauthorized)
+		logger.Error("User has no permission to view timelock", ErrUnauthorized)
 		return nil, ErrUnauthorized
 	}
 
 	// 构建权限信息
+	permissions := s.buildCompoundPermissions(timeLock, userAddress)
+
+	compoundData := &types.CompoundTimeLockWithPermission{
+		CompoundTimeLock: *timeLock,
+		UserPermissions:  permissions,
+	}
+
+	return &types.GetTimeLockDetailResponse{
+		Standard:     "compound",
+		CompoundData: compoundData,
+	}, nil
+}
+
+// 私有方法 - 获取OpenZeppelin timelock详情
+func (s *service) getOpenzeppelinTimeLockDetail(ctx context.Context, userAddress string, chainID int, contractAddress string) (*types.GetTimeLockDetailResponse, error) {
+	timeLock, err := s.timeLockRepo.GetOpenzeppelinTimeLockByChainAndAddress(ctx, chainID, contractAddress)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTimeLockNotFound
+		}
+		logger.Error("Failed to get openzeppelin timelock", err)
+		return nil, fmt.Errorf("failed to get timelock: %w", err)
+	}
+
+	// 检查用户是否有权限查看
+	hasPermission := s.checkOpenzeppelinPermission(timeLock, userAddress)
+	if !hasPermission {
+		logger.Error("User has no permission to view timelock", ErrUnauthorized)
+		return nil, ErrUnauthorized
+	}
+
+	// 构建权限信息
+	permissions := s.buildOpenzeppelinPermissions(timeLock, userAddress)
+
+	openzeppelinData := &types.OpenzeppelinTimeLockWithPermission{
+		OpenzeppelinTimeLock: *timeLock,
+		UserPermissions:      permissions,
+	}
+
+	return &types.GetTimeLockDetailResponse{
+		Standard:         "openzeppelin",
+		OpenzeppelinData: openzeppelinData,
+	}, nil
+}
+
+// 链上数据结构
+type CompoundTimeLockData struct {
+	Delay        int64   `json:"delay"`
+	Admin        string  `json:"admin"`
+	PendingAdmin *string `json:"pending_admin"`
+	GracePeriod  int64   `json:"grace_period"`
+	MinimumDelay int64   `json:"minimum_delay"`
+	MaximumDelay int64   `json:"maximum_delay"`
+}
+
+type OpenzeppelinTimeLockData struct {
+	Delay     int64    `json:"delay"`
+	Admin     *string  `json:"admin"`
+	Proposers []string `json:"proposers"`
+	Executors []string `json:"executors"`
+}
+
+// 私有方法 - 从链上读取Compound timelock数据
+func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int, contractAddress string) (*CompoundTimeLockData, error) {
+	client, err := s.rpcManager.GetOrCreateClient(ctx, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get RPC client: %w", err)
+	}
+
+	contractAddr := common.HexToAddress(contractAddress)
+
+	// Compound Timelock ABI (简化版，只包含需要的方法)
+	abiJSON := `[
+		{"inputs":[],"name":"delay","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+		{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+		{"inputs":[],"name":"pendingAdmin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+		{"inputs":[],"name":"GRACE_PERIOD","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+		{"inputs":[],"name":"MINIMUM_DELAY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+		{"inputs":[],"name":"MAXIMUM_DELAY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
+	]`
+
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ABI: %w", err)
+	}
+
+	data := &CompoundTimeLockData{}
+
+	// 读取delay
+	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "delay")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read delay: %w", err)
+	}
+	if len(result) > 0 {
+		if delay, ok := result[0].(*big.Int); ok {
+			data.Delay = delay.Int64()
+		} else {
+			return nil, fmt.Errorf("invalid delay type")
+		}
+	}
+
+	// 读取admin
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "admin")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read admin: %w", err)
+	}
+	if len(result) > 0 {
+		if admin, ok := result[0].(common.Address); ok {
+			data.Admin = strings.ToLower(admin.Hex())
+		} else {
+			return nil, fmt.Errorf("invalid admin type")
+		}
+	}
+
+	// 读取pendingAdmin
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "pendingAdmin")
+	if err != nil {
+		// pendingAdmin 可能为空，不是错误
+		logger.Warn("Failed to read pendingAdmin", "error", err)
+	} else if len(result) > 0 {
+		if pendingAdmin, ok := result[0].(common.Address); ok && pendingAdmin != (common.Address{}) {
+			pendingAdminStr := strings.ToLower(pendingAdmin.Hex())
+			data.PendingAdmin = &pendingAdminStr
+		}
+	}
+
+	// 读取GRACE_PERIOD
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "GRACE_PERIOD")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read GRACE_PERIOD: %w", err)
+	}
+	if len(result) > 0 {
+		if gracePeriod, ok := result[0].(*big.Int); ok {
+			data.GracePeriod = gracePeriod.Int64()
+		} else {
+			return nil, fmt.Errorf("invalid grace period type")
+		}
+	}
+
+	// 读取MINIMUM_DELAY
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "MINIMUM_DELAY")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read MINIMUM_DELAY: %w", err)
+	}
+	if len(result) > 0 {
+		if minDelay, ok := result[0].(*big.Int); ok {
+			data.MinimumDelay = minDelay.Int64()
+		} else {
+			return nil, fmt.Errorf("invalid minimum delay type")
+		}
+	}
+
+	// 读取MAXIMUM_DELAY
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "MAXIMUM_DELAY")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read MAXIMUM_DELAY: %w", err)
+	}
+	if len(result) > 0 {
+		if maxDelay, ok := result[0].(*big.Int); ok {
+			data.MaximumDelay = maxDelay.Int64()
+		} else {
+			return nil, fmt.Errorf("invalid maximum delay type")
+		}
+	}
+
+	return data, nil
+}
+
+// 私有方法 - 从链上读取OpenZeppelin timelock数据
+func (s *service) readOpenzeppelinTimeLockFromChain(ctx context.Context, chainID int, contractAddress string) (*OpenzeppelinTimeLockData, error) {
+	client, err := s.rpcManager.GetOrCreateClient(ctx, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get RPC client: %w", err)
+	}
+
+	contractAddr := common.HexToAddress(contractAddress)
+
+	// OpenZeppelin TimelockController ABI (简化版)
+	abiJSON := `[
+		{"inputs":[],"name":"getMinDelay","outputs":[{"internalType":"uint256","name":"duration","type":"uint256"}],"stateMutability":"view","type":"function"},
+		{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"}],"name":"getRoleMemberCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+		{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"uint256","name":"index","type":"uint256"}],"name":"getRoleMember","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}
+	]`
+
+	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ABI: %w", err)
+	}
+
+	data := &OpenzeppelinTimeLockData{}
+
+	// 读取delay
+	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getMinDelay")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read delay: %w", err)
+	}
+	if len(result) > 0 {
+		if delay, ok := result[0].(*big.Int); ok {
+			data.Delay = delay.Int64()
+		} else {
+			return nil, fmt.Errorf("invalid delay type")
+		}
+	}
+
+	// OpenZeppelin TimelockController 角色定义
+	adminRole := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")    // DEFAULT_ADMIN_ROLE
+	proposerRole := common.HexToHash("0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1") // PROPOSER_ROLE
+	executorRole := common.HexToHash("0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63") // EXECUTOR_ROLE
+
+	// 读取admin（DEFAULT_ADMIN_ROLE的成员）
+	adminMembers, err := s.getRoleMembers(ctx, client, contractAddr, parsedABI, adminRole)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read admin members: %w", err)
+	}
+	if len(adminMembers) > 0 {
+		data.Admin = &adminMembers[0] // 取第一个admin
+	}
+
+	// 读取proposers
+	data.Proposers, err = s.getRoleMembers(ctx, client, contractAddr, parsedABI, proposerRole)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read proposers: %w", err)
+	}
+
+	// 读取executors
+	data.Executors, err = s.getRoleMembers(ctx, client, contractAddr, parsedABI, executorRole)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read executors: %w", err)
+	}
+
+	return data, nil
+}
+
+// 私有方法 - 获取角色成员
+func (s *service) getRoleMembers(ctx context.Context, client *ethclient.Client, contractAddr common.Address, parsedABI abi.ABI, role common.Hash) ([]string, error) {
+	// 获取角色成员数量
+	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getRoleMemberCount", role)
+	if err != nil {
+		return nil, err
+	}
+
+	var count *big.Int
+	if len(result) > 0 {
+		if c, ok := result[0].(*big.Int); ok {
+			count = c
+		} else {
+			return nil, fmt.Errorf("invalid count type")
+		}
+	} else {
+		return []string{}, nil
+	}
+
+	members := make([]string, 0, count.Int64())
+	for i := int64(0); i < count.Int64(); i++ {
+		result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getRoleMember", role, big.NewInt(i))
+		if err != nil {
+			continue
+		}
+		if len(result) > 0 {
+			if member, ok := result[0].(common.Address); ok {
+				members = append(members, strings.ToLower(member.Hex()))
+			}
+		}
+	}
+
+	return members, nil
+}
+
+// 私有方法 - 调用合约方法
+func (s *service) callContract(ctx context.Context, client *ethclient.Client, contractAddr common.Address, parsedABI abi.ABI, method string, args ...interface{}) ([]interface{}, error) {
+	callData, err := parsedABI.Pack(method, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack call data: %w", err)
+	}
+
+	result, err := client.CallContract(ctx, ethereum.CallMsg{
+		To:   &contractAddr,
+		Data: callData,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call contract: %w", err)
+	}
+
+	return parsedABI.Unpack(method, result)
+}
+
+// 私有方法 - 刷新Compound timelock数据
+func (s *service) refreshCompoundTimeLockData(ctx context.Context, timeLock *types.CompoundTimeLock) error {
+	// 从链上读取最新数据
+	contractData, err := s.readCompoundTimeLockFromChain(ctx, timeLock.ChainID, timeLock.ContractAddress)
+	if err != nil {
+		return fmt.Errorf("failed to read contract data: %w", err)
+	}
+
+	// 更新数据库中的数据
+	timeLock.Delay = contractData.Delay
+	timeLock.Admin = contractData.Admin
+	timeLock.PendingAdmin = contractData.PendingAdmin
+	timeLock.GracePeriod = contractData.GracePeriod
+	timeLock.MinimumDelay = contractData.MinimumDelay
+	timeLock.MaximumDelay = contractData.MaximumDelay
+	timeLock.UpdatedAt = time.Now()
+
+	return s.timeLockRepo.UpdateCompoundTimeLock(ctx, timeLock)
+}
+
+// 私有方法 - 刷新OpenZeppelin timelock数据
+func (s *service) refreshOpenzeppelinTimeLockData(ctx context.Context, timeLock *types.OpenzeppelinTimeLock) error {
+	// 从链上读取最新数据
+	contractData, err := s.readOpenzeppelinTimeLockFromChain(ctx, timeLock.ChainID, timeLock.ContractAddress)
+	if err != nil {
+		return fmt.Errorf("failed to read contract data: %w", err)
+	}
+
+	// JSON序列化
+	proposersJSON, _ := json.Marshal(contractData.Proposers)
+	executorsJSON, _ := json.Marshal(contractData.Executors)
+
+	// 更新数据库中的数据
+	timeLock.Delay = contractData.Delay
+	if contractData.Admin != nil {
+		timeLock.Admin = *contractData.Admin
+	} else {
+		timeLock.Admin = ""
+	}
+	timeLock.Proposers = string(proposersJSON)
+	timeLock.Executors = string(executorsJSON)
+	timeLock.UpdatedAt = time.Now()
+
+	return s.timeLockRepo.UpdateOpenzeppelinTimeLock(ctx, timeLock)
+}
+
+// 私有方法 - 检查Compound权限
+func (s *service) checkCompoundPermission(timeLock *types.CompoundTimeLock, userAddress string) bool {
+	return timeLock.CreatorAddress == userAddress ||
+		timeLock.Admin == userAddress ||
+		(timeLock.PendingAdmin != nil && *timeLock.PendingAdmin == userAddress)
+}
+
+// 私有方法 - 构建Compound权限列表
+func (s *service) buildCompoundPermissions(timeLock *types.CompoundTimeLock, userAddress string) []string {
 	var permissions []string
 	if timeLock.CreatorAddress == userAddress {
 		permissions = append(permissions, "creator")
@@ -617,43 +793,18 @@ func (s *service) getCompoundTimeLockDetail(ctx context.Context, userAddress str
 	if timeLock.PendingAdmin != nil && *timeLock.PendingAdmin == userAddress {
 		permissions = append(permissions, "pending_admin")
 	}
-
-	compoundData := &types.CompoundTimeLockWithPermission{
-		CompoundTimeLock:   *timeLock,
-		UserPermissions:    permissions,
-		CanSetPendingAdmin: timeLock.Admin == userAddress,
-		CanAcceptAdmin:     timeLock.PendingAdmin != nil && *timeLock.PendingAdmin == userAddress,
-	}
-
-	return &types.TimeLockDetailResponse{
-		Standard:     types.CompoundStandard,
-		CompoundData: compoundData,
-	}, nil
+	return permissions
 }
 
-// 私有方法 - 获取OpenZeppelin timelock详情
-func (s *service) getOpenzeppelinTimeLockDetail(ctx context.Context, userAddress string, id int64) (*types.TimeLockDetailResponse, error) {
-	timeLock, err := s.timeLockRepo.GetOpenzeppelinTimeLockByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrTimeLockNotFound
-		}
-		logger.Error("getOpenzeppelinTimeLockDetail Error: ", err)
-		return nil, fmt.Errorf("failed to get timelock: %w", err)
-	}
-
-	// 检查用户是否有权限查看
-	hasPermission := timeLock.CreatorAddress == userAddress ||
+// 私有方法 - 检查OpenZeppelin权限
+func (s *service) checkOpenzeppelinPermission(timeLock *types.OpenzeppelinTimeLock, userAddress string) bool {
+	return timeLock.CreatorAddress == userAddress ||
 		s.containsAddress(timeLock.Proposers, userAddress) ||
-		s.containsAddress(timeLock.Executors, userAddress) ||
-		s.containsAddress(timeLock.Cancellers, userAddress)
+		s.containsAddress(timeLock.Executors, userAddress)
+}
 
-	if !hasPermission {
-		logger.Error("getOpenzeppelinTimeLockDetail Error: ", ErrUnauthorized)
-		return nil, ErrUnauthorized
-	}
-
-	// 构建权限信息
+// 私有方法 - 构建OpenZeppelin权限列表
+func (s *service) buildOpenzeppelinPermissions(timeLock *types.OpenzeppelinTimeLock, userAddress string) []string {
 	var permissions []string
 	if timeLock.CreatorAddress == userAddress {
 		permissions = append(permissions, "creator")
@@ -664,180 +815,43 @@ func (s *service) getOpenzeppelinTimeLockDetail(ctx context.Context, userAddress
 	if s.containsAddress(timeLock.Executors, userAddress) {
 		permissions = append(permissions, "executor")
 	}
-	if s.containsAddress(timeLock.Cancellers, userAddress) {
-		permissions = append(permissions, "canceller")
-	}
-
-	// 解析地址列表
-	proposersList, _ := s.parseAddressList(timeLock.Proposers)
-	executorsList, _ := s.parseAddressList(timeLock.Executors)
-	cancellersList, _ := s.parseAddressList(timeLock.Cancellers)
-
-	openzeppelinData := &types.OpenzeppelinTimeLockWithPermission{
-		OpenzeppelinTimeLock: *timeLock,
-		UserPermissions:      permissions,
-		ProposersList:        proposersList,
-		ExecutorsList:        executorsList,
-		CancellersList:       cancellersList,
-	}
-
-	return &types.TimeLockDetailResponse{
-		Standard:         types.OpenzeppelinStandard,
-		OpenzeppelinData: openzeppelinData,
-	}, nil
+	return permissions
 }
 
-// validateCreateRequest 验证创建timelock合约的请求
-func (s *service) validateCreateRequest(req *types.CreateTimeLockRequest) error {
+// validateCreateOrImportRequest 验证创建或导入timelock合约的请求
+func (s *service) validateCreateOrImportRequest(req *types.CreateOrImportTimelockContractRequest) error {
 	// 验证合约地址格式
 	if !crypto.ValidateEthereumAddress(req.ContractAddress) {
-		logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: invalid contract address", ErrInvalidContractParams))
-		return fmt.Errorf("%w: invalid contract address", ErrInvalidContractParams)
-	}
-
-	// 验证交易hash格式
-	if len(req.TxHash) != 66 || !strings.HasPrefix(req.TxHash, "0x") {
-		logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: invalid transaction hash", ErrInvalidContractParams))
-		return fmt.Errorf("%w: invalid transaction hash", ErrInvalidContractParams)
-	}
-
-	// 验证备注
-	if err := s.validateRemark(req.Remark); err != nil {
-		logger.Error("validateCreateRequest Error: ", err)
-		return err
-	}
-
-	// 根据标准验证特定参数
-	switch req.Standard {
-	case types.CompoundStandard:
-		if req.Admin == nil {
-			logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams))
-			return fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams)
-		}
-		if !crypto.ValidateEthereumAddress(*req.Admin) {
-			logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: invalid admin address", ErrInvalidContractParams))
-			return fmt.Errorf("%w: invalid admin address", ErrInvalidContractParams)
-		}
-	case types.OpenzeppelinStandard:
-		if len(req.Proposers) == 0 {
-			logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: proposers are required for openzeppelin standard", ErrInvalidContractParams))
-			return fmt.Errorf("%w: proposers are required for openzeppelin standard", ErrInvalidContractParams)
-		}
-		if len(req.Executors) == 0 {
-			logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: executors are required for openzeppelin standard", ErrInvalidContractParams))
-			return fmt.Errorf("%w: executors are required for openzeppelin standard", ErrInvalidContractParams)
-		}
-		if len(req.Cancellers) == 0 {
-			logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: cancellers are required for openzeppelin standard", ErrInvalidContractParams))
-			return fmt.Errorf("%w: cancellers are required for openzeppelin standard", ErrInvalidContractParams)
-		}
-		// 验证地址格式
-		for _, addr := range req.Proposers {
-			if !crypto.ValidateEthereumAddress(addr) {
-				logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: invalid proposer address: %s", ErrInvalidContractParams, addr))
-				return fmt.Errorf("%w: invalid proposer address: %s", ErrInvalidContractParams, addr)
-			}
-		}
-		for _, addr := range req.Executors {
-			if !crypto.ValidateEthereumAddress(addr) {
-				logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: invalid executor address: %s", ErrInvalidContractParams, addr))
-				return fmt.Errorf("%w: invalid executor address: %s", ErrInvalidContractParams, addr)
-			}
-		}
-		for _, addr := range req.Cancellers {
-			if !crypto.ValidateEthereumAddress(addr) {
-				logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: invalid canceller address: %s", ErrInvalidContractParams, addr))
-				return fmt.Errorf("%w: invalid canceller address: %s", ErrInvalidContractParams, addr)
-			}
-		}
-	default:
-		logger.Error("validateCreateRequest Error: ", fmt.Errorf("%w: %s", ErrInvalidStandard, req.Standard))
-		return fmt.Errorf("%w: %s", ErrInvalidStandard, req.Standard)
-	}
-
-	return nil
-}
-
-// validateImportRequest 验证导入timelock合约的请求
-func (s *service) validateImportRequest(req *types.ImportTimeLockRequest) error {
-	// 验证合约地址格式
-	if !crypto.ValidateEthereumAddress(req.ContractAddress) {
-		logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: invalid contract address", ErrInvalidContractParams))
 		return fmt.Errorf("%w: invalid contract address", ErrInvalidContractParams)
 	}
 
 	// 验证标准
-	if req.Standard != types.CompoundStandard && req.Standard != types.OpenzeppelinStandard {
-		logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: %s", ErrInvalidStandard, req.Standard))
+	if req.Standard != "compound" && req.Standard != "openzeppelin" {
 		return fmt.Errorf("%w: %s", ErrInvalidStandard, req.Standard)
 	}
 
 	// 验证备注
 	if err := s.validateRemark(req.Remark); err != nil {
-		logger.Error("validateImportRequest Error: ", err)
 		return err
-	}
-
-	// 根据标准验证特定参数
-	switch req.Standard {
-	case types.CompoundStandard:
-		if req.Admin == nil {
-			logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams))
-			return fmt.Errorf("%w: admin is required for compound standard", ErrInvalidContractParams)
-		}
-		if !crypto.ValidateEthereumAddress(*req.Admin) {
-			logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: invalid admin address", ErrInvalidContractParams))
-			return fmt.Errorf("%w: invalid admin address", ErrInvalidContractParams)
-		}
-		if req.PendingAdmin != nil && !crypto.ValidateEthereumAddress(*req.PendingAdmin) {
-			logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: invalid pending admin address", ErrInvalidContractParams))
-			return fmt.Errorf("%w: invalid pending admin address", ErrInvalidContractParams)
-		}
-	case types.OpenzeppelinStandard:
-		if len(req.Proposers) == 0 || len(req.Executors) == 0 || len(req.Cancellers) == 0 {
-			logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: proposers, executors and cancellers are required for openzeppelin standard", ErrInvalidContractParams))
-			return fmt.Errorf("%w: proposers, executors and cancellers are required for openzeppelin standard", ErrInvalidContractParams)
-		}
-		// 验证地址格式
-		for _, addr := range req.Proposers {
-			if !crypto.ValidateEthereumAddress(addr) {
-				logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: invalid proposer address: %s", ErrInvalidContractParams, addr))
-				return fmt.Errorf("%w: invalid proposer address: %s", ErrInvalidContractParams, addr)
-			}
-		}
-		for _, addr := range req.Executors {
-			if !crypto.ValidateEthereumAddress(addr) {
-				logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: invalid executor address: %s", ErrInvalidContractParams, addr))
-				return fmt.Errorf("%w: invalid executor address: %s", ErrInvalidContractParams, addr)
-			}
-		}
-		for _, addr := range req.Cancellers {
-			if !crypto.ValidateEthereumAddress(addr) {
-				logger.Error("validateImportRequest Error: ", fmt.Errorf("%w: invalid canceller address: %s", ErrInvalidContractParams, addr))
-				return fmt.Errorf("%w: invalid canceller address: %s", ErrInvalidContractParams, addr)
-			}
-		}
 	}
 
 	return nil
 }
 
 // checkContractExists 检查合约是否存在
-func (s *service) checkContractExists(ctx context.Context, standard types.TimeLockStandard, chainID int, contractAddress string) error {
+func (s *service) checkContractExists(ctx context.Context, standard string, chainID int, contractAddress string) error {
 	switch standard {
-	case types.CompoundStandard:
+	case "compound":
 		exists, err := s.timeLockRepo.CheckCompoundTimeLockExists(ctx, chainID, contractAddress)
 		if err != nil {
-			logger.Error("checkContractExists Error: ", err)
 			return fmt.Errorf("failed to check compound timelock existence: %w", err)
 		}
 		if exists {
 			return ErrTimeLockExists
 		}
-	case types.OpenzeppelinStandard:
+	case "openzeppelin":
 		exists, err := s.timeLockRepo.CheckOpenzeppelinTimeLockExists(ctx, chainID, contractAddress)
 		if err != nil {
-			logger.Error("checkContractExists Error: ", err)
 			return fmt.Errorf("failed to check openzeppelin timelock existence: %w", err)
 		}
 		if exists {
@@ -847,20 +861,16 @@ func (s *service) checkContractExists(ctx context.Context, standard types.TimeLo
 	return nil
 }
 
-// validateRemark 验证备注,长度不超过500字符,不允许包含特殊字符
+// validateRemark 验证备注
 func (s *service) validateRemark(remark string) error {
-	// 长度验证
 	if len(remark) > 500 {
 		return fmt.Errorf("%w: remark too long (max 500 characters)", ErrInvalidRemark)
 	}
 
-	// 基本内容安全验证
 	if strings.ContainsAny(remark, "<>\"'&") {
-		// 这些字符会被HTML转义，所以这里只是警告
 		logger.Warn("Remark contains HTML-sensitive characters, will be escaped", "remark", remark)
 	}
 
-	// 正则验证：不允许一些特殊字符组合
 	maliciousPatterns := []string{
 		`(?i)javascript:`,
 		`(?i)data:`,
@@ -871,7 +881,6 @@ func (s *service) validateRemark(remark string) error {
 
 	for _, pattern := range maliciousPatterns {
 		if matched, _ := regexp.MatchString(pattern, remark); matched {
-			logger.Error("validateRemark Error: ", fmt.Errorf("%w: remark contains potentially malicious content", ErrInvalidRemark))
 			return fmt.Errorf("%w: remark contains potentially malicious content", ErrInvalidRemark)
 		}
 	}
@@ -892,13 +901,4 @@ func (s *service) containsAddress(jsonAddresses, address string) bool {
 		}
 	}
 	return false
-}
-
-// parseAddressList 解析JSON地址列表
-func (s *service) parseAddressList(jsonAddresses string) ([]string, error) {
-	var addresses []string
-	if err := json.Unmarshal([]byte(jsonAddresses), &addresses); err != nil {
-		return nil, err
-	}
-	return addresses, nil
 }
