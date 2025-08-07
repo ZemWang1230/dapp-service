@@ -3,7 +3,6 @@ package scanner
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -11,8 +10,6 @@ import (
 	"timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
-
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // ChainScanner 单链扫描器
@@ -187,58 +184,32 @@ func (cs *ChainScanner) scanBlocks(ctx context.Context) error {
 		return nil
 	}
 
-	// 批量扫描区块
-	for currentBlock := fromBlock; currentBlock <= toBlock; currentBlock++ {
-		select {
-		case <-cs.stopCh:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if err := cs.scanSingleBlock(ctx, client, currentBlock); err != nil {
-				return fmt.Errorf("failed to scan block %d: %w", currentBlock, err)
-			}
+	// 批量扫描区块范围（使用eth_getLogs一次性获取所有事件）
+	select {
+	case <-cs.stopCh:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		events, err := cs.blockProcessor.ScanBlockRange(ctx, client, fromBlock, toBlock)
+		if err != nil {
+			return fmt.Errorf("failed to scan block range %d-%d: %w", fromBlock, toBlock, err)
+		}
 
-			// 更新进度（使用配置的间隔）
-			progressInterval := int64(cs.config.Scanner.ProgressUpdateInterval)
-			if currentBlock%progressInterval == 0 || currentBlock == toBlock {
-				cs.progress.LastScannedBlock = currentBlock
-				cs.progress.LastUpdateTime = time.Now()
-				cs.lastUpdate = time.Now()
-
-				if err := cs.progressRepo.UpdateProgressBlock(ctx, cs.chainInfo.ChainID, currentBlock, int64(latestBlock)); err != nil {
-					logger.Error("Failed to update progress", err, "chain_id", cs.chainInfo.ChainID, "block", currentBlock)
-				}
+		if len(events) > 0 {
+			// 处理事件
+			if err := cs.eventProcessor.ProcessEvents(ctx, cs.chainInfo.ChainID, cs.chainInfo.ChainName, events); err != nil {
+				return fmt.Errorf("failed to process events: %w", err)
 			}
 		}
-	}
 
-	return nil
-}
+		// 更新进度到最后扫描的区块
+		cs.progress.LastScannedBlock = toBlock
+		cs.progress.LastUpdateTime = time.Now()
+		cs.lastUpdate = time.Now()
 
-// scanSingleBlock 扫描单个区块
-func (cs *ChainScanner) scanSingleBlock(ctx context.Context, client *ethclient.Client, blockNumber int64) error {
-	// 获取区块数据
-	block, err := cs.blockProcessor.GetBlockData(ctx, client, big.NewInt(blockNumber))
-	if err != nil {
-		return fmt.Errorf("failed to get block data: %w", err)
-	}
-
-	if block == nil {
-		logger.Debug("Block not found", "chain_id", cs.chainInfo.ChainID, "block", blockNumber)
-		return nil
-	}
-
-	// 处理区块中的交易
-	events, err := cs.blockProcessor.ProcessBlock(ctx, client, block)
-	if err != nil {
-		return fmt.Errorf("failed to process block: %w", err)
-	}
-
-	if len(events) > 0 {
-		// 处理事件
-		if err := cs.eventProcessor.ProcessEvents(ctx, cs.chainInfo.ChainID, cs.chainInfo.ChainName, events); err != nil {
-			return fmt.Errorf("failed to process events: %w", err)
+		if err := cs.progressRepo.UpdateProgressBlock(ctx, cs.chainInfo.ChainID, toBlock, int64(latestBlock)); err != nil {
+			logger.Error("Failed to update progress", err, "chain_id", cs.chainInfo.ChainID, "block", toBlock)
 		}
 	}
 

@@ -143,6 +143,7 @@ type CompoundTimelockEvent struct {
 	ChainName       string `json:"chain_name"`       // 链名称
 	FromAddress     string `json:"from_address"`     // 发起地址
 	ToAddress       string `json:"to_address"`       // 接收地址
+	TxStatus        string `json:"tx_status"`        // 交易状态（success, failed）
 	EventData       string `json:"event_data"`       // 事件数据
 
 	// QueueTransaction / ExecuteTransaction / CancelTransaction
@@ -183,6 +184,7 @@ type OpenZeppelinTimelockEvent struct {
 	ChainName       string                 `json:"chain_name"`       // 链名称
 	FromAddress     string                 `json:"from_address"`     // 发起地址
 	ToAddress       string                 `json:"to_address"`       // 接收地址
+	TxStatus        string                 `json:"tx_status"`        // 交易状态（success, failed）
 	EventData       map[string]interface{} `json:"event_data"`       // 事件数据
 
 	// CallScheduled

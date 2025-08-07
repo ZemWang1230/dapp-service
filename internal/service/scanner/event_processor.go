@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -98,27 +99,56 @@ func (ep *EventProcessor) ProcessEvents(ctx context.Context, chainID int, chainN
 
 // convertCompoundEvent 转换Compound事件为数据库记录
 func (ep *EventProcessor) convertCompoundEvent(event *types.CompoundTimelockEvent) *types.CompoundTimelockTransaction {
-	// 完善流程
 	return &types.CompoundTimelockTransaction{
-		TxHash:          event.TxHash,
-		BlockNumber:     int64(event.BlockNumber),
-		BlockTimestamp:  time.Unix(int64(event.BlockTimestamp), 0),
-		ChainID:         event.ChainID,
-		ChainName:       event.ChainName,
-		ContractAddress: event.ContractAddress,
+		TxHash:                 event.TxHash,
+		BlockNumber:            int64(event.BlockNumber),
+		BlockTimestamp:         time.Unix(int64(event.BlockTimestamp), 0),
+		ChainID:                event.ChainID,
+		ChainName:              event.ChainName,
+		ContractAddress:        event.ContractAddress,
+		FromAddress:            event.FromAddress,
+		ToAddress:              event.ToAddress,
+		TxStatus:               event.TxStatus,
+		EventType:              event.EventType,
+		EventData:              event.EventData,
+		EventTxHash:            event.EventTxHash,
+		EventTarget:            event.EventTarget,
+		EventValue:             event.EventValue,
+		EventFunctionSignature: event.EventFunctionSignature,
+		EventCallData:          event.EventCallData,
+		EventEta:               event.EventEta,
 	}
 }
 
 // convertOpenZeppelinEvent 转换OpenZeppelin事件为数据库记录
 func (ep *EventProcessor) convertOpenZeppelinEvent(event *types.OpenZeppelinTimelockEvent) *types.OpenZeppelinTimelockTransaction {
-	// 完善流程
+	// 将EventData转换为JSON字符串
+	eventDataJSON := ""
+	if event.EventData != nil {
+		if jsonBytes, err := json.Marshal(event.EventData); err == nil {
+			eventDataJSON = string(jsonBytes)
+		}
+	}
+
 	return &types.OpenZeppelinTimelockTransaction{
-		TxHash:          event.TxHash,
-		BlockNumber:     int64(event.BlockNumber),
-		BlockTimestamp:  time.Unix(int64(event.BlockTimestamp), 0),
-		ChainID:         event.ChainID,
-		ChainName:       event.ChainName,
-		ContractAddress: event.ContractAddress,
+		TxHash:           event.TxHash,
+		BlockNumber:      int64(event.BlockNumber),
+		BlockTimestamp:   time.Unix(int64(event.BlockTimestamp), 0),
+		ChainID:          event.ChainID,
+		ChainName:        event.ChainName,
+		ContractAddress:  event.ContractAddress,
+		FromAddress:      event.FromAddress,
+		ToAddress:        event.ToAddress,
+		TxStatus:         event.TxStatus,
+		EventType:        event.EventType,
+		EventData:        eventDataJSON,
+		EventID:          event.EventID,
+		EventIndex:       event.EventIndex,
+		EventTarget:      event.EventTarget,
+		EventValue:       event.EventValue,
+		EventCallData:    event.EventCallData,
+		EventPredecessor: event.EventPredecessor,
+		EventDelay:       event.EventDelay,
 	}
 }
 
