@@ -429,6 +429,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			chain_id INTEGER NOT NULL,
 			contract_address VARCHAR(42) NOT NULL,
 			status VARCHAR(20) NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'queued', 'executed', 'cancelled', 'expired')),
+			tx_id VARCHAR(128),
 			propose_tx_hash VARCHAR(66),
 			queue_tx_hash VARCHAR(66),
 			execute_tx_hash VARCHAR(66),
@@ -593,6 +594,7 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_chain_id ON timelock_transaction_flows(chain_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_contract ON timelock_transaction_flows(contract_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_status ON timelock_transaction_flows(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_tx_id ON timelock_transaction_flows(tx_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_propose_tx ON timelock_transaction_flows(propose_tx_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_queue_tx ON timelock_transaction_flows(queue_tx_hash)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_execute_tx ON timelock_transaction_flows(execute_tx_hash)`,
@@ -603,6 +605,7 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_executed_at ON timelock_transaction_flows(executed_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_contract_status ON timelock_transaction_flows(contract_address, status)`,
 		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_chain_contract ON timelock_transaction_flows(chain_id, contract_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_timelock_flows_tx_id_status ON timelock_transaction_flows(tx_id, status)`,
 
 		// User Timelock Relations 表索引
 		`CREATE INDEX IF NOT EXISTS idx_user_timelock_relations_user ON user_timelock_relations(user_address)`,

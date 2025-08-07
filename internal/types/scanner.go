@@ -91,6 +91,7 @@ type TimelockTransactionFlow struct {
 	ChainID          int        `json:"chain_id" gorm:"not null;index"`                          // 链ID
 	ContractAddress  string     `json:"contract_address" gorm:"size:42;not null;index"`          // 合约地址
 	Status           string     `json:"status" gorm:"size:20;not null;default:'proposed';index"` // 流程状态
+	TxID             *string    `json:"tx_id" gorm:"size:128;not null;index"`                    // 交易的标识符（Compound的是TxHash,OpenZeppelin的是EventID）
 	ProposeTxHash    string     `json:"propose_tx_hash" gorm:"size:66;not null;index"`           // 提议交易哈希
 	QueueTxHash      string     `json:"queue_tx_hash" gorm:"size:66;not null;index"`             // 队列交易哈希
 	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`           // 执行交易哈希
