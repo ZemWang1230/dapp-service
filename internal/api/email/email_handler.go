@@ -1,0 +1,618 @@
+package email
+
+import (
+	"net/http"
+	"strconv"
+	"timelocker-backend/internal/middleware"
+	"timelocker-backend/internal/service/auth"
+	"timelocker-backend/internal/service/email"
+	"timelocker-backend/internal/types"
+	"timelocker-backend/pkg/logger"
+
+	"github.com/gin-gonic/gin"
+)
+
+// EmailHandler 邮箱API处理器
+type EmailHandler struct {
+	emailService email.EmailService
+	authService  auth.Service
+}
+
+// NewEmailHandler 创建邮箱处理器实例
+func NewEmailHandler(emailService email.EmailService, authService auth.Service) *EmailHandler {
+	return &EmailHandler{
+		emailService: emailService,
+		authService:  authService,
+	}
+}
+
+// RegisterRoutes 注册邮箱相关路由
+func (h *EmailHandler) RegisterRoutes(router *gin.RouterGroup) {
+	// 邮箱API组 - 需要认证
+	emailGroup := router.Group("/emails", middleware.AuthMiddleware(h.authService))
+	{
+		// 邮箱管理
+		// 添加邮箱
+		// POST /api/v1/emails
+		// http://localhost:8080/api/v1/emails
+		emailGroup.POST("", h.AddEmail)
+		// 获取邮箱列表
+		// GET /api/v1/emails
+		// http://localhost:8080/api/v1/emails
+		emailGroup.GET("", h.GetEmails)
+		// 更新邮箱备注
+		// PUT /api/v1/emails/{id}/remark
+		// http://localhost:8080/api/v1/emails/1/remark
+		emailGroup.PUT("/:id/remark", h.UpdateEmailRemark)
+		// 删除邮箱
+		// DELETE /api/v1/emails/{id}
+		// http://localhost:8080/api/v1/emails/1
+		emailGroup.DELETE("/:id", h.DeleteEmail)
+
+		// 邮箱验证
+		// 发送验证码
+		// POST /api/v1/emails/send-verification
+		// http://localhost:8080/api/v1/emails/send-verification
+		emailGroup.POST("/send-verification", h.SendVerificationCode)
+		// 验证邮箱
+		// POST /api/v1/emails/verify
+		// http://localhost:8080/api/v1/emails/verify
+		emailGroup.POST("/verify", h.VerifyEmail)
+
+		// 订阅管理
+		// 创建订阅
+		// POST /api/v1/emails/subscriptions
+		// http://localhost:8080/api/v1/emails/subscriptions
+		emailGroup.POST("/subscriptions", h.CreateSubscription)
+		// 获取订阅列表
+		// GET /api/v1/emails/subscriptions
+		// http://localhost:8080/api/v1/emails/subscriptions
+		emailGroup.GET("/subscriptions", h.GetSubscriptions)
+		// 更新订阅
+		// PUT /api/v1/emails/subscriptions/{id}
+		// http://localhost:8080/api/v1/emails/subscriptions/1
+		emailGroup.PUT("/subscriptions/:id", h.UpdateSubscription)
+		// 删除订阅
+		// DELETE /api/v1/emails/subscriptions/{id}
+		// http://localhost:8080/api/v1/emails/subscriptions/1
+		emailGroup.DELETE("/subscriptions/:id", h.DeleteSubscription)
+	}
+}
+
+// ===== 邮箱管理相关API =====
+
+// AddEmail 添加邮箱
+// @Summary 添加邮箱
+// @Description 为当前用户添加新的邮箱地址，当前API返回邮箱ID，需要配合邮箱验证API使用
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param request body types.AddEmailRequest true "添加邮箱请求"
+// @Success 200 {object} types.AddEmailResponse
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 409 {object} map[string]interface{} "邮箱已存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails [post]
+func (h *EmailHandler) AddEmail(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	var req types.AddEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Invalid request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	result, err := h.emailService.AddUserEmail(c.Request.Context(), userIDInt, req.Email, req.Remark)
+	if err != nil {
+		logger.Error("Failed to add email", err, "userID", userIDInt, "email", req.Email)
+		if err.Error() == "email already added by user" {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email already added"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, types.AddEmailResponse{
+		ID:      result.ID,
+		Message: "Email added successfully",
+	})
+}
+
+// GetEmails 获取用户邮箱列表
+// @Summary 获取用户邮箱列表
+// @Description 获取当前用户的所有邮箱地址
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param page query int false "页码，默认为1" default(1)
+// @Param page_size query int false "每页大小，默认为10" default(10)
+// @Success 200 {object} types.EmailListResponse
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails [get]
+func (h *EmailHandler) GetEmails(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// 解析分页参数
+	page := 1
+	pageSize := 10
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := c.Query("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	result, err := h.emailService.GetUserEmails(c.Request.Context(), userIDInt, page, pageSize)
+	if err != nil {
+		logger.Error("Failed to get user emails", err, "userID", userIDInt)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get emails"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// UpdateEmailRemark 更新邮箱备注
+// @Summary 更新邮箱备注
+// @Description 更新指定邮箱的备注信息
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param id path int true "用户邮箱ID"
+// @Param request body types.UpdateEmailRemarkRequest true "更新备注请求"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "邮箱不存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/{id}/remark [put]
+func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// 获取邮箱ID
+	userEmailIDStr := c.Param("id")
+	userEmailID, err := strconv.ParseInt(userEmailIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email ID"})
+		return
+	}
+
+	var req types.UpdateEmailRemarkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Invalid request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	err = h.emailService.UpdateEmailRemark(c.Request.Context(), userEmailID, userIDInt, req.Remark)
+	if err != nil {
+		logger.Error("Failed to update email remark", err, "userID", userIDInt, "userEmailID", userEmailID)
+		if err.Error() == "user email not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update email remark"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email remark updated successfully"})
+}
+
+// DeleteEmail 删除邮箱
+// @Summary 删除邮箱
+// @Description 删除指定的邮箱地址
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param id path int true "用户邮箱ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "邮箱不存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/{id} [delete]
+func (h *EmailHandler) DeleteEmail(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// 获取邮箱ID
+	userEmailIDStr := c.Param("id")
+	userEmailID, err := strconv.ParseInt(userEmailIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email ID"})
+		return
+	}
+
+	err = h.emailService.DeleteUserEmail(c.Request.Context(), userEmailID, userIDInt)
+	if err != nil {
+		logger.Error("Failed to delete email", err, "userID", userIDInt, "userEmailID", userEmailID)
+		if err.Error() == "user email not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email deleted successfully"})
+}
+
+// ===== 邮箱验证相关API =====
+
+// SendVerificationCode 发送验证码
+// @Summary 发送验证码
+// @Description 向指定邮箱发送验证码，如果AddEmail返回成功，则使用返回的ID发送验证码即可；若AddEmail返回邮箱存在，则直接调用此API发送验证码（即重发验证码）
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param request body types.SendVerificationCodeRequest true "发送验证码请求"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "邮箱不存在"
+// @Failure 429 {object} map[string]interface{} "发送过于频繁"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/send-verification [post]
+func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	var req types.SendVerificationCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Invalid request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	err := h.emailService.SendVerificationCode(c.Request.Context(), req.UserEmailID, userIDInt)
+	if err != nil {
+		logger.Error("Failed to send verification code", err, "userID", userIDInt, "userEmailID", req.UserEmailID)
+		switch err.Error() {
+		case "user email not found":
+			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+		case "email already verified":
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email already verified"})
+		case "verification code sent recently, please wait":
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Verification code sent recently, please wait"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send verification code"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Verification code sent successfully"})
+}
+
+// VerifyEmail 验证邮箱
+// @Summary 验证邮箱
+// @Description 使用验证码验证邮箱地址
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param request body types.VerifyEmailRequest true "验证邮箱请求"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "邮箱不存在"
+// @Failure 422 {object} map[string]interface{} "验证码无效或已过期"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/verify [post]
+func (h *EmailHandler) VerifyEmail(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	var req types.VerifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Invalid request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	err := h.emailService.VerifyEmail(c.Request.Context(), req.UserEmailID, userIDInt, req.Code)
+	if err != nil {
+		logger.Error("Failed to verify email", err, "userID", userIDInt, "userEmailID", req.UserEmailID)
+		if err.Error() == "user email not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			return
+		}
+		if err.Error() == "invalid or expired verification code" || err.Error() == "failed to verify code: invalid or expired verification code" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Invalid or expired verification code"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify email"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully"})
+}
+
+// ===== 订阅管理相关API =====
+
+// CreateSubscription 创建订阅
+// @Summary 创建订阅
+// @Description 为指定邮箱创建合约通知订阅，NotifyOn 为空，则默认通知所有状态
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param request body types.CreateSubscriptionRequest true "创建订阅请求"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "邮箱不存在"
+// @Failure 409 {object} map[string]interface{} "订阅已存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/subscriptions [post]
+func (h *EmailHandler) CreateSubscription(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	var req types.CreateSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Invalid request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	err := h.emailService.CreateSubscription(c.Request.Context(), userIDInt, &req)
+	if err != nil {
+		logger.Error("Failed to create subscription", err, "userID", userIDInt)
+		switch err.Error() {
+		case "user email not found":
+			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+		case "email not verified":
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email not verified"})
+		case "subscription already exists":
+			c.JSON(http.StatusConflict, gin.H{"error": "Subscription already exists"})
+		default:
+			if err.Error()[:7] == "invalid" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create subscription"})
+			}
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Subscription created successfully"})
+}
+
+// GetSubscriptions 获取用户订阅列表
+// @Summary 获取用户订阅列表
+// @Description 获取当前用户的所有邮箱订阅
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param page query int false "页码，默认为1" default(1)
+// @Param page_size query int false "每页大小，默认为10" default(10)
+// @Success 200 {object} types.SubscriptionListResponse
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/subscriptions [get]
+func (h *EmailHandler) GetSubscriptions(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// 解析分页参数
+	page := 1
+	pageSize := 10
+	if p := c.Query("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if ps := c.Query("page_size"); ps != "" {
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+
+	result, err := h.emailService.GetUserSubscriptions(c.Request.Context(), userIDInt, page, pageSize)
+	if err != nil {
+		logger.Error("Failed to get user subscriptions", err, "userID", userIDInt)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscriptions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// UpdateSubscription 更新订阅
+// @Summary 更新订阅
+// @Description 更新指定订阅的配置
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param id path int true "订阅ID"
+// @Param request body types.UpdateSubscriptionRequest true "更新订阅请求"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "订阅不存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/subscriptions/{id} [put]
+func (h *EmailHandler) UpdateSubscription(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// 获取订阅ID
+	subscriptionIDStr := c.Param("id")
+	subscriptionID, err := strconv.ParseInt(subscriptionIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscription ID"})
+		return
+	}
+
+	var req types.UpdateSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Error("Invalid request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
+
+	err = h.emailService.UpdateSubscription(c.Request.Context(), subscriptionID, userIDInt, &req)
+	if err != nil {
+		logger.Error("Failed to update subscription", err, "userID", userIDInt, "subscriptionID", subscriptionID)
+		if err.Error() == "subscription not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+			return
+		}
+		if err.Error()[:7] == "invalid" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subscription"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Subscription updated successfully"})
+}
+
+// DeleteSubscription 删除订阅
+// @Summary 删除订阅
+// @Description 删除指定的邮箱订阅
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param id path int true "订阅ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{} "请求参数错误"
+// @Failure 401 {object} map[string]interface{} "未授权"
+// @Failure 404 {object} map[string]interface{} "订阅不存在"
+// @Failure 500 {object} map[string]interface{} "服务器内部错误"
+// @Router /api/v1/emails/subscriptions/{id} [delete]
+func (h *EmailHandler) DeleteSubscription(c *gin.Context) {
+	// 获取用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	// 获取订阅ID
+	subscriptionIDStr := c.Param("id")
+	subscriptionID, err := strconv.ParseInt(subscriptionIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscription ID"})
+		return
+	}
+
+	err = h.emailService.DeleteSubscription(c.Request.Context(), subscriptionID, userIDInt)
+	if err != nil {
+		logger.Error("Failed to delete subscription", err, "userID", userIDInt, "subscriptionID", subscriptionID)
+		if err.Error() == "subscription not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscription"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Subscription deleted successfully"})
+}

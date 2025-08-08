@@ -14,6 +14,7 @@ import (
 	assetHandler "timelocker-backend/internal/api/asset"
 	authHandler "timelocker-backend/internal/api/auth"
 	chainHandler "timelocker-backend/internal/api/chain"
+	emailHandler "timelocker-backend/internal/api/email"
 
 	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
@@ -22,6 +23,7 @@ import (
 	abiRepo "timelocker-backend/internal/repository/abi"
 	assetRepo "timelocker-backend/internal/repository/asset"
 	chainRepo "timelocker-backend/internal/repository/chain"
+	emailRepo "timelocker-backend/internal/repository/email"
 
 	scannerRepo "timelocker-backend/internal/repository/scanner"
 	sponsorRepo "timelocker-backend/internal/repository/sponsor"
@@ -32,6 +34,7 @@ import (
 	assetService "timelocker-backend/internal/service/asset"
 	authService "timelocker-backend/internal/service/auth"
 	chainService "timelocker-backend/internal/service/chain"
+	emailService "timelocker-backend/internal/service/email"
 
 	scannerService "timelocker-backend/internal/service/scanner"
 	sponsorService "timelocker-backend/internal/service/sponsor"
@@ -120,6 +123,7 @@ func main() {
 	abiRepository := abiRepo.NewRepository(db)
 	sponsorRepository := sponsorRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
+	emailRepository := emailRepo.NewEmailRepository(db)
 
 	// 扫链相关仓库
 	progressRepository := scannerRepo.NewProgressRepository(db)
@@ -145,6 +149,7 @@ func main() {
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
+	emailSvc := emailService.NewEmailService(emailRepository, cfg)
 
 	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
@@ -152,6 +157,7 @@ func main() {
 	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
 	chainHandler := chainHandler.NewHandler(chainSvc)
 	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc, authSvc)
+	emailHdl := emailHandler.NewEmailHandler(emailSvc, authSvc)
 
 	// 8. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)
@@ -179,6 +185,7 @@ func main() {
 		abiHandler.RegisterRoutes(v1)
 		chainHandler.RegisterRoutes(v1)
 		sponsorHdl.RegisterRoutes(v1)
+		emailHdl.RegisterRoutes(v1)
 	}
 
 	// 11. Swagger API文档端点
@@ -242,7 +249,31 @@ func main() {
 		}
 	}()
 
-	// 17. 启动HTTP服务器
+	// 17. 启动邮箱验证码清理定时任务
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer logger.Info("Email verification code cleanup task stopped")
+
+		ticker := time.NewTicker(30 * time.Minute) // 每30分钟清理一次过期验证码
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				logger.Info("Starting scheduled email verification code cleanup")
+				if err := emailSvc.CleanExpiredCodes(ctx); err != nil {
+					logger.Error("Failed to clean expired verification codes", err)
+				} else {
+					logger.Info("Scheduled email verification code cleanup completed successfully")
+				}
+			}
+		}
+	}()
+
+	// 18. 启动HTTP服务器
 	addr := ":" + cfg.Server.Port
 	srv := &http.Server{
 		Addr:    addr,
@@ -261,11 +292,11 @@ func main() {
 		}
 	}()
 
-	// 18. 等待关闭信号
+	// 19. 等待关闭信号
 	<-sigCh
 	logger.Info("Received shutdown signal, starting graceful shutdown...")
 
-	// 19. 开始优雅关闭（逆序关闭）
+	// 20. 开始优雅关闭（逆序关闭）
 
 	// Step 1: 停止HTTP服务器（最后启动的最先关闭）
 	logger.Info("Stopping HTTP server...")

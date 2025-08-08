@@ -59,11 +59,9 @@ email:
   
   # 邮件通知功能配置
   verification_code_expiry: "10m"        # 验证码过期时间
-  email_resend_interval: "2h"        # 邮件重发间隔
-  email_max_attempts: 10             # 邮件最大发送次数
   
   # 邮件模板配置
-  base_url: "http://16.163.43.186:8080"      # 前端基础URL，用于生成邮件中的链接
+  email_url: "http://16.163.43.186:8080"      # 前端基础URL，用于生成邮件中的链接
 
 # 扫链系统配置（简化版，只使用Alchemy RPC）
 scanner:
@@ -77,9 +75,7 @@ scanner:
   scan_interval: "5s"                 # 快速扫描间隔
   scan_interval_slow: "30s"           # 慢速扫描间隔（到达最新块后）
   scan_confirmations: 12              # 区块确认数
-  max_scan_workers: 20                # 最大扫描协程数
-  progress_update_interval: 50        # 进度更新间隔（每N个区块更新一次）,scan_batch_size的10%
-  
-  # 事件处理配置
-  event_batch_size: 50                # 每批处理的事件数量
-  event_retry_max: 3                  # 事件处理最大重试次数 
+
+  # Flow refresher config
+  flow_refresh_interval: "60s"        # 流刷新间隔
+  flow_refresh_batch_size: 100        # 流刷新批量大小

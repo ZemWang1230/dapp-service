@@ -17,6 +17,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
@@ -47,8 +48,10 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
+	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/goccy/go-json v0.10.4 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -89,4 +92,6 @@ require (
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/datatypes v1.2.6 // indirect
+	gorm.io/driver/mysql v1.5.6 // indirect
 )

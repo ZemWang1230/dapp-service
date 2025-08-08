@@ -95,6 +95,7 @@ type TimelockTransactionFlow struct {
 	QueueTxHash      string     `json:"queue_tx_hash" gorm:"size:66;not null;index"`            // 队列交易哈希
 	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`          // 执行交易哈希
 	CancelTxHash     string     `json:"cancel_tx_hash" gorm:"size:66;not null;index"`           // 取消交易哈希
+	InitiatorAddress *string    `json:"initiator_address" gorm:"size:42"`                       // 发起人地址（queue/schedule 交易的 from）
 	ProposedAt       *time.Time `json:"proposed_at"`                                            // 提议时间
 	ExecutedAt       *time.Time `json:"executed_at"`                                            // 执行时间
 	CancelledAt      *time.Time `json:"cancelled_at"`                                           // 取消时间
@@ -284,15 +285,6 @@ const (
 	EventCallScheduled = "CallScheduled"
 	EventCallExecuted  = "CallExecuted"
 	EventCancelled     = "Cancelled"
-)
-
-// Flow Status 流程状态枚举
-const (
-	FlowStatusProposed  = "proposed"
-	FlowStatusQueued    = "queued"
-	FlowStatusExecuted  = "executed"
-	FlowStatusCancelled = "cancelled"
-	FlowStatusExpired   = "expired"
 )
 
 // Relation Type 关联类型枚举
