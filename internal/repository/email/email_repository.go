@@ -414,8 +414,8 @@ func (r *emailRepository) GetSubscribedEmails(ctx context.Context, standard stri
 		Joins("JOIN users u ON u.id = ue.user_id").
 		Where(`s.is_active = ? AND ue.is_verified = ? AND 
 			   s.timelock_standard = ? AND s.chain_id = ? AND s.contract_address = ? AND 
-			   s.notify_on @> ? AND LOWER(u.wallet_address) = LOWER(?)`,
-			true, true, standard, chainID, contractAddress, fmt.Sprintf(`["%s"]`, statusTo), initiatorAddress).
+		s.notify_on::jsonb @> ?::jsonb AND LOWER(u.wallet_address) = LOWER(?)`,
+			true, true, standard, chainID, contractAddress, `"`+statusTo+`"`, initiatorAddress).
 		Pluck("e.id", &emailIDs).Error
 
 	if err != nil {

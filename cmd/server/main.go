@@ -15,7 +15,7 @@ import (
 	authHandler "timelocker-backend/internal/api/auth"
 	chainHandler "timelocker-backend/internal/api/chain"
 	emailHandler "timelocker-backend/internal/api/email"
-
+	flowHandler "timelocker-backend/internal/api/flow"
 	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 
@@ -35,7 +35,7 @@ import (
 	authService "timelocker-backend/internal/service/auth"
 	chainService "timelocker-backend/internal/service/chain"
 	emailService "timelocker-backend/internal/service/email"
-
+	flowService "timelocker-backend/internal/service/flow"
 	scannerService "timelocker-backend/internal/service/scanner"
 	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
@@ -150,6 +150,7 @@ func main() {
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
 	emailSvc := emailService.NewEmailService(emailRepository, cfg)
+	flowSvc := flowService.NewFlowService(flowRepository)
 
 	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
@@ -158,6 +159,7 @@ func main() {
 	chainHandler := chainHandler.NewHandler(chainSvc)
 	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc, authSvc)
 	emailHdl := emailHandler.NewEmailHandler(emailSvc, authSvc)
+	flowHdl := flowHandler.NewFlowHandler(flowSvc)
 
 	// 8. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)
@@ -186,6 +188,7 @@ func main() {
 		chainHandler.RegisterRoutes(v1)
 		sponsorHdl.RegisterRoutes(v1)
 		emailHdl.RegisterRoutes(v1)
+		flowHdl.RegisterRoutes(v1)
 	}
 
 	// 11. Swagger API文档端点
@@ -209,10 +212,12 @@ func main() {
 	scannerManager := scannerService.NewManager(
 		cfg,
 		chainRepository,
+		timelockRepository,
 		progressRepository,
 		transactionRepository,
 		flowRepository,
 		rpcManager,
+		emailSvc,
 	)
 	if err := scannerManager.Start(ctx); err != nil {
 		logger.Error("Failed to start scanner manager", err)

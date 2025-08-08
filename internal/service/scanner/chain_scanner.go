@@ -8,6 +8,7 @@ import (
 
 	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/scanner"
+	"timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 
@@ -23,6 +24,7 @@ type ChainScanner struct {
 	progressRepo scanner.ProgressRepository
 	txRepo       scanner.TransactionRepository
 	flowRepo     scanner.FlowRepository
+	timelockRepo timelock.Repository
 
 	blockProcessor *BlockProcessor
 	eventProcessor *EventProcessor
@@ -56,6 +58,8 @@ func NewChainScanner(
 	progressRepo scanner.ProgressRepository,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
+	emailService EmailService,
+	timelockRepo timelock.Repository,
 ) *ChainScanner {
 	cs := &ChainScanner{
 		config:       cfg,
@@ -65,13 +69,14 @@ func NewChainScanner(
 		progressRepo: progressRepo,
 		txRepo:       txRepo,
 		flowRepo:     flowRepo,
+		timelockRepo: timelockRepo,
 		stopCh:       make(chan struct{}),
 		lastUpdate:   time.Now(),
 	}
 
 	// 创建处理器
 	cs.blockProcessor = NewBlockProcessor(cfg, cs.chainInfo)
-	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo)
+	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo, emailService, timelockRepo)
 
 	return cs
 }

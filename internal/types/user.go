@@ -69,3 +69,9 @@ type APIError struct {
 	Message string `json:"message"`
 	Details string `json:"details,omitempty"`
 }
+
+// ErrorResponse 简单错误响应格式
+type ErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}

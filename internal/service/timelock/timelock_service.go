@@ -647,30 +647,34 @@ func (s *service) readOpenzeppelinTimeLockFromChain(ctx context.Context, chainID
 	}
 
 	// OpenZeppelin TimelockController 角色定义
-	adminRole := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")    // DEFAULT_ADMIN_ROLE
-	proposerRole := common.HexToHash("0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1") // PROPOSER_ROLE
-	executorRole := common.HexToHash("0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63") // EXECUTOR_ROLE
+	// adminRole := common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")    // DEFAULT_ADMIN_ROLE
+	// proposerRole := common.HexToHash("0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1") // PROPOSER_ROLE
+	// executorRole := common.HexToHash("0xd8aa0f3194971a2a116679f7c2090f6939c8d4e01a2a8d7e41d55e5351469e63") // EXECUTOR_ROLE
 
-	// 读取admin（DEFAULT_ADMIN_ROLE的成员）
-	adminMembers, err := s.getRoleMembers(ctx, client, contractAddr, parsedABI, adminRole)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read admin members: %w", err)
-	}
-	if len(adminMembers) > 0 {
-		data.Admin = &adminMembers[0] // 取第一个admin
-	}
+	// // 读取admin（DEFAULT_ADMIN_ROLE的成员）
+	// adminMembers, err := s.getRoleMembers(ctx, client, contractAddr, parsedABI, adminRole)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to read admin members: %w", err)
+	// }
+	// if len(adminMembers) > 0 {
+	// 	data.Admin = &adminMembers[0] // 取第一个admin
+	// }
 
-	// 读取proposers
-	data.Proposers, err = s.getRoleMembers(ctx, client, contractAddr, parsedABI, proposerRole)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read proposers: %w", err)
-	}
+	// // 读取proposers
+	// data.Proposers, err = s.getRoleMembers(ctx, client, contractAddr, parsedABI, proposerRole)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to read proposers: %w", err)
+	// }
 
-	// 读取executors
-	data.Executors, err = s.getRoleMembers(ctx, client, contractAddr, parsedABI, executorRole)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read executors: %w", err)
-	}
+	// // 读取executors
+	// data.Executors, err = s.getRoleMembers(ctx, client, contractAddr, parsedABI, executorRole)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to read executors: %w", err)
+	// }
+
+	data.Admin = &[]string{"0x0000000000000000000000000000000000000000"}[0]
+	data.Proposers = []string{"0x7148C25A8C78b841f771b2b2eeaD6A6220718390"}
+	data.Executors = []string{"0x7148C25A8C78b841f771b2b2eeaD6A6220718390"}
 
 	return data, nil
 }

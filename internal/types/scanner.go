@@ -96,7 +96,7 @@ type TimelockTransactionFlow struct {
 	ExecuteTxHash    string     `json:"execute_tx_hash" gorm:"size:66;not null;index"`          // 执行交易哈希
 	CancelTxHash     string     `json:"cancel_tx_hash" gorm:"size:66;not null;index"`           // 取消交易哈希
 	InitiatorAddress *string    `json:"initiator_address" gorm:"size:42"`                       // 发起人地址（queue/schedule 交易的 from）
-	ProposedAt       *time.Time `json:"proposed_at"`                                            // 提议时间
+	QueuedAt         *time.Time `json:"queued_at"`                                              // 提议时间
 	ExecutedAt       *time.Time `json:"executed_at"`                                            // 执行时间
 	CancelledAt      *time.Time `json:"cancelled_at"`                                           // 取消时间
 	Eta              *time.Time `json:"eta"`                                                    // 预计执行时间（Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay）

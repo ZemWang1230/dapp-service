@@ -73,8 +73,8 @@ scanner:
   # 扫块配置
   scan_batch_size: 500                # 每批扫描的区块数量
   scan_interval: "5s"                 # 快速扫描间隔
-  scan_interval_slow: "30s"           # 慢速扫描间隔（到达最新块后）
-  scan_confirmations: 12              # 区块确认数
+  scan_interval_slow: "15s"           # 慢速扫描间隔（到达最新块后）
+  scan_confirmations: 5              # 区块确认数
 
   # Flow refresher config
   flow_refresh_interval: "60s"        # 流刷新间隔

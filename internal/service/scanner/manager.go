@@ -9,6 +9,7 @@ import (
 	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/chain"
 	"timelocker-backend/internal/repository/scanner"
+	"timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 )
@@ -17,11 +18,14 @@ import (
 type Manager struct {
 	config        *config.Config
 	chainRepo     chain.Repository
+	timelockRepo  timelock.Repository
 	progressRepo  scanner.ProgressRepository
 	txRepo        scanner.TransactionRepository
 	flowRepo      scanner.FlowRepository
 	rpcManager    *RPCManager
 	chainScanners map[int]*ChainScanner
+	flowRefresher *FlowStatusRefresher
+	emailService  EmailService
 	mutex         sync.RWMutex
 	stopCh        chan struct{}
 	wg            sync.WaitGroup
@@ -32,19 +36,27 @@ type Manager struct {
 func NewManager(
 	cfg *config.Config,
 	chainRepo chain.Repository,
+	timelockRepo timelock.Repository,
 	progressRepo scanner.ProgressRepository,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
 	rpcManager *RPCManager,
+	emailService EmailService,
 ) *Manager {
+	// 创建流程状态刷新器
+	flowRefresher := NewFlowStatusRefresher(cfg, flowRepo, timelockRepo, emailService)
+
 	return &Manager{
 		config:        cfg,
 		chainRepo:     chainRepo,
+		timelockRepo:  timelockRepo,
 		progressRepo:  progressRepo,
 		txRepo:        txRepo,
 		flowRepo:      flowRepo,
 		rpcManager:    rpcManager,
 		chainScanners: make(map[int]*ChainScanner),
+		flowRefresher: flowRefresher,
+		emailService:  emailService,
 		stopCh:        make(chan struct{}),
 	}
 }
@@ -75,6 +87,15 @@ func (m *Manager) Start(ctx context.Context) error {
 		}
 	}
 
+	// 启动流程状态刷新器
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		if err := m.flowRefresher.Start(ctx); err != nil {
+			logger.Error("Flow status refresher stopped with error", err)
+		}
+	}()
+
 	// 启动监控协程
 	m.wg.Add(1)
 	go m.monitorLoop(ctx)
@@ -94,6 +115,11 @@ func (m *Manager) Stop() {
 	}
 
 	logger.Info("Stopping Scanner Manager")
+
+	// 停止流程状态刷新器
+	if m.flowRefresher != nil {
+		m.flowRefresher.Stop()
+	}
 
 	// 发送停止信号
 	close(m.stopCh)
@@ -164,6 +190,8 @@ func (m *Manager) startChainScanner(ctx context.Context, chainInfo *types.ChainR
 		m.progressRepo,
 		m.txRepo,
 		m.flowRepo,
+		m.emailService,
+		m.timelockRepo,
 	)
 
 	// 启动扫描器

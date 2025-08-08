@@ -327,14 +327,22 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 	// 获取订阅的邮箱列表
 	emailIDs, err := s.repo.GetSubscribedEmails(ctx, standard, chainID, contractAddress, statusTo, initiatorAddress)
 	if err != nil {
+		logger.Error("Failed to get subscribed emails", err,
+			"standard", standard, "chainID", chainID, "contract", contractAddress,
+			"statusTo", statusTo, "initiator", initiatorAddress)
 		return fmt.Errorf("failed to get subscribed emails: %w", err)
 	}
 
 	if len(emailIDs) == 0 {
-		logger.Info("No subscribed emails found for notification",
-			"standard", standard, "chainID", chainID, "contract", contractAddress, "status", statusTo)
+		logger.Debug("No subscribed emails found for notification",
+			"standard", standard, "chainID", chainID, "contract", contractAddress,
+			"statusTo", statusTo, "initiator", initiatorAddress)
 		return nil
 	}
+
+	logger.Info("Found subscribed emails for notification",
+		"count", len(emailIDs), "standard", standard, "chainID", chainID,
+		"contract", contractAddress, "statusTo", statusTo, "initiator", initiatorAddress)
 
 	// 对每个邮箱发送通知
 	for _, emailID := range emailIDs {

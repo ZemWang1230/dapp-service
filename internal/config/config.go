@@ -151,7 +151,6 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("scanner.scan_interval_slow", time.Second*30)
 	viper.SetDefault("scanner.scan_confirmations", 12)
 	viper.SetDefault("scanner.flow_refresh_interval", time.Second*60)
-	viper.SetDefault("scanner.flow_refresh_batch_size", 100)
 
 	// Read environment variables
 	viper.AutomaticEnv()
