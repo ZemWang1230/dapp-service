@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 	"timelocker-backend/internal/types"
@@ -24,10 +25,9 @@ type FlowRepository interface {
 	UpdateFlowStatus(ctx context.Context, flowID, timelockStandard string, chainID int, contractAddress string, fromStatus, toStatus string) error
 	BatchUpdateFlowStatus(ctx context.Context, flows []types.TimelockTransactionFlow, toStatus string) error
 
-	// API查询方法
-	GetFlowsByStatus(ctx context.Context, status string, page, pageSize int) ([]types.TimelockTransactionFlow, int64, error)
-	GetFlowsByStatusAndInitiator(ctx context.Context, status string, initiatorAddress string, page, pageSize int) ([]types.TimelockTransactionFlow, int64, error)
-	GetFlowDetail(ctx context.Context, flowID, timelockStandard string, chainID int, contractAddress string) (*types.TimelockTransactionFlow, error)
+	// 新API查询方法
+	GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string) ([]types.TimelockTransactionFlow, int64, error)
+	GetTransactionDetail(ctx context.Context, standard string, txHash string) (*types.TimelockTransactionDetail, error)
 }
 
 type flowRepository struct {
@@ -208,83 +208,149 @@ func (r *flowRepository) BatchUpdateFlowStatus(ctx context.Context, flows []type
 	return nil
 }
 
-// GetFlowsByStatus 根据状态获取流程列表（分页）
-func (r *flowRepository) GetFlowsByStatus(ctx context.Context, status string, page, pageSize int) ([]types.TimelockTransactionFlow, int64, error) {
-	var flows []types.TimelockTransactionFlow
-	var total int64
+// GetUserRelatedFlows 获取与用户相关的流程列表
+func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string) ([]types.TimelockTransactionFlow, int64, error) {
+	userAddress = strings.ToLower(userAddress)
+
+	// 构建查询条件
+	query := r.db.WithContext(ctx).Model(&types.TimelockTransactionFlow{})
+
+	// 构建WHERE条件，包含两种情况：
+	// 1. initiator_address是该地址
+	// 2. 该flow的合约中，该地址是管理员或有权限的用户
+	whereConditions := []string{}
+	args := []interface{}{}
+
+	// 第一种情况：initiator_address是该地址
+	whereConditions = append(whereConditions, "initiator_address = ?")
+	args = append(args, userAddress)
+
+	// 第二种情况：根据合约权限查询
+	// 需要联表查询compound_timelocks和openzeppelin_timelocks
+
+	// Compound权限查询：admin或pending_admin
+	compoundCondition := `(
+		timelock_standard = 'compound' AND 
+		(chain_id, contract_address) IN (
+			SELECT chain_id, contract_address FROM compound_timelocks 
+			WHERE admin = ? OR pending_admin = ?
+		)
+	)`
+	whereConditions = append(whereConditions, compoundCondition)
+	args = append(args, userAddress, userAddress)
+
+	// OpenZeppelin权限查询：admin或proposers或executors中的一个
+	ozCondition := `(
+		timelock_standard = 'openzeppelin' AND 
+		(chain_id, contract_address) IN (
+			SELECT chain_id, contract_address FROM openzeppelin_timelocks 
+			WHERE admin = ? OR 
+				proposers LIKE '%' || ? || '%' OR
+				executors LIKE '%' || ? || '%'
+		)
+	)`
+	whereConditions = append(whereConditions, ozCondition)
+	args = append(args, userAddress, userAddress, userAddress)
+
+	// 组合所有条件
+	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
+
+	// 添加状态过滤
+	if status != nil && *status != "all" {
+		finalWhere += " AND status = ?"
+		args = append(args, *status)
+	}
+
+	// 添加标准过滤
+	if standard != nil {
+		finalWhere += " AND timelock_standard = ?"
+		args = append(args, *standard)
+	}
 
 	// 计算总数
-	if err := r.db.WithContext(ctx).
-		Model(&types.TimelockTransactionFlow{}).
-		Where("status = ?", status).
-		Count(&total).Error; err != nil {
-		logger.Error("GetFlowsByStatus Count Error", err, "status", status)
+	var total int64
+	if err := query.Where(finalWhere, args...).Count(&total).Error; err != nil {
+		logger.Error("GetUserRelatedFlows Count Error", err, "user", userAddress)
 		return nil, 0, err
 	}
 
-	// 获取分页数据
-	offset := (page - 1) * pageSize
+	// 获取数据
+	var flows []types.TimelockTransactionFlow
 	err := r.db.WithContext(ctx).
-		Where("status = ?", status).
+		Where(finalWhere, args...).
 		Order("created_at DESC").
-		Offset(offset).
-		Limit(pageSize).
 		Find(&flows).Error
 
 	if err != nil {
-		logger.Error("GetFlowsByStatus Error", err, "status", status, "page", page)
+		logger.Error("GetUserRelatedFlows Error", err, "user", userAddress)
 		return nil, 0, err
 	}
 
 	return flows, total, nil
 }
 
-// GetFlowsByStatusAndInitiator 根据状态和发起人获取流程列表（分页）
-func (r *flowRepository) GetFlowsByStatusAndInitiator(ctx context.Context, status string, initiatorAddress string, page, pageSize int) ([]types.TimelockTransactionFlow, int64, error) {
-	var flows []types.TimelockTransactionFlow
-	var total int64
+// GetTransactionDetail 获取交易详情
+func (r *flowRepository) GetTransactionDetail(ctx context.Context, standard string, txHash string) (*types.TimelockTransactionDetail, error) {
+	var detail types.TimelockTransactionDetail
 
-	// 计算总数
-	if err := r.db.WithContext(ctx).
-		Model(&types.TimelockTransactionFlow{}).
-		Where("status = ? AND initiator_address = ?", status, strings.ToLower(initiatorAddress)).
-		Count(&total).Error; err != nil {
-		logger.Error("GetFlowsByStatusAndInitiator Count Error", err, "status", status, "initiator", initiatorAddress)
-		return nil, 0, err
-	}
+	if standard == "compound" {
+		// 查询compound交易表
+		var tx types.CompoundTimelockTransaction
+		err := r.db.WithContext(ctx).
+			Where("tx_hash = ?", txHash).
+			First(&tx).Error
 
-	// 获取分页数据
-	offset := (page - 1) * pageSize
-	err := r.db.WithContext(ctx).
-		Where("status = ? AND initiator_address = ?", status, strings.ToLower(initiatorAddress)).
-		Order("created_at DESC").
-		Offset(offset).
-		Limit(pageSize).
-		Find(&flows).Error
-
-	if err != nil {
-		logger.Error("GetFlowsByStatusAndInitiator Error", err, "status", status, "initiator", initiatorAddress, "page", page)
-		return nil, 0, err
-	}
-
-	return flows, total, nil
-}
-
-// GetFlowDetail 获取流程详细信息
-func (r *flowRepository) GetFlowDetail(ctx context.Context, flowID, timelockStandard string, chainID int, contractAddress string) (*types.TimelockTransactionFlow, error) {
-	var flow types.TimelockTransactionFlow
-	err := r.db.WithContext(ctx).
-		Where("flow_id = ? AND timelock_standard = ? AND chain_id = ? AND contract_address = ?",
-			flowID, timelockStandard, chainID, contractAddress).
-		First(&flow).Error
-
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil, nil
+			}
+			logger.Error("GetTransactionDetail Compound Error", err, "tx_hash", txHash)
+			return nil, err
 		}
-		logger.Error("GetFlowDetail Error", err, "flow_id", flowID)
-		return nil, err
+
+		// 转换为统一格式
+		detail = types.TimelockTransactionDetail{
+			TxHash:          tx.TxHash,
+			BlockNumber:     tx.BlockNumber,
+			BlockTimestamp:  tx.BlockTimestamp,
+			ChainID:         tx.ChainID,
+			ChainName:       tx.ChainName,
+			ContractAddress: tx.ContractAddress,
+			FromAddress:     tx.FromAddress,
+			ToAddress:       tx.ToAddress,
+			TxStatus:        tx.TxStatus,
+		}
+
+	} else if standard == "openzeppelin" {
+		// 查询openzeppelin交易表
+		var tx types.OpenZeppelinTimelockTransaction
+		err := r.db.WithContext(ctx).
+			Where("tx_hash = ?", txHash).
+			First(&tx).Error
+
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil, nil
+			}
+			logger.Error("GetTransactionDetail OpenZeppelin Error", err, "tx_hash", txHash)
+			return nil, err
+		}
+
+		// 转换为统一格式
+		detail = types.TimelockTransactionDetail{
+			TxHash:          tx.TxHash,
+			BlockNumber:     tx.BlockNumber,
+			BlockTimestamp:  tx.BlockTimestamp,
+			ChainID:         tx.ChainID,
+			ChainName:       tx.ChainName,
+			ContractAddress: tx.ContractAddress,
+			FromAddress:     tx.FromAddress,
+			ToAddress:       tx.ToAddress,
+			TxStatus:        tx.TxStatus,
+		}
+	} else {
+		return nil, fmt.Errorf("unsupported standard: %s", standard)
 	}
 
-	return &flow, nil
+	return &detail, nil
 }

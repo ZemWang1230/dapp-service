@@ -157,9 +157,9 @@ func main() {
 	assetHandler := assetHandler.NewHandler(assetSvc, authSvc)
 	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
 	chainHandler := chainHandler.NewHandler(chainSvc)
-	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc, authSvc)
+	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc)
 	emailHdl := emailHandler.NewEmailHandler(emailSvc, authSvc)
-	flowHdl := flowHandler.NewFlowHandler(flowSvc)
+	flowHdl := flowHandler.NewFlowHandler(flowSvc, authSvc)
 
 	// 8. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)

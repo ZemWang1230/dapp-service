@@ -103,11 +103,6 @@ type GetTimeLockDetailResponse struct {
 	OpenzeppelinData *OpenzeppelinTimeLockWithPermission `json:"openzeppelin_data,omitempty"`
 }
 
-// TimeLockPermissionRefreshRequest 刷新该用户在库中所有timelock合约的权限（将合约中所有角色获取一遍然后更新数据库）
-type TimeLockPermissionRefreshRequest struct {
-	// intentionally left empty; user address is derived from auth context
-}
-
 // CompoundTimeLockWithPermission Compound timelock with permission info
 type CompoundTimeLockWithPermission struct {
 	CompoundTimeLock

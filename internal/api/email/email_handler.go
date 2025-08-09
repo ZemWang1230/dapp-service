@@ -98,20 +98,26 @@ func (h *EmailHandler) AddEmail(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{
+			Success: false,
+			Error:   &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"},
+		})
 		return
 	}
 
 	var req types.AddEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Invalid request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		c.JSON(http.StatusOK, types.APIResponse{
+			Success: false,
+			Error:   &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()},
+		})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -119,17 +125,14 @@ func (h *EmailHandler) AddEmail(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to add email", err, "userID", userIDInt, "email", req.Email)
 		if err.Error() == "email already added by user" {
-			c.JSON(http.StatusConflict, gin.H{"error": "Email already added"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_EXISTS", Message: "Email already added"}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add email"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to add email", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, types.AddEmailResponse{
-		ID:      result.ID,
-		Message: "Email added successfully",
-	})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: types.AddEmailResponse{ID: result.ID, Message: "Email added successfully"}})
 }
 
 // GetEmails 获取用户邮箱列表
@@ -148,13 +151,13 @@ func (h *EmailHandler) GetEmails(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -175,11 +178,11 @@ func (h *EmailHandler) GetEmails(c *gin.Context) {
 	result, err := h.emailService.GetUserEmails(c.Request.Context(), userIDInt, page, pageSize)
 	if err != nil {
 		logger.Error("Failed to get user emails", err, "userID", userIDInt)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get emails"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to get emails", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: result})
 }
 
 // UpdateEmailRemark 更新邮箱备注
@@ -200,13 +203,13 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -214,14 +217,14 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 	userEmailIDStr := c.Param("id")
 	userEmailID, err := strconv.ParseInt(userEmailIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email ID"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: "Invalid email ID"}})
 		return
 	}
 
 	var req types.UpdateEmailRemarkRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Invalid request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
 		return
 	}
 
@@ -229,14 +232,14 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to update email remark", err, "userID", userIDInt, "userEmailID", userEmailID)
 		if err.Error() == "user email not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found"}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update email remark"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to update email remark", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Email remark updated successfully"})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: gin.H{"message": "Email remark updated successfully"}})
 }
 
 // DeleteEmail 删除邮箱
@@ -256,13 +259,13 @@ func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -270,7 +273,7 @@ func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 	userEmailIDStr := c.Param("id")
 	userEmailID, err := strconv.ParseInt(userEmailIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email ID"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: "Invalid email ID"}})
 		return
 	}
 
@@ -278,14 +281,14 @@ func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to delete email", err, "userID", userIDInt, "userEmailID", userEmailID)
 		if err.Error() == "user email not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found"}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete email"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to delete email", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Email deleted successfully"})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: gin.H{"message": "Email deleted successfully"}})
 }
 
 // ===== 邮箱验证相关API =====
@@ -308,40 +311,42 @@ func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
 	var req types.SendVerificationCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Invalid request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
 		return
 	}
 
 	err := h.emailService.SendVerificationCode(c.Request.Context(), req.UserEmailID, userIDInt)
 	if err != nil {
 		logger.Error("Failed to send verification code", err, "userID", userIDInt, "userEmailID", req.UserEmailID)
+		var code, msg string
 		switch err.Error() {
 		case "user email not found":
-			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			code, msg = "EMAIL_NOT_FOUND", "Email not found"
 		case "email already verified":
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Email already verified"})
+			code, msg = "EMAIL_ALREADY_VERIFIED", "Email already verified"
 		case "verification code sent recently, please wait":
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Verification code sent recently, please wait"})
+			code, msg = "TOO_MANY_REQUESTS", "Verification code sent recently, please wait"
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send verification code"})
+			code, msg = "INTERNAL_ERROR", "Failed to send verification code"
 		}
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: code, Message: msg, Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Verification code sent successfully"})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: gin.H{"message": "Verification code sent successfully"}})
 }
 
 // VerifyEmail 验证邮箱
@@ -362,20 +367,20 @@ func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
 	var req types.VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Invalid request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
 		return
 	}
 
@@ -383,18 +388,18 @@ func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to verify email", err, "userID", userIDInt, "userEmailID", req.UserEmailID)
 		if err.Error() == "user email not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Email not found"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found"}})
 			return
 		}
 		if err.Error() == "invalid or expired verification code" || err.Error() == "failed to verify code: invalid or expired verification code" {
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Invalid or expired verification code"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_OR_EXPIRED_CODE", Message: "Invalid or expired verification code"}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify email"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to verify email", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully"})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: gin.H{"message": "Email verified successfully"}})
 }
 
 // ===== 订阅管理相关API =====
@@ -417,13 +422,13 @@ func (h *EmailHandler) CreateSubscription(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -500,11 +505,11 @@ func (h *EmailHandler) GetSubscriptions(c *gin.Context) {
 	result, err := h.emailService.GetUserSubscriptions(c.Request.Context(), userIDInt, page, pageSize)
 	if err != nil {
 		logger.Error("Failed to get user subscriptions", err, "userID", userIDInt)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get subscriptions"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to get subscriptions", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: result})
 }
 
 // UpdateSubscription 更新订阅
@@ -525,13 +530,13 @@ func (h *EmailHandler) UpdateSubscription(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -539,14 +544,14 @@ func (h *EmailHandler) UpdateSubscription(c *gin.Context) {
 	subscriptionIDStr := c.Param("id")
 	subscriptionID, err := strconv.ParseInt(subscriptionIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscription ID"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: "Invalid subscription ID"}})
 		return
 	}
 
 	var req types.UpdateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Invalid request body", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
 		return
 	}
 
@@ -554,18 +559,18 @@ func (h *EmailHandler) UpdateSubscription(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to update subscription", err, "userID", userIDInt, "subscriptionID", subscriptionID)
 		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "SUBSCRIPTION_NOT_FOUND", Message: "Subscription not found"}})
 			return
 		}
-		if err.Error()[:7] == "invalid" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if len(err.Error()) >= 7 && err.Error()[:7] == "invalid" {
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: err.Error()}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subscription"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to update subscription", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Subscription updated successfully"})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: gin.H{"message": "Subscription updated successfully"}})
 }
 
 // DeleteSubscription 删除订阅
@@ -585,13 +590,13 @@ func (h *EmailHandler) DeleteSubscription(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"}})
 		return
 	}
 
 	userIDInt, ok := userID.(int64)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID format"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
 		return
 	}
 
@@ -599,7 +604,7 @@ func (h *EmailHandler) DeleteSubscription(c *gin.Context) {
 	subscriptionIDStr := c.Param("id")
 	subscriptionID, err := strconv.ParseInt(subscriptionIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscription ID"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: "Invalid subscription ID"}})
 		return
 	}
 
@@ -607,12 +612,12 @@ func (h *EmailHandler) DeleteSubscription(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to delete subscription", err, "userID", userIDInt, "subscriptionID", subscriptionID)
 		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found"})
+			c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "SUBSCRIPTION_NOT_FOUND", Message: "Subscription not found"}})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete subscription"})
+		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to delete subscription", Details: err.Error()}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Subscription deleted successfully"})
+	c.JSON(http.StatusOK, types.APIResponse{Success: true, Data: gin.H{"message": "Subscription deleted successfully"}})
 }

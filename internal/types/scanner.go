@@ -218,38 +218,6 @@ type OpenZeppelinTimelockInfo struct {
 	Admin     *string  `json:"admin"`     // 管理员 (可能为空)
 }
 
-// UserTimelockTransaction 用户相关的timelock交易详情
-type UserTimelockTransaction struct {
-	// 基本交易信息
-	TxHash         string    `json:"tx_hash"`
-	BlockNumber    uint64    `json:"block_number"`
-	BlockTimestamp time.Time `json:"block_timestamp"`
-	ChainID        int       `json:"chain_id"`
-	ChainName      string    `json:"chain_name"`
-
-	// 合约信息
-	ContractAddress string `json:"contract_address"`
-	Standard        string `json:"standard"`
-
-	// 用户角色和关系
-	UserRole string `json:"user_role"` // creator, admin, pending_admin, proposer, executor, canceller
-
-	// 交易详情
-	EventType     string  `json:"event_type"`                // 事件类型
-	FlowID        *string `json:"flow_id,omitempty"`         // 流程ID
-	FlowStatus    *string `json:"flow_status,omitempty"`     // 流程状态
-	TargetAddress *string `json:"target_address,omitempty"`  // 目标地址
-	EventCallData []byte  `json:"event_call_data,omitempty"` // 事件调用数据（包含函数签名和参数）
-	EventValue    string  `json:"event_value,omitempty"`     // 事件价值
-
-	// 时间信息
-	ProposedAt   *time.Time `json:"proposed_at,omitempty"`   // 提议时间
-	ExecutableAt *time.Time `json:"executable_at,omitempty"` // 可执行时间
-	ExecutedAt   *time.Time `json:"executed_at,omitempty"`   // 执行时间
-	CancelledAt  *time.Time `json:"cancelled_at,omitempty"`  // 取消时间
-	Eta          *time.Time `json:"eta,omitempty"`           // 预计执行时间(Compound的是EventEta,OpenZeppelin的是BlockTimestamp+EventDelay)
-}
-
 // RescanRequest 重扫请求
 type RescanRequest struct {
 	ChainID     int     `json:"chain_id" binding:"required"`   // 链ID

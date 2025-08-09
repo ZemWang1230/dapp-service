@@ -58,7 +58,7 @@ type Service interface {
 	DeleteTimeLock(ctx context.Context, userAddress string, req *types.DeleteTimeLockRequest) error
 
 	// 刷新用户所有timelock合约权限
-	RefreshTimeLockPermissions(ctx context.Context, userAddress string, req *types.TimeLockPermissionRefreshRequest) error
+	RefreshTimeLockPermissions(ctx context.Context, userAddress string) error
 
 	// 刷新所有timelock合约数据（定时任务）
 	RefreshAllTimeLockData(ctx context.Context) error
@@ -272,7 +272,7 @@ func (s *service) DeleteTimeLock(ctx context.Context, userAddress string, req *t
 }
 
 // RefreshTimeLockPermissions 刷新用户所有timelock合约权限
-func (s *service) RefreshTimeLockPermissions(ctx context.Context, userAddress string, req *types.TimeLockPermissionRefreshRequest) error {
+func (s *service) RefreshTimeLockPermissions(ctx context.Context, userAddress string) error {
 	logger.Info("RefreshTimeLockPermissions", "user_address", userAddress)
 
 	normalizedUser := crypto.NormalizeAddress(userAddress)

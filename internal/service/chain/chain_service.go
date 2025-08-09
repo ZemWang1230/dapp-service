@@ -12,7 +12,6 @@ import (
 // Service 支持链服务接口
 type Service interface {
 	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) (*types.GetSupportChainsResponse, error)
-	GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error)
 	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error)
 	GetWalletChainConfig(ctx context.Context, chainID int64) (*types.WalletChainConfig, error)
 }
@@ -47,20 +46,6 @@ func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportCha
 
 	logger.Info("GetSupportChains: ", "total", total, "count", len(chains))
 	return response, nil
-}
-
-// GetChainByID 根据ID获取链信息
-func (s *service) GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error) {
-	logger.Info("GetChainByID start: ", "id", id)
-
-	chain, err := s.chainRepo.GetChainByID(ctx, id)
-	if err != nil {
-		logger.Error("GetChainByID Error: ", err, "id", id)
-		return nil, err
-	}
-
-	logger.Info("GetChainByID success: ", "id", id, "chain_name", chain.ChainName)
-	return chain, nil
 }
 
 // GetChainByChainID 根据ChainID获取链信息

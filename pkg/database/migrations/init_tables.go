@@ -159,7 +159,6 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		CREATE TABLE users (
 			id BIGSERIAL PRIMARY KEY,
 			wallet_address VARCHAR(42) NOT NULL UNIQUE,
-			chain_id INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 			last_login TIMESTAMP WITH TIME ZONE,

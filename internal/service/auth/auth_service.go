@@ -72,7 +72,7 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 		}
 	}
 
-	// 4. 查找或创建用户（以钱包地址为核心，支持链ID）
+	// 4. 查找或创建用户（以钱包地址为核心）
 	existingUser, err := s.userRepo.GetUserByWallet(ctx, normalizedAddress)
 	var currentUser *types.User
 
@@ -81,7 +81,6 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 			// 创建新用户，设置初始链ID
 			newUser := &types.User{
 				WalletAddress: normalizedAddress,
-				ChainID:       req.ChainID,
 				Status:        1, // 1: 正常 0: 禁用
 			}
 
@@ -97,19 +96,13 @@ func (s *service) WalletConnect(ctx context.Context, req *types.WalletConnectReq
 			return nil, fmt.Errorf("database error: %w", err)
 		}
 	} else {
-		// 找到现有用户，更新链ID和最后登录时间
-		if err := s.userRepo.UpdateUserChainID(ctx, normalizedAddress, req.ChainID); err != nil {
-			logger.Error("WalletConnect Error: ", errors.New("failed to update user chain id"), "error: ", err)
-		} else {
-			existingUser.ChainID = req.ChainID
-		}
-
+		// 找到现有用户，更新最后登录时间
 		if err := s.userRepo.UpdateLastLogin(ctx, normalizedAddress); err != nil {
 			// 登录时间更新失败不应该阻止认证流程
 			logger.Error("WalletConnect Error: ", errors.New("failed to update last login"), "error: ", err)
 		}
 		currentUser = existingUser
-		logger.Info("WalletConnect: found existing user", "wallet_address", normalizedAddress, "user_id", existingUser.ID, "chain_id", existingUser.ChainID)
+		logger.Info("WalletConnect: found existing user", "wallet_address", normalizedAddress, "user_id", existingUser.ID)
 	}
 
 	// 5. 生成JWT令牌
@@ -200,7 +193,6 @@ func (s *service) GetProfile(ctx context.Context, walletAddress string) (*types.
 
 	profile := &types.UserProfile{
 		WalletAddress: user.WalletAddress,
-		ChainID:       user.ChainID,
 		CreatedAt:     user.CreatedAt,
 		LastLogin:     user.LastLogin,
 	}

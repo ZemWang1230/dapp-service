@@ -17,9 +17,9 @@ type Repository interface {
 	GetActiveMainnetChains() ([]*types.SupportChain, error)
 	GetActiveTestnetChains() ([]*types.SupportChain, error)
 
-	// 新增的API方法
+	// 获取支持链列表
 	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) ([]types.SupportChain, int64, error)
-	GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error)
+	// 根据ChainID获取链信息
 	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error)
 
 	// RPC配置相关
@@ -126,23 +126,6 @@ func (r *repository) GetSupportChains(ctx context.Context, req *types.GetSupport
 
 	logger.Info("GetSupportChains: ", "count", len(chains), "total", total)
 	return chains, total, nil
-}
-
-// GetChainByID 根据ID获取链信息
-func (r *repository) GetChainByID(ctx context.Context, id int64) (*types.SupportChain, error) {
-	var chain types.SupportChain
-
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&chain).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("chain not found")
-		}
-		logger.Error("GetChainByID Error: ", err, "id", id)
-		return nil, err
-	}
-
-	logger.Info("GetChainByID: ", "id", id, "chain_name", chain.ChainName)
-	return &chain, nil
 }
 
 // GetChainByChainID 根据ChainID获取链信息

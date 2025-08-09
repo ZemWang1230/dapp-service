@@ -105,7 +105,7 @@ func (h *Handler) WalletConnect(c *gin.Context) {
 		logger.Error("WalletConnect Error: ", err, "errorCode: ", errorCode)
 		return
 	}
-	logger.Info("WalletConnect :", "User: ", response.User.WalletAddress, "ChainID: ", response.User.ChainID)
+	logger.Info("WalletConnect :", "User: ", response.User.WalletAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -169,7 +169,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	logger.Info("RefreshToken :", "User: ", response.User.WalletAddress, "ChainID: ", response.User.ChainID)
+	logger.Info("RefreshToken :", "User: ", response.User.WalletAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -178,7 +178,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 // GetProfile 获取用户资料
 // @Summary 获取用户资料
-// @Description 获取当前认证用户的详细资料信息，包括钱包地址、当前使用的链ID、创建时间等。需要有效的JWT令牌。
+// @Description 获取当前认证用户的详细资料信息，包括钱包地址、创建时间等。需要有效的JWT令牌。
 // @Tags Authentication
 // @Accept json
 // @Produce json
@@ -228,7 +228,7 @@ func (h *Handler) GetProfile(c *gin.Context) {
 		return
 	}
 
-	logger.Info("GetProfile: ", "User: ", profile.WalletAddress, "ChainID: ", profile.ChainID)
+	logger.Info("GetProfile: ", "User: ", profile.WalletAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    profile,

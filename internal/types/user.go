@@ -8,7 +8,6 @@ import (
 type User struct {
 	ID            int64      `json:"id" gorm:"primaryKey;autoIncrement"`
 	WalletAddress string     `json:"wallet_address" gorm:"unique;size:42;not null"` // 钱包地址作为唯一标识
-	ChainID       int        `json:"chain_id" gorm:"not null;default:1"`            // 当前使用的链ID（用于timelock合约）
 	CreatedAt     time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	LastLogin     *time.Time `json:"last_login"`
@@ -25,7 +24,6 @@ type WalletConnectRequest struct {
 	WalletAddress string `json:"wallet_address" binding:"required,len=42"`
 	Signature     string `json:"signature" binding:"required"`
 	Message       string `json:"message" binding:"required"`
-	ChainID       int    `json:"chain_id" binding:"required"` // 初始连接的链ID
 }
 
 // WalletConnectResponse 钱包连接响应
@@ -44,7 +42,6 @@ type RefreshTokenRequest struct {
 // UserProfile 用户资料
 type UserProfile struct {
 	WalletAddress string     `json:"wallet_address"`
-	ChainID       int        `json:"chain_id"`
 	CreatedAt     time.Time  `json:"created_at"`
 	LastLogin     *time.Time `json:"last_login"`
 }

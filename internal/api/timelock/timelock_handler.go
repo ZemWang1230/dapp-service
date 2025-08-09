@@ -166,7 +166,6 @@ func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param user_address query string false "已废弃，用户地址从鉴权获取"
 // @Param standard query string false "按合约标准筛选" Enums(compound,openzeppelin) example(openzeppelin)
 // @Param status query string false "按状态筛选" Enums(active,inactive) example(active)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse} "成功获取timelock合约列表"
@@ -538,7 +537,6 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.TimeLockPermissionRefreshRequest true "刷新权限的请求体（无需携带地址）"
 // @Success 200 {object} types.APIResponse{data=object} "成功刷新权限"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -559,23 +557,8 @@ func (h *Handler) RefreshTimeLockPermissions(c *gin.Context) {
 		return
 	}
 
-	var req types.TimeLockPermissionRefreshRequest
-	// 绑定请求参数
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("RefreshTimeLockPermissions error", err, "message", "invalid request parameters", "user_address", userAddress)
-		return
-	}
-
 	// 调用service层（地址从鉴权中获取）
-	err := h.timeLockService.RefreshTimeLockPermissions(c.Request.Context(), userAddress, &req)
+	err := h.timeLockService.RefreshTimeLockPermissions(c.Request.Context(), userAddress)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,

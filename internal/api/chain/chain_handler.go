@@ -33,11 +33,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		// http://localhost:8080/api/v1/chain/list?is_testnet=false&is_active=true
 		chainGroup.GET("/list", h.GetSupportChains)
 
-		// 根据ID获取链信息
-		// GET /api/v1/chain/:id
-		// http://localhost:8080/api/v1/chain/1
-		chainGroup.GET("/:id", h.GetChainByID)
-
 		// 根据ChainID获取链信息
 		// GET /api/v1/chain/chainid/:chain_id
 		// http://localhost:8080/api/v1/chain/chainid/1
@@ -97,67 +92,6 @@ func (h *Handler) GetSupportChains(c *gin.Context) {
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
-	})
-}
-
-// GetChainByID 根据ID获取链信息
-// @Summary 根据ID获取链信息
-// @Description 根据指定的ID获取单个支持链的详细信息，包括链名称、链ID、原生代币、Logo等基本信息。
-// @Tags Chain
-// @Accept json
-// @Produce json
-// @Param id path int true "链的数据库ID" example(1)
-// @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/chain/{id} [get]
-func (h *Handler) GetChainByID(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_ID",
-				Message: "Invalid ID format",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("GetChainByID Error: ", err, "id", idStr)
-		return
-	}
-
-	// 调用服务层
-	chain, err := h.chainService.GetChainByID(c.Request.Context(), id)
-	if err != nil {
-		var statusCode int
-		var errorCode string
-
-		switch err.Error() {
-		case "chain not found":
-			statusCode = http.StatusNotFound
-			errorCode = "CHAIN_NOT_FOUND"
-		default:
-			statusCode = http.StatusInternalServerError
-			errorCode = "INTERNAL_ERROR"
-		}
-
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("GetChainByID Error: ", err, "id", id)
-		return
-	}
-
-	logger.Info("GetChainByID: ", "id", id, "chain_name", chain.ChainName)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    chain,
 	})
 }
 

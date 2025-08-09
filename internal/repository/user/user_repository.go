@@ -18,7 +18,6 @@ type Repository interface {
 	GetUserByID(ctx context.Context, id int64) (*types.User, error)
 	UpdateLastLogin(ctx context.Context, walletAddress string) error
 	UpdateUser(ctx context.Context, user *types.User) error
-	UpdateUserChainID(ctx context.Context, walletAddress string, chainID int) error
 	DeleteUser(ctx context.Context, id int64) error
 	GetByWalletAddress(walletAddress string) (*types.User, error)
 }
@@ -86,15 +85,6 @@ func (r *repository) UpdateUser(ctx context.Context, user *types.User) error {
 		Model(user).
 		Where("id = ?", user.ID).
 		Updates(user).Error
-}
-
-// UpdateUserChainID 更新用户的链ID（用于timelock合约操作）
-func (r *repository) UpdateUserChainID(ctx context.Context, walletAddress string, chainID int) error {
-	logger.Info("UpdateUserChainID: ", "wallet_address: ", walletAddress, "chain_id: ", chainID)
-	return r.db.WithContext(ctx).
-		Model(&types.User{}).
-		Where("wallet_address = ?", walletAddress).
-		Update("chain_id", chainID).Error
 }
 
 // DeleteUser 删除用户（软删除）
