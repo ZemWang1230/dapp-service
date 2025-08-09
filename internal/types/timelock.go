@@ -58,7 +58,7 @@ type CreateOrImportTimelockContractRequest struct {
 	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
 	ContractAddress string `json:"contract_address" binding:"required"`
 	ChainID         int    `json:"chain_id" binding:"required"`
-	IsImported      bool   `json:"is_imported" binding:"required"`
+	IsImported      bool   `json:"is_imported"`
 	Remark          string `json:"remark" binding:"max=500"`
 }
 
