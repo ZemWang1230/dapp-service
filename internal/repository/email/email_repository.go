@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 	"timelocker-backend/internal/types"
 
@@ -31,16 +32,8 @@ type EmailRepository interface {
 	VerifyCode(ctx context.Context, userEmailID int64, code string) error
 	CleanExpiredCodes(ctx context.Context) error
 
-	// UserEmailSubscription 相关
-	CreateSubscription(ctx context.Context, subscription *types.UserEmailSubscription) error
-	GetUserSubscriptions(ctx context.Context, userID int64, offset, limit int) ([]types.SubscriptionResponse, int64, error)
-	GetSubscriptionByID(ctx context.Context, subscriptionID int64, userID int64) (*types.UserEmailSubscription, error)
-	UpdateSubscription(ctx context.Context, subscriptionID int64, userID int64, notifyOn []string, isActive *bool) error
-	DeleteSubscription(ctx context.Context, subscriptionID int64, userID int64) error
-	CheckSubscriptionExists(ctx context.Context, userEmailID int64, standard string, chainID int, contractAddress string) (bool, error)
-
-	// 通知查询相关
-	GetSubscribedEmails(ctx context.Context, standard string, chainID int, contractAddress string, statusTo string, initiatorAddress string) ([]int64, error)
+	// 通知查询相关（按合约相关用户的已验证邮箱）
+	GetContractRelatedVerifiedEmailIDs(ctx context.Context, standard string, chainID int, contractAddress string) ([]int64, error)
 
 	// EmailSendLog 相关
 	CreateSendLog(ctx context.Context, log *types.EmailSendLog) error
@@ -290,136 +283,42 @@ func (r *emailRepository) CleanExpiredCodes(ctx context.Context) error {
 	return nil
 }
 
-// ===== UserEmailSubscription 相关方法 =====
-// CreateSubscription 创建订阅
-func (r *emailRepository) CreateSubscription(ctx context.Context, subscription *types.UserEmailSubscription) error {
-	if err := r.db.WithContext(ctx).Create(subscription).Error; err != nil {
-		return fmt.Errorf("failed to create subscription: %w", err)
-	}
-	return nil
-}
-
-// GetUserSubscriptions 获取用户订阅
-func (r *emailRepository) GetUserSubscriptions(ctx context.Context, userID int64, offset, limit int) ([]types.SubscriptionResponse, int64, error) {
-	var subscriptions []types.SubscriptionResponse
-	var total int64
-
-	// 构建查询
-	baseQuery := r.db.WithContext(ctx).Table("user_email_subscriptions s").
-		Select(`s.id, s.user_email_id, e.email, s.timelock_standard, s.chain_id, 
-				sc.chain_name, s.contract_address, s.notify_on, s.is_active, 
-				s.created_at, s.updated_at`).
-		Joins("JOIN user_emails ue ON ue.id = s.user_email_id").
-		Joins("JOIN emails e ON e.id = ue.email_id").
-		Joins("LEFT JOIN support_chains sc ON sc.chain_id = s.chain_id").
-		Where("ue.user_id = ?", userID)
-
-	// 计算总数
-	if err := baseQuery.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count user subscriptions: %w", err)
-	}
-
-	// 查询数据
-	query := baseQuery
-	if limit > 0 {
-		query = query.Offset(offset).Limit(limit)
-	}
-
-	if err := query.Scan(&subscriptions).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to get user subscriptions: %w", err)
-	}
-
-	return subscriptions, total, nil
-}
-
-// GetSubscriptionByID 根据订阅ID获取订阅
-func (r *emailRepository) GetSubscriptionByID(ctx context.Context, subscriptionID int64, userID int64) (*types.UserEmailSubscription, error) {
-	var subscription types.UserEmailSubscription
-	err := r.db.WithContext(ctx).Preload("UserEmail").
-		Joins("JOIN user_emails ue ON ue.id = user_email_subscriptions.user_email_id").
-		Where("user_email_subscriptions.id = ? AND ue.user_id = ?", subscriptionID, userID).
-		First(&subscription).Error
-	if err != nil {
-		return nil, fmt.Errorf("failed to get subscription: %w", err)
-	}
-	return &subscription, nil
-}
-
-// UpdateSubscription 更新订阅
-func (r *emailRepository) UpdateSubscription(ctx context.Context, subscriptionID int64, userID int64, notifyOn []string, isActive *bool) error {
-	updates := map[string]interface{}{
-		"notify_on": notifyOn,
-	}
-
-	if isActive != nil {
-		updates["is_active"] = *isActive
-	}
-
-	result := r.db.WithContext(ctx).Table("user_email_subscriptions").
-		Joins("JOIN user_emails ue ON ue.id = user_email_subscriptions.user_email_id").
-		Where("user_email_subscriptions.id = ? AND ue.user_id = ?", subscriptionID, userID).
-		Updates(updates)
-
-	if result.Error != nil {
-		return fmt.Errorf("failed to update subscription: %w", result.Error)
-	}
-
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-
-	return nil
-}
-
-// DeleteSubscription 删除订阅
-func (r *emailRepository) DeleteSubscription(ctx context.Context, subscriptionID int64, userID int64) error {
-	result := r.db.WithContext(ctx).
-		Joins("JOIN user_emails ue ON ue.id = user_email_subscriptions.user_email_id").
-		Where("user_email_subscriptions.id = ? AND ue.user_id = ?", subscriptionID, userID).
-		Delete(&types.UserEmailSubscription{})
-
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete subscription: %w", result.Error)
-	}
-
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-
-	return nil
-}
-
-// CheckSubscriptionExists 检查订阅是否存在
-func (r *emailRepository) CheckSubscriptionExists(ctx context.Context, userEmailID int64, standard string, chainID int, contractAddress string) (bool, error) {
-	var count int64
-	err := r.db.WithContext(ctx).Model(&types.UserEmailSubscription{}).
-		Where("user_email_id = ? AND timelock_standard = ? AND chain_id = ? AND contract_address = ?",
-			userEmailID, standard, chainID, contractAddress).
-		Count(&count).Error
-	if err != nil {
-		return false, fmt.Errorf("failed to check subscription exists: %w", err)
-	}
-	return count > 0, nil
-}
-
 // ===== 通知查询相关方法 =====
-// GetSubscribedEmails 获取订阅的邮箱
-func (r *emailRepository) GetSubscribedEmails(ctx context.Context, standard string, chainID int, contractAddress string, statusTo string, initiatorAddress string) ([]int64, error) {
+// GetContractRelatedVerifiedEmailIDs 获取与指定合约相关用户的已验证邮箱ID列表
+func (r *emailRepository) GetContractRelatedVerifiedEmailIDs(ctx context.Context, standard string, chainID int, contractAddress string) ([]int64, error) {
 	var emailIDs []int64
 
-	err := r.db.WithContext(ctx).Table("user_email_subscriptions s").
-		Select("DISTINCT e.id").
-		Joins("JOIN user_emails ue ON ue.id = s.user_email_id").
-		Joins("JOIN emails e ON e.id = ue.email_id").
-		Joins("JOIN users u ON u.id = ue.user_id").
-		Where(`s.is_active = ? AND ue.is_verified = ? AND 
-			   s.timelock_standard = ? AND s.chain_id = ? AND s.contract_address = ? AND 
-		s.notify_on::jsonb @> ?::jsonb AND LOWER(u.wallet_address) = LOWER(?)`,
-			true, true, standard, chainID, contractAddress, `"`+statusTo+`"`, initiatorAddress).
-		Pluck("e.id", &emailIDs).Error
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get subscribed emails: %w", err)
+	switch strings.ToLower(standard) {
+	case "compound":
+		// 用户是该合约的 admin 或 pending_admin
+		sql := `
+            SELECT DISTINCT e.id
+            FROM users u
+            JOIN user_emails ue ON ue.user_id = u.id AND ue.is_verified = TRUE
+            JOIN emails e ON e.id = ue.email_id
+            JOIN compound_timelocks t ON t.chain_id = ? AND t.contract_address = ?
+            WHERE LOWER(u.wallet_address) = LOWER(t.admin)
+               OR (t.pending_admin IS NOT NULL AND LOWER(u.wallet_address) = LOWER(t.pending_admin))
+        `
+		if err := r.db.WithContext(ctx).Raw(sql, chainID, contractAddress).Pluck("id", &emailIDs).Error; err != nil {
+			return nil, fmt.Errorf("failed to query compound related emails: %w", err)
+		}
+	case "openzeppelin":
+		// 用户地址出现在 proposers 或 executors JSON 字符串中
+		sql := `
+            SELECT DISTINCT e.id
+            FROM users u
+            JOIN user_emails ue ON ue.user_id = u.id AND ue.is_verified = TRUE
+            JOIN emails e ON e.id = ue.email_id
+            JOIN openzeppelin_timelocks t ON t.chain_id = ? AND t.contract_address = ?
+            WHERE LOWER(t.proposers) LIKE ('%' || LOWER(u.wallet_address) || '%')
+               OR LOWER(t.executors) LIKE ('%' || LOWER(u.wallet_address) || '%')
+        `
+		if err := r.db.WithContext(ctx).Raw(sql, chainID, contractAddress).Pluck("id", &emailIDs).Error; err != nil {
+			return nil, fmt.Errorf("failed to query openzeppelin related emails: %w", err)
+		}
+	default:
+		return []int64{}, nil
 	}
 
 	return emailIDs, nil

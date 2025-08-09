@@ -28,12 +28,6 @@ type EmailService interface {
 	SendVerificationCode(ctx context.Context, userEmailID int64, userID int64) error
 	VerifyEmail(ctx context.Context, userEmailID int64, userID int64, code string) error
 
-	// 订阅管理
-	CreateSubscription(ctx context.Context, userID int64, req *types.CreateSubscriptionRequest) error
-	GetUserSubscriptions(ctx context.Context, userID int64, page, pageSize int) (*types.SubscriptionListResponse, error)
-	UpdateSubscription(ctx context.Context, subscriptionID int64, userID int64, req *types.UpdateSubscriptionRequest) error
-	DeleteSubscription(ctx context.Context, subscriptionID int64, userID int64) error
-
 	// 通知发送
 	SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error
 
@@ -215,132 +209,26 @@ func (s *emailService) VerifyEmail(ctx context.Context, userEmailID int64, userI
 	return nil
 }
 
-// ===== 订阅管理方法 =====
-// CreateSubscription 创建订阅
-func (s *emailService) CreateSubscription(ctx context.Context, userID int64, req *types.CreateSubscriptionRequest) error {
-	// 验证用户邮箱是否存在且属于当前用户
-	userEmail, err := s.repo.GetUserEmailByID(ctx, req.UserEmailID, userID)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("user email not found")
-		}
-		return fmt.Errorf("failed to get user email: %w", err)
-	}
-
-	// 检查邮箱是否已验证
-	if !userEmail.IsVerified {
-		return fmt.Errorf("email not verified")
-	}
-
-	// NotifyOn 为空，则默认通知所有状态
-	if len(req.NotifyOn) == 0 {
-		req.NotifyOn = types.ValidNotificationStatuses
-	}
-
-	// 验证通知状态
-	if err := s.validateNotifyStatuses(req.NotifyOn); err != nil {
-		return err
-	}
-
-	// 检查订阅是否已存在
-	exists, err := s.repo.CheckSubscriptionExists(ctx, req.UserEmailID, req.TimelockStandard, req.ChainID, req.ContractAddress)
-	if err != nil {
-		return fmt.Errorf("failed to check subscription exists: %w", err)
-	}
-	if exists {
-		return fmt.Errorf("subscription already exists")
-	}
-
-	// 创建订阅
-	subscription := &types.UserEmailSubscription{
-		UserEmailID:      req.UserEmailID,
-		TimelockStandard: req.TimelockStandard,
-		ChainID:          req.ChainID,
-		ContractAddress:  req.ContractAddress,
-		NotifyOn:         req.NotifyOn,
-		IsActive:         true,
-	}
-
-	if err := s.repo.CreateSubscription(ctx, subscription); err != nil {
-		return fmt.Errorf("failed to create subscription: %w", err)
-	}
-
-	logger.Info("Subscription created", "userID", userID, "userEmailID", req.UserEmailID,
-		"standard", req.TimelockStandard, "chainID", req.ChainID, "contract", req.ContractAddress)
-	return nil
-}
-
-// GetUserSubscriptions 获取用户订阅
-func (s *emailService) GetUserSubscriptions(ctx context.Context, userID int64, page, pageSize int) (*types.SubscriptionListResponse, error) {
-	offset := (page - 1) * pageSize
-	if offset < 0 {
-		offset = 0
-	}
-
-	subscriptions, total, err := s.repo.GetUserSubscriptions(ctx, userID, offset, pageSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user subscriptions: %w", err)
-	}
-
-	return &types.SubscriptionListResponse{
-		Subscriptions: subscriptions,
-		Total:         total,
-	}, nil
-}
-
-// UpdateSubscription 更新订阅
-func (s *emailService) UpdateSubscription(ctx context.Context, subscriptionID int64, userID int64, req *types.UpdateSubscriptionRequest) error {
-	// 验证通知状态
-	if err := s.validateNotifyStatuses(req.NotifyOn); err != nil {
-		return err
-	}
-
-	err := s.repo.UpdateSubscription(ctx, subscriptionID, userID, req.NotifyOn, req.IsActive)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("subscription not found")
-		}
-		return fmt.Errorf("failed to update subscription: %w", err)
-	}
-
-	logger.Info("Subscription updated", "subscriptionID", subscriptionID, "userID", userID)
-	return nil
-}
-
-// DeleteSubscription 删除订阅
-func (s *emailService) DeleteSubscription(ctx context.Context, subscriptionID int64, userID int64) error {
-	err := s.repo.DeleteSubscription(ctx, subscriptionID, userID)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("subscription not found")
-		}
-		return fmt.Errorf("failed to delete subscription: %w", err)
-	}
-
-	logger.Info("Subscription deleted", "subscriptionID", subscriptionID, "userID", userID)
-	return nil
-}
-
 // ===== 通知发送方法 =====
 // SendFlowNotification 发送流程通知
 func (s *emailService) SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error {
-	// 获取订阅的邮箱列表
-	emailIDs, err := s.repo.GetSubscribedEmails(ctx, standard, chainID, contractAddress, statusTo, initiatorAddress)
+	// 获取与合约相关用户的已验证邮箱列表
+	emailIDs, err := s.repo.GetContractRelatedVerifiedEmailIDs(ctx, standard, chainID, contractAddress)
 	if err != nil {
-		logger.Error("Failed to get subscribed emails", err,
+		logger.Error("Failed to get related verified emails", err,
 			"standard", standard, "chainID", chainID, "contract", contractAddress,
 			"statusTo", statusTo, "initiator", initiatorAddress)
-		return fmt.Errorf("failed to get subscribed emails: %w", err)
+		return fmt.Errorf("failed to get related verified emails: %w", err)
 	}
 
 	if len(emailIDs) == 0 {
-		logger.Debug("No subscribed emails found for notification",
+		logger.Debug("No related verified emails found for notification",
 			"standard", standard, "chainID", chainID, "contract", contractAddress,
 			"statusTo", statusTo, "initiator", initiatorAddress)
 		return nil
 	}
 
-	logger.Info("Found subscribed emails for notification",
+	logger.Info("Found related verified emails for notification",
 		"count", len(emailIDs), "standard", standard, "chainID", chainID,
 		"contract", contractAddress, "statusTo", statusTo, "initiator", initiatorAddress)
 
@@ -421,28 +309,6 @@ func (s *emailService) generateVerificationCode() (string, error) {
 		code += num.String()
 	}
 	return code, nil
-}
-
-// validateNotifyStatuses 验证通知状态
-func (s *emailService) validateNotifyStatuses(statuses []string) error {
-	if len(statuses) == 0 {
-		return fmt.Errorf("notify_on cannot be empty")
-	}
-
-	for _, status := range statuses {
-		valid := false
-		for _, validStatus := range types.ValidNotificationStatuses {
-			if status == validStatus {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return fmt.Errorf("invalid notification status: %s", status)
-		}
-	}
-
-	return nil
 }
 
 // sendVerificationEmail 发送验证码邮件

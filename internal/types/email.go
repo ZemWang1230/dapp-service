@@ -58,27 +58,6 @@ func (EmailVerificationCode) TableName() string {
 	return "email_verification_codes"
 }
 
-// UserEmailSubscription 用户邮箱订阅模型
-type UserEmailSubscription struct {
-	ID               int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserEmailID      int64     `json:"user_email_id" gorm:"not null"`
-	TimelockStandard string    `json:"timelock_standard" gorm:"size:20;not null;check:timelock_standard IN ('compound','openzeppelin')"`
-	ChainID          int       `json:"chain_id" gorm:"not null"`
-	ContractAddress  string    `json:"contract_address" gorm:"size:42;not null"`
-	NotifyOn         []string  `json:"notify_on" gorm:"type:jsonb;not null;default:'[]';serializer:json"`
-	IsActive         bool      `json:"is_active" gorm:"not null;default:true"`
-	CreatedAt        time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt        time.Time `json:"updated_at" gorm:"autoUpdateTime"`
-
-	// 关联
-	UserEmail *UserEmail `json:"user_email,omitempty" gorm:"foreignKey:UserEmailID"`
-}
-
-// TableName 设置表名
-func (UserEmailSubscription) TableName() string {
-	return "user_email_subscriptions"
-}
-
 // EmailSendLog 邮件发送日志模型
 type EmailSendLog struct {
 	ID               int64     `json:"id" gorm:"primaryKey;autoIncrement"`
@@ -144,46 +123,10 @@ type UserEmailResponse struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
-// CreateSubscriptionRequest 创建订阅请求
-type CreateSubscriptionRequest struct {
-	UserEmailID      int64    `json:"user_email_id" binding:"required"`
-	TimelockStandard string   `json:"timelock_standard" binding:"required,oneof=compound openzeppelin"`
-	ChainID          int      `json:"chain_id" binding:"required"`
-	ContractAddress  string   `json:"contract_address" binding:"required,len=42"`
-	NotifyOn         []string `json:"notify_on" binding:"required"`
-}
-
-// UpdateSubscriptionRequest 更新订阅请求
-type UpdateSubscriptionRequest struct {
-	NotifyOn []string `json:"notify_on" binding:"required"`
-	IsActive *bool    `json:"is_active"`
-}
-
-// SubscriptionResponse 订阅响应
-type SubscriptionResponse struct {
-	ID               int64     `json:"id"`
-	UserEmailID      int64     `json:"user_email_id"`
-	Email            string    `json:"email"`
-	TimelockStandard string    `json:"timelock_standard"`
-	ChainID          int       `json:"chain_id"`
-	ChainName        string    `json:"chain_name,omitempty"`
-	ContractAddress  string    `json:"contract_address"`
-	NotifyOn         []string  `json:"notify_on"`
-	IsActive         bool      `json:"is_active"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-}
-
 // EmailListResponse 邮箱列表响应
 type EmailListResponse struct {
 	Emails []UserEmailResponse `json:"emails"`
 	Total  int64               `json:"total"`
-}
-
-// SubscriptionListResponse 订阅列表响应
-type SubscriptionListResponse struct {
-	Subscriptions []SubscriptionResponse `json:"subscriptions"`
-	Total         int64                  `json:"total"`
 }
 
 // NotificationStatus 通知状态枚举
@@ -201,15 +144,6 @@ var NotificationStatus = struct {
 	Expired:   "expired",
 }
 
-// ValidNotificationStatuses 有效的通知状态列表
-var ValidNotificationStatuses = []string{
-	NotificationStatus.Waiting,
-	NotificationStatus.Ready,
-	NotificationStatus.Executed,
-	NotificationStatus.Cancelled,
-	NotificationStatus.Expired,
-}
-
 // TimelockStandard Timelock标准枚举
 var TimelockStandard = struct {
 	Compound     string
@@ -217,10 +151,4 @@ var TimelockStandard = struct {
 }{
 	Compound:     "compound",
 	OpenZeppelin: "openzeppelin",
-}
-
-// ValidTimelockStandards 有效的Timelock标准列表
-var ValidTimelockStandards = []string{
-	TimelockStandard.Compound,
-	TimelockStandard.OpenZeppelin,
 }

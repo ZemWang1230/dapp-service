@@ -489,28 +489,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: user_emails")
 	}
 
-	// 14. user_email_subscriptions 表
-	if !h.db.Migrator().HasTable("user_email_subscriptions") {
-		sql := `
-        CREATE TABLE user_email_subscriptions (
-            id BIGSERIAL PRIMARY KEY,
-            user_email_id BIGINT NOT NULL REFERENCES user_emails(id) ON DELETE CASCADE,
-            timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound','openzeppelin')),
-            chain_id INTEGER NOT NULL,
-            contract_address VARCHAR(42) NOT NULL,
-            notify_on JSONB NOT NULL DEFAULT '[]',
-            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW(),
-            UNIQUE(user_email_id, timelock_standard, chain_id, contract_address)
-        )`
-		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
-			return fmt.Errorf("failed to create user_email_subscriptions table: %w", err)
-		}
-		logger.Info("Created table: user_email_subscriptions")
-	}
-
-	// 15. email_verification_codes 表
+	// 14. email_verification_codes 表
 	if !h.db.Migrator().HasTable("email_verification_codes") {
 		sql := `
         CREATE TABLE email_verification_codes (
@@ -528,7 +507,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: email_verification_codes")
 	}
 
-	// 16. email_send_logs 表（按邮箱去重）
+	// 15. email_send_logs 表（按邮箱去重）
 	if !h.db.Migrator().HasTable("email_send_logs") {
 		sql := `
         CREATE TABLE email_send_logs (
@@ -630,9 +609,6 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_user_emails_email ON user_emails(email_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_verification_codes_user_email ON email_verification_codes(user_email_id, is_used)`,
 		`CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON email_verification_codes(expires_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_subs_user_email_id ON user_email_subscriptions(user_email_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_subs_contract ON user_email_subscriptions(timelock_standard, chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_subs_notify_on_gin ON user_email_subscriptions USING GIN (notify_on jsonb_ops)`,
 		`CREATE INDEX IF NOT EXISTS idx_send_logs_flow_status ON email_send_logs(flow_id, status_to)`,
 		`CREATE INDEX IF NOT EXISTS idx_send_logs_contract ON email_send_logs(timelock_standard, chain_id, contract_address)`,
 	}
