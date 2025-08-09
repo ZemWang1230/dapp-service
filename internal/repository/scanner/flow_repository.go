@@ -16,8 +16,6 @@ type FlowRepository interface {
 	CreateFlow(ctx context.Context, flow *types.TimelockTransactionFlow) error
 	GetFlowByID(ctx context.Context, flowID, timelockStandard string, chainID int, contractAddress string) (*types.TimelockTransactionFlow, error)
 	UpdateFlow(ctx context.Context, flow *types.TimelockTransactionFlow) error
-	GetFlowsByContract(ctx context.Context, chainID int, contractAddress string, timelockStandard string) ([]types.TimelockTransactionFlow, error)
-	GetActiveFlows(ctx context.Context, chainID int, contractAddress string) ([]types.TimelockTransactionFlow, error)
 
 	// 状态管理相关方法
 	GetWaitingFlowsDue(ctx context.Context, now time.Time, limit int) ([]types.TimelockTransactionFlow, error)
@@ -78,42 +76,6 @@ func (r *flowRepository) UpdateFlow(ctx context.Context, flow *types.TimelockTra
 	}
 
 	return nil
-}
-
-// GetFlowsByContract 获取合约的所有交易流程
-func (r *flowRepository) GetFlowsByContract(ctx context.Context, chainID int, contractAddress string, timelockStandard string) ([]types.TimelockTransactionFlow, error) {
-	var flows []types.TimelockTransactionFlow
-	query := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress)
-
-	if timelockStandard != "" {
-		query = query.Where("timelock_standard = ?", timelockStandard)
-	}
-
-	err := query.Order("created_at DESC").Find(&flows).Error
-	if err != nil {
-		logger.Error("GetFlowsByContract Error", err, "chain_id", chainID, "contract", contractAddress)
-		return nil, err
-	}
-
-	return flows, nil
-}
-
-// GetActiveFlows 获取活跃的交易流程（未完成的）
-func (r *flowRepository) GetActiveFlows(ctx context.Context, chainID int, contractAddress string) ([]types.TimelockTransactionFlow, error) {
-	var flows []types.TimelockTransactionFlow
-	err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ? AND status IN (?)",
-			chainID, contractAddress, []string{"waiting", "ready"}).
-		Order("created_at DESC").
-		Find(&flows).Error
-
-	if err != nil {
-		logger.Error("GetActiveFlows Error", err, "chain_id", chainID, "contract", contractAddress)
-		return nil, err
-	}
-
-	return flows, nil
 }
 
 // GetWaitingFlowsDue 获取等待中但ETA已到的流程
@@ -239,18 +201,17 @@ func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress st
 	whereConditions = append(whereConditions, compoundCondition)
 	args = append(args, userAddress, userAddress)
 
-	// OpenZeppelin权限查询：admin或proposers或executors中的一个
+	// OpenZeppelin权限查询：proposers或executors中的一个
 	ozCondition := `(
 		timelock_standard = 'openzeppelin' AND 
 		(chain_id, contract_address) IN (
 			SELECT chain_id, contract_address FROM openzeppelin_timelocks 
-			WHERE admin = ? OR 
-				proposers LIKE '%' || ? || '%' OR
+			WHERE proposers LIKE '%' || ? || '%' OR
 				executors LIKE '%' || ? || '%'
 		)
 	)`
 	whereConditions = append(whereConditions, ozCondition)
-	args = append(args, userAddress, userAddress, userAddress)
+	args = append(args, userAddress, userAddress)
 
 	// 组合所有条件
 	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
