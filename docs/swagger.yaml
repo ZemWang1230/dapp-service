@@ -231,33 +231,6 @@ definitions:
     - contract_address
     - standard
     type: object
-  types.CreateSponsorRequest:
-    properties:
-      description:
-        maxLength: 1000
-        type: string
-      link:
-        type: string
-      logo_url:
-        type: string
-      name:
-        maxLength: 200
-        type: string
-      sort_order:
-        type: integer
-      type:
-        allOf:
-        - $ref: '#/definitions/types.SponsorType'
-        enum:
-        - sponsor
-        - partner
-    required:
-    - description
-    - link
-    - logo_url
-    - name
-    - type
-    type: object
   types.CreateSubscriptionRequest:
     properties:
       chain_id:
@@ -305,37 +278,6 @@ definitions:
           $ref: '#/definitions/types.UserEmailResponse'
         type: array
       total:
-        type: integer
-    type: object
-  types.ErrorResponse:
-    properties:
-      code:
-        type: string
-      message:
-        type: string
-    type: object
-  types.FlowDetailResponse:
-    properties:
-      flow:
-        allOf:
-        - $ref: '#/definitions/types.FlowResponse'
-        description: 流程
-      time_to_execution:
-        description: 距离可执行时间的秒数
-        type: integer
-      time_to_expiration:
-        description: 距离过期时间的秒数（仅Compound）
-        type: integer
-    type: object
-  types.FlowListResponse:
-    properties:
-      flows:
-        description: 流程列表
-        items:
-          $ref: '#/definitions/types.FlowResponse'
-        type: array
-      total:
-        description: 总数
         type: integer
     type: object
   types.FlowResponse:
@@ -398,25 +340,15 @@ definitions:
         description: 价值
         type: string
     type: object
-  types.FlowStatsResponse:
+  types.GetFlowListResponse:
     properties:
-      cancelled_count:
-        description: 取消中
-        type: integer
-      executed_count:
-        description: 执行中
-        type: integer
-      expired_count:
-        description: 过期中
-        type: integer
-      ready_count:
-        description: 准备中
-        type: integer
-      total_count:
+      flows:
+        description: 流程列表
+        items:
+          $ref: '#/definitions/types.FlowResponse'
+        type: array
+      total:
         description: 总数
-        type: integer
-      waiting_count:
-        description: 等待中
         type: integer
     type: object
   types.GetPublicSponsorsResponse:
@@ -429,19 +361,6 @@ definitions:
         items:
           $ref: '#/definitions/types.SponsorInfo'
         type: array
-    type: object
-  types.GetSponsorsResponse:
-    properties:
-      page:
-        type: integer
-      page_size:
-        type: integer
-      sponsors:
-        items:
-          $ref: '#/definitions/types.Sponsor'
-        type: array
-      total:
-        type: integer
     type: object
   types.GetSupportChainsResponse:
     properties:
@@ -489,6 +408,13 @@ definitions:
         type: array
       total:
         type: integer
+    type: object
+  types.GetTransactionDetailResponse:
+    properties:
+      detail:
+        allOf:
+        - $ref: '#/definitions/types.TimelockTransactionDetail'
+        description: 交易详情
     type: object
   types.NativeCurrencyConfig:
     properties:
@@ -559,37 +485,6 @@ definitions:
         type: integer
     required:
     - user_email_id
-    type: object
-  types.Sponsor:
-    properties:
-      created_at:
-        type: string
-      description:
-        description: 英文介绍
-        type: string
-      id:
-        type: integer
-      is_active:
-        description: 是否激活
-        type: boolean
-      link:
-        description: 链接
-        type: string
-      logo_url:
-        description: Logo URL
-        type: string
-      name:
-        description: 名称
-        type: string
-      sort_order:
-        description: 排序权重，数值越大越靠前
-        type: integer
-      type:
-        allOf:
-        - $ref: '#/definitions/types.SponsorType'
-        description: 类型：sponsor/partner
-      updated_at:
-        type: string
     type: object
   types.SponsorInfo:
     properties:
@@ -706,7 +601,35 @@ definitions:
       updated_at:
         type: string
     type: object
-  types.TimeLockPermissionRefreshRequest:
+  types.TimelockTransactionDetail:
+    properties:
+      block_number:
+        description: 区块高度
+        type: integer
+      block_timestamp:
+        description: 区块时间
+        type: string
+      chain_id:
+        description: 链ID
+        type: integer
+      chain_name:
+        description: 链名称
+        type: string
+      contract_address:
+        description: 合约地址
+        type: string
+      from_address:
+        description: 发起地址
+        type: string
+      to_address:
+        description: 接收地址
+        type: string
+      tx_hash:
+        description: 交易哈希
+        type: string
+      tx_status:
+        description: 交易状态（success, failed）
+        type: string
     type: object
   types.UpdateABIRequest:
     properties:
@@ -727,29 +650,6 @@ definitions:
     properties:
       remark:
         type: string
-    type: object
-  types.UpdateSponsorRequest:
-    properties:
-      description:
-        maxLength: 1000
-        type: string
-      is_active:
-        type: boolean
-      link:
-        type: string
-      logo_url:
-        type: string
-      name:
-        maxLength: 200
-        type: string
-      sort_order:
-        type: integer
-      type:
-        allOf:
-        - $ref: '#/definitions/types.SponsorType'
-        enum:
-        - sponsor
-        - partner
     type: object
   types.UpdateSubscriptionRequest:
     properties:
@@ -783,9 +683,6 @@ definitions:
     type: object
   types.User:
     properties:
-      chain_id:
-        description: 当前使用的链ID（用于timelock合约）
-        type: integer
       created_at:
         type: string
       id:
@@ -831,8 +728,6 @@ definitions:
     type: object
   types.UserProfile:
     properties:
-      chain_id:
-        type: integer
       created_at:
         type: string
       last_login:
@@ -869,9 +764,6 @@ definitions:
     type: object
   types.WalletConnectRequest:
     properties:
-      chain_id:
-        description: 初始连接的链ID
-        type: integer
       message:
         type: string
       signature:
@@ -879,7 +771,6 @@ definitions:
       wallet_address:
         type: string
     required:
-    - chain_id
     - message
     - signature
     - wallet_address
@@ -1293,328 +1184,6 @@ paths:
       summary: 验证ABI格式
       tags:
       - ABI
-  /api/v1/admin/sponsors:
-    get:
-      consumes:
-      - application/json
-      description: 获取赞助方列表，支持分页和过滤。需要管理员权限。
-      parameters:
-      - description: 过滤类型
-        enum:
-        - sponsor
-        - partner
-        in: query
-        name: type
-        type: string
-      - description: 过滤激活状态
-        in: query
-        name: is_active
-        type: boolean
-      - default: 1
-        description: 页码
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页大小
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 成功获取赞助方列表
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.GetSponsorsResponse'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 获取赞助方列表失败
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 获取赞助方列表（管理用）
-      tags:
-      - Sponsors
-    post:
-      consumes:
-      - application/json
-      description: 创建新的赞助方或生态伙伴。需要管理员权限。
-      parameters:
-      - description: 创建赞助方请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.CreateSponsorRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: 成功创建赞助方
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.Sponsor'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 创建赞助方失败
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 创建赞助方
-      tags:
-      - Sponsors
-  /api/v1/admin/sponsors/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: 删除指定ID的赞助方（软删除，设置为不激活）。需要管理员权限。
-      parameters:
-      - description: 赞助方ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 成功删除赞助方
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  type: string
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 赞助方不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 删除赞助方失败
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 删除赞助方
-      tags:
-      - Sponsors
-    get:
-      consumes:
-      - application/json
-      description: 获取指定ID的赞助方详细信息。需要管理员权限。
-      parameters:
-      - description: 赞助方ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 成功获取赞助方信息
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.Sponsor'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 赞助方不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 获取赞助方失败
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 根据ID获取赞助方
-      tags:
-      - Sponsors
-    put:
-      consumes:
-      - application/json
-      description: 更新指定ID的赞助方信息。需要管理员权限。
-      parameters:
-      - description: 赞助方ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 更新赞助方请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.UpdateSponsorRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 成功更新赞助方
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.Sponsor'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 赞助方不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 更新赞助方失败
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 更新赞助方
-      tags:
-      - Sponsors
   /api/v1/assets:
     get:
       consumes:
@@ -1699,7 +1268,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 获取当前认证用户的详细资料信息，包括钱包地址、当前使用的链ID、创建时间等。需要有效的JWT令牌。
+      description: 获取当前认证用户的详细资料信息，包括钱包地址、创建时间等。需要有效的JWT令牌。
       produces:
       - application/json
       responses:
@@ -1861,60 +1430,6 @@ paths:
       summary: 钱包连接认证
       tags:
       - Authentication
-  /api/v1/chain/{id}:
-    get:
-      consumes:
-      - application/json
-      description: 根据指定的ID获取单个支持链的详细信息，包括链名称、链ID、原生代币、Logo等基本信息。
-      parameters:
-      - description: 链的数据库ID
-        example: 1
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 成功获取链信息
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.SupportChain'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 链不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 根据ID获取链信息
-      tags:
-      - Chain
   /api/v1/chain/chainid/{chain_id}:
     get:
       consumes:
@@ -2507,230 +2022,15 @@ paths:
       summary: 验证邮箱
       tags:
       - Email
-  /api/v1/flows/{flow_id}/detail:
+  /api/v1/flows/list:
     get:
       consumes:
       - application/json
-      description: 获取特定流程的详细信息，包括时间计算
+      description: 获取与用户相关的timelock流程列表，包括发起的和有权限管理的
       parameters:
-      - description: 流程ID
-        in: path
-        name: flow_id
-        required: true
-        type: string
-      - description: Timelock标准
-        enum:
-        - compound
-        - openzeppelin
-        in: query
-        name: timelock_standard
-        required: true
-        type: string
-      - description: 链ID
-        in: query
-        name: chain_id
-        required: true
-        type: integer
-      - description: 合约地址
-        in: query
-        name: contract_address
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.FlowDetailResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取流程详细信息
-      tags:
-      - Flow
-  /api/v1/flows/cancelled:
-    get:
-      consumes:
-      - application/json
-      description: 获取已取消的timelock流程列表
-      parameters:
-      - default: 1
-        description: 页码
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.FlowListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取已取消的流程
-      tags:
-      - Flow
-  /api/v1/flows/executed:
-    get:
-      consumes:
-      - application/json
-      description: 获取已执行的timelock流程列表
-      parameters:
-      - default: 1
-        description: 页码
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.FlowListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取已执行的流程
-      tags:
-      - Flow
-  /api/v1/flows/expired:
-    get:
-      consumes:
-      - application/json
-      description: 获取已过期的timelock流程列表（仅Compound）
-      parameters:
-      - default: 1
-        description: 页码
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.FlowListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取已过期的流程
-      tags:
-      - Flow
-  /api/v1/flows/ready:
-    get:
-      consumes:
-      - application/json
-      description: 获取准备执行的timelock流程列表
-      parameters:
-      - default: 1
-        description: 页码
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量
-        in: query
-        name: page_size
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.FlowListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取准备执行的流程
-      tags:
-      - Flow
-  /api/v1/flows/stats:
-    get:
-      consumes:
-      - application/json
-      description: 获取流程的统计信息，可按发起人过滤
-      parameters:
-      - description: 发起人地址（可选）
-        in: query
-        name: initiator_address
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/types.FlowStatsResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取流程统计信息
-      tags:
-      - Flow
-  /api/v1/flows/user:
-    get:
-      consumes:
-      - application/json
-      description: 根据发起人地址和状态获取流程列表
-      parameters:
-      - description: 发起人地址
-        in: query
-        name: initiator_address
-        required: true
-        type: string
       - description: 流程状态
         enum:
+        - all
         - waiting
         - ready
         - executed
@@ -2738,68 +2038,61 @@ paths:
         - expired
         in: query
         name: status
-        required: true
         type: string
-      - default: 1
-        description: 页码
+      - description: Timelock标准
+        enum:
+        - compound
+        - openzeppelin
         in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量
-        in: query
-        name: page_size
-        type: integer
+        name: standard
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/types.FlowListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取用户的流程列表
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 获取与用户相关的流程列表
       tags:
       - Flow
-  /api/v1/flows/waiting:
+  /api/v1/flows/transaction/detail:
     get:
       consumes:
       - application/json
-      description: 获取等待中的timelock流程列表
+      description: 根据交易哈希和标准获取交易详情
       parameters:
-      - default: 1
-        description: 页码
+      - description: Timelock标准
+        enum:
+        - compound
+        - openzeppelin
         in: query
-        name: page
-        type: integer
-      - default: 20
-        description: 每页数量
+        name: standard
+        required: true
+        type: string
+      - description: 交易哈希
         in: query
-        name: page_size
-        type: integer
+        name: tx_hash
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/types.FlowListResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: 获取等待中的流程
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 获取交易详情
       tags:
       - Flow
   /api/v1/sponsors/public:
@@ -3050,10 +2343,6 @@ paths:
       - application/json
       description: 获取当前用户在所有链上有权限访问的timelock合约列表。支持按合约标准和状态进行筛选。返回的列表根据用户权限进行精细控制，只显示用户作为创建者、管理员、提议者、执行者的合约。
       parameters:
-      - description: 已废弃，用户地址从鉴权获取
-        in: query
-        name: user_address
-        type: string
       - description: 按合约标准筛选
         enum:
         - compound
@@ -3119,13 +2408,6 @@ paths:
       consumes:
       - application/json
       description: 刷新该用户在库中所有timelock合约的权限，将合约中所有角色获取一遍然后更新数据库。这个操作会从区块链上重新读取用户在各个timelock合约中的最新权限信息。
-      parameters:
-      - description: 刷新权限的请求体（无需携带地址）
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.TimeLockPermissionRefreshRequest'
       produces:
       - application/json
       responses:

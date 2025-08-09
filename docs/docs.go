@@ -752,603 +752,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/admin/sponsors": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "获取赞助方列表，支持分页和过滤。需要管理员权限。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Sponsors"
-                ],
-                "summary": "获取赞助方列表（管理用）",
-                "parameters": [
-                    {
-                        "enum": [
-                            "sponsor",
-                            "partner"
-                        ],
-                        "type": "string",
-                        "description": "过滤类型",
-                        "name": "type",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "过滤激活状态",
-                        "name": "is_active",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页大小",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功获取赞助方列表",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.GetSponsorsResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "获取赞助方列表失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "创建新的赞助方或生态伙伴。需要管理员权限。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Sponsors"
-                ],
-                "summary": "创建赞助方",
-                "parameters": [
-                    {
-                        "description": "创建赞助方请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.CreateSponsorRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "成功创建赞助方",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.Sponsor"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "创建赞助方失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/admin/sponsors/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "获取指定ID的赞助方详细信息。需要管理员权限。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Sponsors"
-                ],
-                "summary": "根据ID获取赞助方",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "赞助方ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功获取赞助方信息",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.Sponsor"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "赞助方不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "获取赞助方失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "更新指定ID的赞助方信息。需要管理员权限。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Sponsors"
-                ],
-                "summary": "更新赞助方",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "赞助方ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "更新赞助方请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.UpdateSponsorRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功更新赞助方",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.Sponsor"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "赞助方不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "更新赞助方失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "删除指定ID的赞助方（软删除，设置为不激活）。需要管理员权限。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Sponsors"
-                ],
-                "summary": "删除赞助方",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "赞助方ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功删除赞助方",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "string"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "赞助方不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "删除赞助方失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/assets": {
             "get": {
                 "security": [
@@ -1508,7 +911,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "获取当前认证用户的详细资料信息，包括钱包地址、当前使用的链ID、创建时间等。需要有效的JWT令牌。",
+                "description": "获取当前认证用户的详细资料信息，包括钱包地址、创建时间等。需要有效的JWT令牌。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2035,105 +1438,6 @@ const docTemplate = `{
                                     "properties": {
                                         "data": {
                                             "$ref": "#/definitions/types.WalletChainConfig"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "链不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/chain/{id}": {
-            "get": {
-                "description": "根据指定的ID获取单个支持链的详细信息，包括链名称、链ID、原生代币、Logo等基本信息。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Chain"
-                ],
-                "summary": "根据ID获取链信息",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "example": 1,
-                        "description": "链的数据库ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功获取链信息",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.SupportChain"
                                         }
                                     }
                                 }
@@ -2831,9 +2135,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/flows/cancelled": {
+        "/api/v1/flows/list": {
             "get": {
-                "description": "获取已取消的timelock流程列表",
+                "description": "获取与用户相关的timelock流程列表，包括发起的和有权限管理的",
                 "consumes": [
                     "application/json"
                 ],
@@ -2843,258 +2147,11 @@ const docTemplate = `{
                 "tags": [
                     "Flow"
                 ],
-                "summary": "获取已取消的流程",
+                "summary": "获取与用户相关的流程列表",
                 "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页数量",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/executed": {
-            "get": {
-                "description": "获取已执行的timelock流程列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取已执行的流程",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页数量",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/expired": {
-            "get": {
-                "description": "获取已过期的timelock流程列表（仅Compound）",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取已过期的流程",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页数量",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/ready": {
-            "get": {
-                "description": "获取准备执行的timelock流程列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取准备执行的流程",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页数量",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/stats": {
-            "get": {
-                "description": "获取流程的统计信息，可按发起人过滤",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取流程统计信息",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "发起人地址（可选）",
-                        "name": "initiator_address",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowStatsResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/user": {
-            "get": {
-                "description": "根据发起人地址和状态获取流程列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取用户的流程列表",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "发起人地址",
-                        "name": "initiator_address",
-                        "in": "query",
-                        "required": true
-                    },
                     {
                         "enum": [
+                            "all",
                             "waiting",
                             "ready",
                             "executed",
@@ -3104,117 +2161,7 @@ const docTemplate = `{
                         "type": "string",
                         "description": "流程状态",
                         "name": "status",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
                         "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页数量",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/waiting": {
-            "get": {
-                "description": "获取等待中的timelock流程列表",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取等待中的流程",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 20,
-                        "description": "每页数量",
-                        "name": "page_size",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.FlowListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/flows/{flow_id}/detail": {
-            "get": {
-                "description": "获取特定流程的详细信息，包括时间计算",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Flow"
-                ],
-                "summary": "获取流程详细信息",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "流程ID",
-                        "name": "flow_id",
-                        "in": "path",
-                        "required": true
                     },
                     {
                         "enum": [
@@ -3223,21 +2170,61 @@ const docTemplate = `{
                         ],
                         "type": "string",
                         "description": "Timelock标准",
-                        "name": "timelock_standard",
-                        "in": "query",
-                        "required": true
-                    },
+                        "name": "standard",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/flows/transaction/detail": {
+            "get": {
+                "description": "根据交易哈希和标准获取交易详情",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Flow"
+                ],
+                "summary": "获取交易详情",
+                "parameters": [
                     {
-                        "type": "integer",
-                        "description": "链ID",
-                        "name": "chain_id",
+                        "enum": [
+                            "compound",
+                            "openzeppelin"
+                        ],
+                        "type": "string",
+                        "description": "Timelock标准",
+                        "name": "standard",
                         "in": "query",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "合约地址",
-                        "name": "contract_address",
+                        "description": "交易哈希",
+                        "name": "tx_hash",
                         "in": "query",
                         "required": true
                     }
@@ -3246,25 +2233,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/types.FlowDetailResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/types.ErrorResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -3748,12 +2729,6 @@ const docTemplate = `{
                 "summary": "获取用户timelock合约列表（按权限筛选，所有链）",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "已废弃，用户地址从鉴权获取",
-                        "name": "user_address",
-                        "in": "query"
-                    },
-                    {
                         "enum": [
                             "compound",
                             "openzeppelin"
@@ -3870,17 +2845,6 @@ const docTemplate = `{
                     "Timelock"
                 ],
                 "summary": "刷新用户所有timelock合约权限",
-                "parameters": [
-                    {
-                        "description": "刷新权限的请求体（无需携带地址）",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.TimeLockPermissionRefreshRequest"
-                        }
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "成功刷新权限",
@@ -4463,46 +3427,6 @@ const docTemplate = `{
                 }
             }
         },
-        "types.CreateSponsorRequest": {
-            "type": "object",
-            "required": [
-                "description",
-                "link",
-                "logo_url",
-                "name",
-                "type"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "maxLength": 1000
-                },
-                "link": {
-                    "type": "string"
-                },
-                "logo_url": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 200
-                },
-                "sort_order": {
-                    "type": "integer"
-                },
-                "type": {
-                    "enum": [
-                        "sponsor",
-                        "partner"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/types.SponsorType"
-                        }
-                    ]
-                }
-            }
-        },
         "types.CreateSubscriptionRequest": {
             "type": "object",
             "required": [
@@ -4570,54 +3494,6 @@ const docTemplate = `{
                     }
                 },
                 "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "types.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.FlowDetailResponse": {
-            "type": "object",
-            "properties": {
-                "flow": {
-                    "description": "流程",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/types.FlowResponse"
-                        }
-                    ]
-                },
-                "time_to_execution": {
-                    "description": "距离可执行时间的秒数",
-                    "type": "integer"
-                },
-                "time_to_expiration": {
-                    "description": "距离过期时间的秒数（仅Compound）",
-                    "type": "integer"
-                }
-            }
-        },
-        "types.FlowListResponse": {
-            "type": "object",
-            "properties": {
-                "flows": {
-                    "description": "流程列表",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.FlowResponse"
-                    }
-                },
-                "total": {
-                    "description": "总数",
                     "type": "integer"
                 }
             }
@@ -4703,31 +3579,18 @@ const docTemplate = `{
                 }
             }
         },
-        "types.FlowStatsResponse": {
+        "types.GetFlowListResponse": {
             "type": "object",
             "properties": {
-                "cancelled_count": {
-                    "description": "取消中",
-                    "type": "integer"
+                "flows": {
+                    "description": "流程列表",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.FlowResponse"
+                    }
                 },
-                "executed_count": {
-                    "description": "执行中",
-                    "type": "integer"
-                },
-                "expired_count": {
-                    "description": "过期中",
-                    "type": "integer"
-                },
-                "ready_count": {
-                    "description": "准备中",
-                    "type": "integer"
-                },
-                "total_count": {
+                "total": {
                     "description": "总数",
-                    "type": "integer"
-                },
-                "waiting_count": {
-                    "description": "等待中",
                     "type": "integer"
                 }
             }
@@ -4746,26 +3609,6 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/types.SponsorInfo"
                     }
-                }
-            }
-        },
-        "types.GetSponsorsResponse": {
-            "type": "object",
-            "properties": {
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "sponsors": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.Sponsor"
-                    }
-                },
-                "total": {
-                    "type": "integer"
                 }
             }
         },
@@ -4837,6 +3680,19 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "types.GetTransactionDetailResponse": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "description": "交易详情",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.TimelockTransactionDetail"
+                        }
+                    ]
                 }
             }
         },
@@ -4938,52 +3794,6 @@ const docTemplate = `{
             "properties": {
                 "user_email_id": {
                     "type": "integer"
-                }
-            }
-        },
-        "types.Sponsor": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "description": {
-                    "description": "英文介绍",
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "is_active": {
-                    "description": "是否激活",
-                    "type": "boolean"
-                },
-                "link": {
-                    "description": "链接",
-                    "type": "string"
-                },
-                "logo_url": {
-                    "description": "Logo URL",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "名称",
-                    "type": "string"
-                },
-                "sort_order": {
-                    "description": "排序权重，数值越大越靠前",
-                    "type": "integer"
-                },
-                "type": {
-                    "description": "类型：sponsor/partner",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/types.SponsorType"
-                        }
-                    ]
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         },
@@ -5153,8 +3963,46 @@ const docTemplate = `{
                 }
             }
         },
-        "types.TimeLockPermissionRefreshRequest": {
-            "type": "object"
+        "types.TimelockTransactionDetail": {
+            "type": "object",
+            "properties": {
+                "block_number": {
+                    "description": "区块高度",
+                    "type": "integer"
+                },
+                "block_timestamp": {
+                    "description": "区块时间",
+                    "type": "string"
+                },
+                "chain_id": {
+                    "description": "链ID",
+                    "type": "integer"
+                },
+                "chain_name": {
+                    "description": "链名称",
+                    "type": "string"
+                },
+                "contract_address": {
+                    "description": "合约地址",
+                    "type": "string"
+                },
+                "from_address": {
+                    "description": "发起地址",
+                    "type": "string"
+                },
+                "to_address": {
+                    "description": "接收地址",
+                    "type": "string"
+                },
+                "tx_hash": {
+                    "description": "交易哈希",
+                    "type": "string"
+                },
+                "tx_status": {
+                    "description": "交易状态（success, failed）",
+                    "type": "string"
+                }
+            }
         },
         "types.UpdateABIRequest": {
             "type": "object",
@@ -5182,42 +4030,6 @@ const docTemplate = `{
             "properties": {
                 "remark": {
                     "type": "string"
-                }
-            }
-        },
-        "types.UpdateSponsorRequest": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "maxLength": 1000
-                },
-                "is_active": {
-                    "type": "boolean"
-                },
-                "link": {
-                    "type": "string"
-                },
-                "logo_url": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 200
-                },
-                "sort_order": {
-                    "type": "integer"
-                },
-                "type": {
-                    "enum": [
-                        "sponsor",
-                        "partner"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/types.SponsorType"
-                        }
-                    ]
                 }
             }
         },
@@ -5268,10 +4080,6 @@ const docTemplate = `{
         "types.User": {
             "type": "object",
             "properties": {
-                "chain_id": {
-                    "description": "当前使用的链ID（用于timelock合约）",
-                    "type": "integer"
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -5340,9 +4148,6 @@ const docTemplate = `{
         "types.UserProfile": {
             "type": "object",
             "properties": {
-                "chain_id": {
-                    "type": "integer"
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -5398,16 +4203,11 @@ const docTemplate = `{
         "types.WalletConnectRequest": {
             "type": "object",
             "required": [
-                "chain_id",
                 "message",
                 "signature",
                 "wallet_address"
             ],
             "properties": {
-                "chain_id": {
-                    "description": "初始连接的链ID",
-                    "type": "integer"
-                },
                 "message": {
                     "type": "string"
                 },
