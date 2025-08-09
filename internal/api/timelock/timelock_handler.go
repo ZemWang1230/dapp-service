@@ -71,7 +71,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.CreateOrImportTimelockContractRequest true "创建或导入timelock合约的请求体"
+// @Param request body types.CreateOrImportTimelockContractRequest true "创建或导入timelock合约的请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功创建或导入timelock合约记录"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -108,7 +108,7 @@ func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
 		return
 	}
 
-	// 调用service层
+	// 调用service层（地址从鉴权中获取）
 	result, err := h.timeLockService.CreateOrImportTimeLock(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
@@ -166,7 +166,7 @@ func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param user_address query string true "用户地址" example(0x...)
+// @Param user_address query string false "已废弃，用户地址从鉴权获取"
 // @Param standard query string false "按合约标准筛选" Enums(compound,openzeppelin) example(openzeppelin)
 // @Param status query string false "按状态筛选" Enums(active,inactive) example(active)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse} "成功获取timelock合约列表"
@@ -204,11 +204,8 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 		return
 	}
 
-	// 设置用户地址（从认证中获取）
-	req.UserAddress = userAddress
-
-	// 调用service层
-	response, err := h.timeLockService.GetTimeLockList(c.Request.Context(), &req)
+	// 调用service层（地址从鉴权中获取）
+	response, err := h.timeLockService.GetTimeLockList(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -247,7 +244,7 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.GetTimeLockDetailRequest true "获取详情的请求体"
+// @Param request body types.GetTimeLockDetailRequest true "获取详情的请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockDetailResponse} "成功获取timelock合约详情"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -285,9 +282,6 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 		return
 	}
 
-	// 设置用户地址（从认证中获取）
-	req.UserAddress = userAddress
-
 	// 验证标准
 	if req.Standard != "compound" && req.Standard != "openzeppelin" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -301,8 +295,8 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 		return
 	}
 
-	// 调用service层
-	response, err := h.timeLockService.GetTimeLockDetail(c.Request.Context(), &req)
+	// 调用service层（地址从鉴权中获取）
+	response, err := h.timeLockService.GetTimeLockDetail(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -347,7 +341,7 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.UpdateTimeLockRequest true "更新请求体"
+// @Param request body types.UpdateTimeLockRequest true "更新请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功更新timelock合约备注"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -385,9 +379,6 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 		return
 	}
 
-	// 设置用户地址（从认证中获取）
-	req.UserAddress = userAddress
-
 	// 验证标准
 	if req.Standard != "compound" && req.Standard != "openzeppelin" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -401,8 +392,8 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 		return
 	}
 
-	// 调用service层
-	err := h.timeLockService.UpdateTimeLock(c.Request.Context(), &req)
+	// 调用service层（地址从鉴权中获取）
+	err := h.timeLockService.UpdateTimeLock(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -450,7 +441,7 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.DeleteTimeLockRequest true "删除请求体"
+// @Param request body types.DeleteTimeLockRequest true "删除请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功删除timelock合约记录"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -488,9 +479,6 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 		return
 	}
 
-	// 设置用户地址（从认证中获取）
-	req.UserAddress = userAddress
-
 	// 验证标准
 	if req.Standard != "compound" && req.Standard != "openzeppelin" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -504,8 +492,8 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 		return
 	}
 
-	// 调用service层
-	err := h.timeLockService.DeleteTimeLock(c.Request.Context(), &req)
+	// 调用service层（地址从鉴权中获取）
+	err := h.timeLockService.DeleteTimeLock(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -550,7 +538,7 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.TimeLockPermissionRefreshRequest true "刷新权限的请求体"
+// @Param request body types.TimeLockPermissionRefreshRequest true "刷新权限的请求体（无需携带地址）"
 // @Success 200 {object} types.APIResponse{data=object} "成功刷新权限"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -586,11 +574,8 @@ func (h *Handler) RefreshTimeLockPermissions(c *gin.Context) {
 		return
 	}
 
-	// 设置用户地址（从认证中获取）
-	req.UserAddress = userAddress
-
-	// 调用service层
-	err := h.timeLockService.RefreshTimeLockPermissions(c.Request.Context(), &req)
+	// 调用service层（地址从鉴权中获取）
+	err := h.timeLockService.RefreshTimeLockPermissions(c.Request.Context(), userAddress, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,

@@ -46,19 +46,19 @@ type Service interface {
 	CreateOrImportTimeLock(ctx context.Context, userAddress string, req *types.CreateOrImportTimelockContractRequest) (interface{}, error)
 
 	// 获取timelock列表（按权限筛选）
-	GetTimeLockList(ctx context.Context, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error)
+	GetTimeLockList(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error)
 
 	// 获取timelock详情
-	GetTimeLockDetail(ctx context.Context, req *types.GetTimeLockDetailRequest) (*types.GetTimeLockDetailResponse, error)
+	GetTimeLockDetail(ctx context.Context, userAddress string, req *types.GetTimeLockDetailRequest) (*types.GetTimeLockDetailResponse, error)
 
 	// 更新timelock备注
-	UpdateTimeLock(ctx context.Context, req *types.UpdateTimeLockRequest) error
+	UpdateTimeLock(ctx context.Context, userAddress string, req *types.UpdateTimeLockRequest) error
 
 	// 删除timelock
-	DeleteTimeLock(ctx context.Context, req *types.DeleteTimeLockRequest) error
+	DeleteTimeLock(ctx context.Context, userAddress string, req *types.DeleteTimeLockRequest) error
 
 	// 刷新用户所有timelock合约权限
-	RefreshTimeLockPermissions(ctx context.Context, req *types.TimeLockPermissionRefreshRequest) error
+	RefreshTimeLockPermissions(ctx context.Context, userAddress string, req *types.TimeLockPermissionRefreshRequest) error
 
 	// 刷新所有timelock合约数据（定时任务）
 	RefreshAllTimeLockData(ctx context.Context) error
@@ -119,11 +119,11 @@ func (s *service) CreateOrImportTimeLock(ctx context.Context, userAddress string
 }
 
 // GetTimeLockList 获取timelock列表（根据用户权限筛选）
-func (s *service) GetTimeLockList(ctx context.Context, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error) {
-	logger.Info("GetTimeLockList", "user_address", req.UserAddress, "standard", req.Standard, "status", req.Status)
+func (s *service) GetTimeLockList(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) (*types.GetTimeLockListResponse, error) {
+	logger.Info("GetTimeLockList", "user_address", userAddress, "standard", req.Standard, "status", req.Status)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedUser := crypto.NormalizeAddress(userAddress)
 
 	// 查询所有有权限的timelock
 	compoundList, openzeppelinList, total, err := s.timeLockRepo.GetTimeLocksByUserPermissions(ctx, normalizedUser, req)
@@ -143,11 +143,11 @@ func (s *service) GetTimeLockList(ctx context.Context, req *types.GetTimeLockLis
 }
 
 // GetTimeLockDetail 获取timelock详情
-func (s *service) GetTimeLockDetail(ctx context.Context, req *types.GetTimeLockDetailRequest) (*types.GetTimeLockDetailResponse, error) {
-	logger.Info("GetTimeLockDetail", "user_address", req.UserAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
+func (s *service) GetTimeLockDetail(ctx context.Context, userAddress string, req *types.GetTimeLockDetailRequest) (*types.GetTimeLockDetailResponse, error) {
+	logger.Info("GetTimeLockDetail", "user_address", userAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedUser := crypto.NormalizeAddress(userAddress)
 	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
 	switch req.Standard {
@@ -162,11 +162,11 @@ func (s *service) GetTimeLockDetail(ctx context.Context, req *types.GetTimeLockD
 }
 
 // UpdateTimeLock 更新timelock备注
-func (s *service) UpdateTimeLock(ctx context.Context, req *types.UpdateTimeLockRequest) error {
-	logger.Info("UpdateTimeLock", "user_address", req.UserAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
+func (s *service) UpdateTimeLock(ctx context.Context, userAddress string, req *types.UpdateTimeLockRequest) error {
+	logger.Info("UpdateTimeLock", "user_address", userAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedUser := crypto.NormalizeAddress(userAddress)
 	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
 	// 验证备注
@@ -221,11 +221,11 @@ func (s *service) UpdateTimeLock(ctx context.Context, req *types.UpdateTimeLockR
 }
 
 // DeleteTimeLock 删除timelock
-func (s *service) DeleteTimeLock(ctx context.Context, req *types.DeleteTimeLockRequest) error {
-	logger.Info("DeleteTimeLock", "user_address", req.UserAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
+func (s *service) DeleteTimeLock(ctx context.Context, userAddress string, req *types.DeleteTimeLockRequest) error {
+	logger.Info("DeleteTimeLock", "user_address", userAddress, "standard", req.Standard, "chain_id", req.ChainID, "contract_address", req.ContractAddress)
 
 	// 标准化地址
-	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedUser := crypto.NormalizeAddress(userAddress)
 	normalizedContract := crypto.NormalizeAddress(req.ContractAddress)
 
 	switch req.Standard {
@@ -272,10 +272,10 @@ func (s *service) DeleteTimeLock(ctx context.Context, req *types.DeleteTimeLockR
 }
 
 // RefreshTimeLockPermissions 刷新用户所有timelock合约权限
-func (s *service) RefreshTimeLockPermissions(ctx context.Context, req *types.TimeLockPermissionRefreshRequest) error {
-	logger.Info("RefreshTimeLockPermissions", "user_address", req.UserAddress)
+func (s *service) RefreshTimeLockPermissions(ctx context.Context, userAddress string, req *types.TimeLockPermissionRefreshRequest) error {
+	logger.Info("RefreshTimeLockPermissions", "user_address", userAddress)
 
-	normalizedUser := crypto.NormalizeAddress(req.UserAddress)
+	normalizedUser := crypto.NormalizeAddress(userAddress)
 
 	// 获取用户所有的timelock合约
 	compoundTimelocks, err := s.timeLockRepo.GetAllCompoundTimeLocksByUser(ctx, normalizedUser)

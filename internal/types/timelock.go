@@ -54,7 +54,6 @@ func (OpenzeppelinTimeLock) TableName() string {
 
 // CreateOrImportTimelockContractRequest 创建或导入合约请求
 type CreateOrImportTimelockContractRequest struct {
-	UserAddress     string `json:"user_address" binding:"required"`
 	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
 	ContractAddress string `json:"contract_address" binding:"required"`
 	ChainID         int    `json:"chain_id" binding:"required"`
@@ -64,7 +63,6 @@ type CreateOrImportTimelockContractRequest struct {
 
 // UpdateTimeLockRequest 更新timelock合约请求
 type UpdateTimeLockRequest struct {
-	UserAddress     string `json:"user_address" binding:"required"`
 	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
 	ChainID         int    `json:"chain_id" binding:"required"`
 	ContractAddress string `json:"contract_address" binding:"required"`
@@ -73,7 +71,6 @@ type UpdateTimeLockRequest struct {
 
 // DeleteTimeLockRequest 删除timelock合约请求
 type DeleteTimeLockRequest struct {
-	UserAddress     string `json:"user_address" binding:"required"`
 	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
 	ChainID         int    `json:"chain_id" binding:"required"`
 	ContractAddress string `json:"contract_address" binding:"required"`
@@ -81,9 +78,8 @@ type DeleteTimeLockRequest struct {
 
 // GetTimeLockListRequest 获取timelock列表请求
 type GetTimeLockListRequest struct {
-	UserAddress string `json:"user_address" form:"user_address"`
-	Standard    string `json:"standard" form:"standard"`
-	Status      string `json:"status" form:"status"`
+	Standard string `json:"standard" form:"standard"`
+	Status   string `json:"status" form:"status"`
 }
 
 // GetTimeLockListResponse 获取timelock列表响应
@@ -95,7 +91,6 @@ type GetTimeLockListResponse struct {
 
 // GetTimeLockDetailRequest 获取timelock详情请求
 type GetTimeLockDetailRequest struct {
-	UserAddress     string `json:"user_address" binding:"required"`
 	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
 	ChainID         int    `json:"chain_id" binding:"required"`
 	ContractAddress string `json:"contract_address" binding:"required"`
@@ -110,7 +105,7 @@ type GetTimeLockDetailResponse struct {
 
 // TimeLockPermissionRefreshRequest 刷新该用户在库中所有timelock合约的权限（将合约中所有角色获取一遍然后更新数据库）
 type TimeLockPermissionRefreshRequest struct {
-	UserAddress string `json:"user_address" binding:"required"`
+	// intentionally left empty; user address is derived from auth context
 }
 
 // CompoundTimeLockWithPermission Compound timelock with permission info
