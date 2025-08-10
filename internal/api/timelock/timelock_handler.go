@@ -73,9 +73,10 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Security BearerAuth
 // @Param request body types.CreateOrImportTimelockContractRequest true "创建或导入timelock合约的请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功创建或导入timelock合约记录"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "timelock合约已存在"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/create-or-import [post]
 func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
@@ -169,7 +170,7 @@ func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
 // @Param standard query string false "按合约标准筛选" Enums(compound,openzeppelin) example(openzeppelin)
 // @Param status query string false "按状态筛选" Enums(active,inactive) example(active)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse} "成功获取timelock合约列表"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/list [get]
@@ -247,10 +248,11 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 // @Param chain_id query int true "链ID" example(1)
 // @Param contract_address query string true "合约地址" example(0x...)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockDetailResponse} "成功获取timelock合约详情"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/detail [get]
 func (h *Handler) GetTimeLockDetail(c *gin.Context) {
@@ -344,10 +346,11 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 // @Security BearerAuth
 // @Param request body types.UpdateTimeLockRequest true "更新请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功更新timelock合约备注"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/update [put]
 func (h *Handler) UpdateTimeLock(c *gin.Context) {
@@ -444,10 +447,11 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 // @Security BearerAuth
 // @Param request body types.DeleteTimeLockRequest true "删除请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功删除timelock合约记录"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/delete [delete]
 func (h *Handler) DeleteTimeLock(c *gin.Context) {
@@ -540,7 +544,6 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} types.APIResponse{data=object} "成功刷新权限"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/timelock/refresh-permissions [post]

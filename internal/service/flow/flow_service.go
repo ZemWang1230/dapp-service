@@ -62,7 +62,21 @@ func (s *flowService) GetFlowList(ctx context.Context, userAddress string, req *
 		}
 	}
 
-	flows, total, err := s.flowRepo.GetUserRelatedFlows(ctx, userAddress, req.Status, req.Standard)
+	// 计算分页
+	page := req.Page
+	pageSize := req.PageSize
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	flows, total, err := s.flowRepo.GetUserRelatedFlows(ctx, userAddress, req.Status, req.Standard, offset, pageSize)
 	if err != nil {
 		logger.Error("Failed to get user related flows", err, "user", userAddress)
 		return nil, fmt.Errorf("failed to get user related flows: %w", err)

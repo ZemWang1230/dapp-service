@@ -124,7 +124,7 @@ func (h *Handler) WalletConnect(c *gin.Context) {
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "刷新令牌无效或已过期"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "用户不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/auth/refresh [post]
+// @Router /api/v1/auth/refresh-token [post]
 func (h *Handler) RefreshToken(c *gin.Context) {
 	var req types.RefreshTokenRequest
 	// 绑定请求参数

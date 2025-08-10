@@ -31,8 +31,12 @@ func (h *FlowHandler) RegisterRoutes(router *gin.RouterGroup) {
 	flows := router.Group("/flows")
 	{
 		// 获取与用户相关的流程列表（需要鉴权）
+		// GET /api/v1/flows/list
+		// http://localhost:8080/api/v1/flows/list?status=all&standard=openzeppelin
 		flows.GET("/list", middleware.AuthMiddleware(h.authService), h.GetFlowList)
 		// 获取交易详情
+		// GET /api/v1/flows/transaction/detail
+		// http://localhost:8080/api/v1/flows/transaction/detail?standard=openzeppelin&tx_hash=0x...
 		flows.GET("/transaction/detail", h.GetTransactionDetail)
 	}
 }
@@ -43,16 +47,21 @@ func (h *FlowHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Tags Flow
 // @Accept json
 // @Produce json
+// @Security BearerAuth
 // @Param status query string false "流程状态" Enums(all,waiting,ready,executed,cancelled,expired)
 // @Param standard query string false "Timelock标准" Enums(compound,openzeppelin)
-// @Success 200 {object} types.GetFlowListResponse
-// @Failure 200 {object} types.APIResponse{error=types.APIError}
+// @Param page query int false "页码，默认1" default(1)
+// @Param page_size query int false "每页大小，默认10，最大100" default(10)
+// @Success 200 {object} types.APIResponse{data=types.GetFlowListResponse}
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/flows/list [get]
 func (h *FlowHandler) GetFlowList(c *gin.Context) {
 	// 从鉴权中间件获取用户地址
 	_, userAddressStr, ok := middleware.GetUserFromContext(c)
 	if !ok {
-		c.JSON(http.StatusOK, types.APIResponse{
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "UNAUTHORIZED",
@@ -65,7 +74,7 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 	// 解析请求参数
 	var req types.GetFlowListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(http.StatusOK, types.APIResponse{
+		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_PARAMS",
@@ -80,7 +89,7 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 	response, err := h.flowService.GetFlowList(c.Request.Context(), userAddressStr, &req)
 	if err != nil {
 		logger.Error("Failed to get flow list", err, "user", userAddressStr)
-		c.JSON(http.StatusOK, types.APIResponse{
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",
@@ -105,14 +114,16 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 // @Produce json
 // @Param standard query string true "Timelock标准" Enums(compound,openzeppelin)
 // @Param tx_hash query string true "交易哈希"
-// @Success 200 {object} types.GetTransactionDetailResponse
-// @Failure 200 {object} types.APIResponse{error=types.APIError}
+// @Success 200 {object} types.APIResponse{data=types.GetTransactionDetailResponse}
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "交易不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/flows/transaction/detail [get]
 func (h *FlowHandler) GetTransactionDetail(c *gin.Context) {
 	// 解析请求参数
 	var req types.GetTransactionDetailRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		c.JSON(http.StatusOK, types.APIResponse{
+		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_PARAMS",
@@ -127,7 +138,7 @@ func (h *FlowHandler) GetTransactionDetail(c *gin.Context) {
 	response, err := h.flowService.GetTransactionDetail(c.Request.Context(), &req)
 	if err != nil {
 		if err.Error() == "transaction not found" {
-			c.JSON(http.StatusOK, types.APIResponse{
+			c.JSON(http.StatusNotFound, types.APIResponse{
 				Success: false,
 				Error: &types.APIError{
 					Code:    "TRANSACTION_NOT_FOUND",
@@ -138,7 +149,7 @@ func (h *FlowHandler) GetTransactionDetail(c *gin.Context) {
 		}
 
 		logger.Error("Failed to get transaction detail", err, "standard", req.Standard, "tx_hash", req.TxHash)
-		c.JSON(http.StatusOK, types.APIResponse{
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",

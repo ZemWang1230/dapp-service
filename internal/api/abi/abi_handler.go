@@ -74,6 +74,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或ABI格式无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "ABI名称已存在"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/abi [post]
 func (h *Handler) CreateABI(c *gin.Context) {
@@ -286,6 +287,7 @@ func (h *Handler) GetABIByID(c *gin.Context) {
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权更新该ABI"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "ABI不存在"
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "ABI名称已存在"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/abi/{id} [put]
 func (h *Handler) UpdateABI(c *gin.Context) {
@@ -472,6 +474,7 @@ func (h *Handler) DeleteABI(c *gin.Context) {
 // @Success 200 {object} types.APIResponse{data=types.ABIValidationResult} "ABI验证完成"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/abi/validate [post]
 func (h *Handler) ValidateABI(c *gin.Context) {

@@ -24,7 +24,7 @@ type FlowRepository interface {
 	BatchUpdateFlowStatus(ctx context.Context, flows []types.TimelockTransactionFlow, toStatus string) error
 
 	// 新API查询方法
-	GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string) ([]types.TimelockTransactionFlow, int64, error)
+	GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error)
 	GetTransactionDetail(ctx context.Context, standard string, txHash string) (*types.TimelockTransactionDetail, error)
 }
 
@@ -171,7 +171,7 @@ func (r *flowRepository) BatchUpdateFlowStatus(ctx context.Context, flows []type
 }
 
 // GetUserRelatedFlows 获取与用户相关的流程列表
-func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string) ([]types.TimelockTransactionFlow, int64, error) {
+func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error) {
 	userAddress = strings.ToLower(userAddress)
 
 	// 构建查询条件
@@ -237,10 +237,15 @@ func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress st
 
 	// 获取数据
 	var flows []types.TimelockTransactionFlow
-	err := r.db.WithContext(ctx).
+	dataQuery := r.db.WithContext(ctx).
 		Where(finalWhere, args...).
-		Order("created_at DESC").
-		Find(&flows).Error
+		Order("created_at DESC")
+
+	if limit > 0 {
+		dataQuery = dataQuery.Offset(offset).Limit(limit)
+	}
+
+	err := dataQuery.Find(&flows).Error
 
 	if err != nil {
 		logger.Error("GetUserRelatedFlows Error", err, "user", userAddress)
