@@ -3,11 +3,13 @@ package email
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"timelocker-backend/internal/middleware"
 	"timelocker-backend/internal/service/auth"
 	"timelocker-backend/internal/service/email"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
+	"timelocker-backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -69,7 +71,7 @@ func (h *EmailHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Produce json
 // @Security BearerAuth
 // @Param page query int false "页码，默认为1" default(1)
-// @Param page_size query int false "每页大小，默认为10" default(10)
+// @Param page_size query int false "每页大小，默认为10，最大100" default(10)
 // @Success 200 {object} types.APIResponse{data=types.EmailListResponse}
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
@@ -160,6 +162,14 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
 		return
 	}
+	if req.Remark != nil {
+		trimmed := strings.TrimSpace(*req.Remark)
+		req.Remark = &trimmed
+		if len(trimmed) > 200 {
+			c.JSON(http.StatusUnprocessableEntity, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REMARK", Message: "remark too long (max 200)"}})
+			return
+		}
+	}
 
 	err = h.emailService.UpdateEmailRemark(c.Request.Context(), userEmailID, userIDInt, req.Remark)
 	if err != nil {
@@ -236,17 +246,18 @@ func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 
 // SendVerificationCode 发送验证码
 // @Summary 发送验证码
-// @Description 基于邮箱发送验证码。后端会自动创建/复用未验证记录，并允许更新备注。
+// @Description 基于邮箱发送验证码。后端会自动创建/复用未验证记录，并允许更新备注。email 必填，remark 最长200字符。
 // @Tags Email
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.SendVerificationCodeRequest true "发送验证码请求（email 必填，remark 可选）"
+// @Param request body types.SendVerificationCodeRequest true "发送验证码请求（email 必填，remark 可选，最长200）"
 // @Success 200 {object} types.APIResponse
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误（缺少email）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "邮箱不存在"
 // @Failure 429 {object} types.APIResponse{error=types.APIError} "发送过于频繁"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败（INVALID_EMAIL_FORMAT / INVALID_REMARK）"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/emails/send-verification [post]
 func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
@@ -270,8 +281,26 @@ func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
 		return
 	}
 
+	// 标准化
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Remark != nil {
+		trimmed := strings.TrimSpace(*req.Remark)
+		req.Remark = &trimmed
+		if len(trimmed) > 200 {
+			c.JSON(http.StatusUnprocessableEntity, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REMARK", Message: "remark too long (max 200)"}})
+			return
+		}
+	}
+
+	// 邮箱必填
 	if req.Email == "" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "email is required"}})
+		return
+	}
+
+	// 校验邮箱格式
+	if !utils.IsValidEmail(req.Email) {
+		c.JSON(http.StatusUnprocessableEntity, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_EMAIL_FORMAT", Message: "Invalid email format"}})
 		return
 	}
 
@@ -299,7 +328,7 @@ func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
 
 // VerifyEmail 验证邮箱
 // @Summary 验证邮箱
-// @Description 使用验证码验证邮箱地址
+// @Description 使用验证码验证邮箱地址。email 必填，code 为6位数字。
 // @Tags Email
 // @Accept json
 // @Produce json
@@ -309,7 +338,7 @@ func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "邮箱不存在"
-// @Failure 422 {object} types.APIResponse{error=types.APIError} "验证码无效或已过期"
+// @Failure 422 {object} types.APIResponse{error=types.APIError} "验证码无效或已过期 / 参数校验失败（INVALID_EMAIL_FORMAT / INVALID_CODE_FORMAT）"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/emails/verify [post]
 func (h *EmailHandler) VerifyEmail(c *gin.Context) {
@@ -333,8 +362,23 @@ func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
+	// 标准化
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Code = strings.TrimSpace(req.Code)
+
+	// 邮箱和验证码必填
 	if req.Email == "" || req.Code == "" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "email and code are required"}})
+		return
+	}
+	// 校验邮箱格式
+	if !utils.IsValidEmail(req.Email) {
+		c.JSON(http.StatusUnprocessableEntity, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_EMAIL_FORMAT", Message: "Invalid email format"}})
+		return
+	}
+	// 校验验证码格式
+	if !utils.IsValidVerificationCode(req.Code) {
+		c.JSON(http.StatusUnprocessableEntity, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_CODE_FORMAT", Message: "Invalid code format (expect 6 digits)"}})
 		return
 	}
 

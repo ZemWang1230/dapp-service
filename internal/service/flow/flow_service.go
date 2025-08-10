@@ -3,10 +3,12 @@ package flow
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
+	"timelocker-backend/pkg/utils"
 )
 
 // FlowService 流程服务接口
@@ -96,6 +98,15 @@ func (s *flowService) GetFlowList(ctx context.Context, userAddress string, req *
 
 // GetTransactionDetail 获取交易详情
 func (s *flowService) GetTransactionDetail(ctx context.Context, req *types.GetTransactionDetailRequest) (*types.GetTransactionDetailResponse, error) {
+	// 标准化
+	req.Standard = strings.ToLower(strings.TrimSpace(req.Standard))
+	req.TxHash = strings.TrimSpace(req.TxHash)
+	if req.Standard != "compound" && req.Standard != "openzeppelin" {
+		return nil, fmt.Errorf("invalid standard: %s", req.Standard)
+	}
+	if !utils.IsValidTxHash(req.TxHash) {
+		return nil, fmt.Errorf("invalid tx hash")
+	}
 	detail, err := s.flowRepo.GetTransactionDetail(ctx, req.Standard, req.TxHash)
 	if err != nil {
 		logger.Error("Failed to get transaction detail", err, "standard", req.Standard, "tx_hash", req.TxHash)

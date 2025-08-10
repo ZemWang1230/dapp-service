@@ -61,7 +61,7 @@ email:
   verification_code_expiry: "10m"        # 验证码过期时间
   
   # 邮件模板配置
-  email_url: "http://16.163.43.186:8080"      # 前端基础URL，用于生成邮件中的链接
+  email_url: "http://localhost:8080"      # 前端基础URL，用于生成邮件中的链接
 
 # 扫链系统配置（简化版，只使用Alchemy RPC）
 scanner:

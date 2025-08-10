@@ -12,6 +12,7 @@ import (
 	"timelocker-backend/internal/types"
 	emailPkg "timelocker-backend/pkg/email"
 	"timelocker-backend/pkg/logger"
+	"timelocker-backend/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -122,6 +123,13 @@ func (s *emailService) GetUserEmails(ctx context.Context, userID int64, page, pa
 
 // UpdateEmailRemark 更新用户邮箱备注
 func (s *emailService) UpdateEmailRemark(ctx context.Context, userEmailID int64, userID int64, remark *string) error {
+	if remark != nil {
+		trimmed := strings.TrimSpace(*remark)
+		if len(trimmed) > 200 {
+			return fmt.Errorf("remark too long")
+		}
+		remark = &trimmed
+	}
 	err := s.repo.UpdateUserEmailRemark(ctx, userEmailID, userID, remark)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -196,6 +204,18 @@ func (s *emailService) SendVerificationCode(ctx context.Context, userEmailID int
 
 // SendVerificationCodeByEmail 基于 email 发送验证码
 func (s *emailService) SendVerificationCodeByEmail(ctx context.Context, userID int64, emailAddr string, remark *string) error {
+	// 标准化
+	emailAddr = strings.ToLower(strings.TrimSpace(emailAddr))
+	if !utils.IsValidEmail(emailAddr) {
+		return fmt.Errorf("invalid email format")
+	}
+	if remark != nil {
+		trimmed := strings.TrimSpace(*remark)
+		if len(trimmed) > 200 {
+			return fmt.Errorf("remark too long")
+		}
+		remark = &trimmed
+	}
 	// 获取或创建邮箱记录
 	emailRecord, err := s.repo.GetOrCreateEmail(ctx, emailAddr)
 	if err != nil {
@@ -224,6 +244,15 @@ func (s *emailService) SendVerificationCodeByEmail(ctx context.Context, userID i
 
 // VerifyEmailByEmail 基于 email 校验验证码
 func (s *emailService) VerifyEmailByEmail(ctx context.Context, userID int64, emailAddr string, code string) error {
+	// 标准化
+	emailAddr = strings.ToLower(strings.TrimSpace(emailAddr))
+	code = strings.TrimSpace(code)
+	if !utils.IsValidEmail(emailAddr) {
+		return fmt.Errorf("invalid email format")
+	}
+	if !utils.IsValidVerificationCode(code) {
+		return fmt.Errorf("invalid or expired verification code")
+	}
 	// 获取邮箱
 	emailRecord, err := s.repo.GetEmailByAddress(ctx, emailAddr)
 	if err != nil {

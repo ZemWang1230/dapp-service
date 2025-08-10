@@ -2,11 +2,13 @@ package timelock
 
 import (
 	"net/http"
+	"strings"
 
 	"timelocker-backend/internal/middleware"
 	"timelocker-backend/internal/service/auth"
 	"timelocker-backend/internal/service/timelock"
 	"timelocker-backend/internal/types"
+	"timelocker-backend/pkg/crypto"
 	"timelocker-backend/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -66,14 +68,14 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 // CreateOrImportTimeLock 创建或导入timelock合约
 // @Summary 创建或导入timelock合约记录
-// @Description 创建新的或导入已存在的timelock合约记录。系统会从链上读取合约数据并验证其是否为有效的timelock合约。支持Compound和OpenZeppelin两种标准。
+// @Description 创建新的或导入已存在的timelock合约记录。系统会从链上读取合约数据并验证其是否为有效的timelock合约。支持Compound和OpenZeppelin两种标准。合约地址必须为有效以太坊地址（0x + 40位十六进制）。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body types.CreateOrImportTimelockContractRequest true "创建或导入timelock合约的请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功创建或导入timelock合约记录"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "timelock合约已存在"
 // @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
@@ -106,6 +108,13 @@ func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
 			},
 		})
 		logger.Error("CreateOrImportTimeLock error", err, "message", "invalid request parameters", "user_address", userAddress)
+		return
+	}
+	// 标准化
+	req.Standard = strings.ToLower(strings.TrimSpace(req.Standard))
+	req.ContractAddress = strings.TrimSpace(req.ContractAddress)
+	if !crypto.ValidateEthereumAddress(req.ContractAddress) {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_CONTRACT_ADDRESS", Message: "Invalid contract address"}})
 		return
 	}
 
@@ -239,7 +248,7 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 
 // GetTimeLockDetail 获取timelock详情
 // @Summary 获取timelock合约详细信息
-// @Description 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。
+// @Description 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。合约地址必须为有效以太坊地址（0x + 40位十六进制）。
 // @Tags Timelock
 // @Accept json
 // @Produce json
@@ -248,7 +257,7 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 // @Param chain_id query int true "链ID" example(1)
 // @Param contract_address query string true "合约地址" example(0x...)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockDetailResponse} "成功获取timelock合约详情"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
@@ -282,6 +291,13 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 			},
 		})
 		logger.Error("GetTimeLockDetail error", err, "message", "invalid query parameters", "user_address", userAddress)
+		return
+	}
+	// 标准化
+	req.Standard = strings.ToLower(strings.TrimSpace(req.Standard))
+	req.ContractAddress = strings.TrimSpace(req.ContractAddress)
+	if !crypto.ValidateEthereumAddress(req.ContractAddress) {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_CONTRACT_ADDRESS", Message: "Invalid contract address"}})
 		return
 	}
 
@@ -339,14 +355,14 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 
 // UpdateTimeLock 更新timelock备注
 // @Summary 更新timelock合约备注
-// @Description 更新指定timelock合约的备注信息。只有合约的创建者/导入者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。
+// @Description 更新指定timelock合约的备注信息。只有合约的创建者/导入者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。合约地址必须为有效以太坊地址（0x + 40位十六进制）。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body types.UpdateTimeLockRequest true "更新请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功更新timelock合约备注"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
@@ -380,6 +396,13 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 			},
 		})
 		logger.Error("UpdateTimeLock error", err, "message", "invalid request parameters", "user_address", userAddress)
+		return
+	}
+	// 标准化
+	req.Standard = strings.ToLower(strings.TrimSpace(req.Standard))
+	req.ContractAddress = strings.TrimSpace(req.ContractAddress)
+	if !crypto.ValidateEthereumAddress(req.ContractAddress) {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_CONTRACT_ADDRESS", Message: "Invalid contract address"}})
 		return
 	}
 
@@ -440,14 +463,14 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 
 // DeleteTimeLock 删除timelock
 // @Summary 删除timelock合约记录
-// @Description 软删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是软删除，数据仍保留在数据库中但标记为已删除状态。
+// @Description 软删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是软删除，数据仍保留在数据库中但标记为已删除状态。合约地址必须为有效以太坊地址（0x + 40位十六进制）。
 // @Tags Timelock
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body types.DeleteTimeLockRequest true "删除请求体（地址从鉴权获取）"
 // @Success 200 {object} types.APIResponse{data=object} "成功删除timelock合约记录"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
@@ -481,6 +504,13 @@ func (h *Handler) DeleteTimeLock(c *gin.Context) {
 			},
 		})
 		logger.Error("DeleteTimeLock error", err, "message", "invalid request parameters", "user_address", userAddress)
+		return
+	}
+	// 标准化
+	req.Standard = strings.ToLower(strings.TrimSpace(req.Standard))
+	req.ContractAddress = strings.TrimSpace(req.ContractAddress)
+	if !crypto.ValidateEthereumAddress(req.ContractAddress) {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_CONTRACT_ADDRESS", Message: "Invalid contract address"}})
 		return
 	}
 

@@ -22,7 +22,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "用户创建新的智能合约ABI。系统会验证ABI格式的正确性。每个用户在同一名称下只能创建一个ABI。",
+                "description": "用户创建新的智能合约ABI。系统会验证ABI格式的正确性。每个用户在同一名称下只能创建一个ABI。名称长度1-200；描述≤500。",
                 "consumes": [
                     "application/json"
                 ],
@@ -504,7 +504,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。",
+                "description": "更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。名称长度1-200；描述≤500。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1172,7 +1172,7 @@ const docTemplate = `{
         },
         "/api/v1/auth/wallet-connect": {
             "post": {
-                "description": "通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。",
+                "description": "通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。钱包地址必须是有效以太坊地址（长度42，0x前缀）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1214,7 +1214,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误，可能是钱包地址格式不正确",
+                        "description": "请求参数错误（INVALID_WALLET_ADDRESS等）",
                         "schema": {
                             "allOf": [
                                 {
@@ -1584,7 +1584,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "default": 10,
-                        "description": "每页大小，默认为10",
+                        "description": "每页大小，默认为10，最大100",
                         "name": "page_size",
                         "in": "query"
                     }
@@ -1654,7 +1654,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "基于邮箱发送验证码。后端会自动创建/复用未验证记录，并允许更新备注。",
+                "description": "基于邮箱发送验证码。后端会自动创建/复用未验证记录，并允许更新备注。email 必填，remark 最长200字符。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1667,7 +1667,7 @@ const docTemplate = `{
                 "summary": "发送验证码",
                 "parameters": [
                     {
-                        "description": "发送验证码请求（email 必填，remark 可选）",
+                        "description": "发送验证码请求（email 必填，remark 可选，最长200）",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1684,7 +1684,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误",
+                        "description": "请求参数错误（缺少email）",
                         "schema": {
                             "allOf": [
                                 {
@@ -1721,6 +1721,24 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "邮箱不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "422": {
+                        "description": "参数校验失败（INVALID_EMAIL_FORMAT / INVALID_REMARK）",
                         "schema": {
                             "allOf": [
                                 {
@@ -1783,7 +1801,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "使用验证码验证邮箱地址",
+                "description": "使用验证码验证邮箱地址。email 必填，code 为6位数字。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1867,7 +1885,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "验证码无效或已过期",
+                        "description": "验证码无效或已过期 / 参数校验失败（INVALID_EMAIL_FORMAT / INVALID_CODE_FORMAT）",
                         "schema": {
                             "allOf": [
                                 {
@@ -2322,7 +2340,7 @@ const docTemplate = `{
         },
         "/api/v1/flows/transaction/detail": {
             "get": {
-                "description": "根据交易哈希和标准获取交易详情",
+                "description": "根据交易哈希和标准获取交易详情。standard 仅支持 compound/openzeppelin；tx_hash 必须为 0x 开头的64位十六进制。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2347,7 +2365,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "交易哈希",
+                        "description": "交易哈希 (0x + 64位十六进制)",
                         "name": "tx_hash",
                         "in": "query",
                         "required": true
@@ -2373,7 +2391,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误",
+                        "description": "请求参数错误（INVALID_STANDARD / INVALID_TX_HASH）",
                         "schema": {
                             "allOf": [
                                 {
@@ -2489,7 +2507,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "创建新的或导入已存在的timelock合约记录。系统会从链上读取合约数据并验证其是否为有效的timelock合约。支持Compound和OpenZeppelin两种标准。",
+                "description": "创建新的或导入已存在的timelock合约记录。系统会从链上读取合约数据并验证其是否为有效的timelock合约。支持Compound和OpenZeppelin两种标准。合约地址必须为有效以太坊地址（0x + 40位十六进制）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2531,7 +2549,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误或标准无效",
+                        "description": "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）",
                         "schema": {
                             "allOf": [
                                 {
@@ -2630,7 +2648,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "软删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是软删除，数据仍保留在数据库中但标记为已删除状态。",
+                "description": "软删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是软删除，数据仍保留在数据库中但标记为已删除状态。合约地址必须为有效以太坊地址（0x + 40位十六进制）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2672,7 +2690,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误或标准无效",
+                        "description": "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）",
                         "schema": {
                             "allOf": [
                                 {
@@ -2789,7 +2807,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。",
+                "description": "获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。合约地址必须为有效以太坊地址（0x + 40位十六进制）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2850,7 +2868,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误或标准无效",
+                        "description": "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）",
                         "schema": {
                             "allOf": [
                                 {
@@ -3161,7 +3179,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "更新指定timelock合约的备注信息。只有合约的创建者/导入者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。",
+                "description": "更新指定timelock合约的备注信息。只有合约的创建者/导入者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。合约地址必须为有效以太坊地址（0x + 40位十六进制）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -3203,7 +3221,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "请求参数错误或标准无效",
+                        "description": "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）",
                         "schema": {
                             "allOf": [
                                 {

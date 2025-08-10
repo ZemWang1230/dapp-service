@@ -64,7 +64,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 // CreateABI 创建新的ABI
 // @Summary 创建ABI
-// @Description 用户创建新的智能合约ABI。系统会验证ABI格式的正确性。每个用户在同一名称下只能创建一个ABI。
+// @Description 用户创建新的智能合约ABI。系统会验证ABI格式的正确性。每个用户在同一名称下只能创建一个ABI。名称长度1-200；描述≤500。
 // @Tags ABI
 // @Accept json
 // @Produce json
@@ -274,7 +274,7 @@ func (h *Handler) GetABIByID(c *gin.Context) {
 
 // UpdateABI 更新ABI
 // @Summary 更新ABI
-// @Description 更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。
+// @Description 更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。名称长度1-200；描述≤500。
 // @Tags ABI
 // @Accept json
 // @Produce json

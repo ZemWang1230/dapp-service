@@ -48,13 +48,13 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 // WalletConnect 钱包连接认证
 // @Summary 钱包连接认证
-// @Description 通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。
+// @Description 通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。钱包地址必须是有效以太坊地址（长度42，0x前缀）。
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body types.WalletConnectRequest true "钱包连接认证请求体"
 // @Success 200 {object} types.APIResponse{data=types.WalletConnectResponse} "认证成功，返回访问令牌和用户信息"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误，可能是钱包地址格式不正确"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误（INVALID_WALLET_ADDRESS等）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "认证失败，可能是签名无效或地址恢复失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/auth/wallet-connect [post]

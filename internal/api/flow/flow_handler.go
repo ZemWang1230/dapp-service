@@ -2,12 +2,14 @@ package flow
 
 import (
 	"net/http"
+	"strings"
 
 	"timelocker-backend/internal/middleware"
 	"timelocker-backend/internal/service/auth"
 	"timelocker-backend/internal/service/flow"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
+	"timelocker-backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -108,14 +110,14 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 
 // GetTransactionDetail 获取交易详情
 // @Summary 获取交易详情
-// @Description 根据交易哈希和标准获取交易详情
+// @Description 根据交易哈希和标准获取交易详情。standard 仅支持 compound/openzeppelin；tx_hash 必须为 0x 开头的64位十六进制。
 // @Tags Flow
 // @Accept json
 // @Produce json
 // @Param standard query string true "Timelock标准" Enums(compound,openzeppelin)
-// @Param tx_hash query string true "交易哈希"
+// @Param tx_hash query string true "交易哈希 (0x + 64位十六进制)"
 // @Success 200 {object} types.APIResponse{data=types.GetTransactionDetailResponse}
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误（INVALID_STANDARD / INVALID_TX_HASH）"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "交易不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
 // @Router /api/v1/flows/transaction/detail [get]
@@ -131,6 +133,20 @@ func (h *FlowHandler) GetTransactionDetail(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
+		return
+	}
+
+	// 标准化
+	req.Standard = strings.ToLower(strings.TrimSpace(req.Standard))
+	req.TxHash = strings.TrimSpace(req.TxHash)
+	// 校验标准
+	if req.Standard != "compound" && req.Standard != "openzeppelin" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_STANDARD", Message: "Invalid timelock standard"}})
+		return
+	}
+	// 校验交易哈希格式
+	if !utils.IsValidTxHash(req.TxHash) {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_TX_HASH", Message: "Invalid tx hash format"}})
 		return
 	}
 
