@@ -31,11 +31,7 @@ func (h *EmailHandler) RegisterRoutes(router *gin.RouterGroup) {
 	// 邮箱API组 - 需要认证
 	emailGroup := router.Group("/emails", middleware.AuthMiddleware(h.authService))
 	{
-		// 邮箱管理
-		// 添加邮箱
-		// POST /api/v1/emails
-		// http://localhost:8080/api/v1/emails
-		emailGroup.POST("", h.AddEmail)
+		// 邮箱管理：不再暴露单独的添加邮箱接口，改为通过发送验证码自动创建/复用未验证记录
 		// 获取邮箱列表
 		// GET /api/v1/emails
 		// http://localhost:8080/api/v1/emails
@@ -63,64 +59,7 @@ func (h *EmailHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 // ===== 邮箱管理相关API =====
 
-// AddEmail 添加邮箱
-// @Summary 添加邮箱
-// @Description 为当前用户添加新的邮箱地址，当前API返回邮箱ID，需要配合邮箱验证API使用
-// @Tags Email
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param request body types.AddEmailRequest true "添加邮箱请求"
-// @Success 200 {object} types.APIResponse{data=types.AddEmailResponse}
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
-// @Failure 409 {object} types.APIResponse{error=types.APIError} "邮箱已存在"
-// @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/emails [post]
-func (h *EmailHandler) AddEmail(c *gin.Context) {
-	// 获取用户ID
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error:   &types.APIError{Code: "UNAUTHORIZED", Message: "User not authenticated"},
-		})
-		return
-	}
-
-	var req types.AddEmailRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Error("Invalid request body", err)
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error:   &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()},
-		})
-		return
-	}
-
-	userIDInt, ok := userID.(int64)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Invalid user ID format"}})
-		return
-	}
-
-	result, err := h.emailService.AddUserEmail(c.Request.Context(), userIDInt, req.Email, req.Remark)
-	if err != nil {
-		logger.Error("Failed to add email", err, "userID", userIDInt, "email", req.Email)
-		if err.Error() == "email already added by user" {
-			c.JSON(http.StatusConflict, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_EXISTS", Message: "Email already added"}})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to add email", Details: err.Error()}})
-		return
-	}
-
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    types.AddEmailResponse{ID: result.ID, Message: "Email added successfully"},
-	})
-}
+// 旧的添加邮箱接口已移除
 
 // GetEmails 获取用户邮箱列表
 // @Summary 获取用户邮箱列表
@@ -297,12 +236,12 @@ func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 
 // SendVerificationCode 发送验证码
 // @Summary 发送验证码
-// @Description 向指定邮箱发送验证码，如果AddEmail返回成功，则使用返回的ID发送验证码即可；若AddEmail返回邮箱存在，则直接调用此API发送验证码（即重发验证码）
+// @Description 基于邮箱发送验证码。后端会自动创建/复用未验证记录，并允许更新备注。
 // @Tags Email
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.SendVerificationCodeRequest true "发送验证码请求"
+// @Param request body types.SendVerificationCodeRequest true "发送验证码请求（email 必填，remark 可选）"
 // @Success 200 {object} types.APIResponse
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
@@ -331,13 +270,15 @@ func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
 		return
 	}
 
-	err := h.emailService.SendVerificationCode(c.Request.Context(), req.UserEmailID, userIDInt)
+	if req.Email == "" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "email is required"}})
+		return
+	}
+
+	err := h.emailService.SendVerificationCodeByEmail(c.Request.Context(), userIDInt, req.Email, req.Remark)
 	if err != nil {
-		logger.Error("Failed to send verification code", err, "userID", userIDInt, "userEmailID", req.UserEmailID)
+		logger.Error("Failed to send verification code", err, "userID", userIDInt, "email", req.Email)
 		switch err.Error() {
-		case "user email not found":
-			c.JSON(http.StatusNotFound, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found", Details: err.Error()}})
-			return
 		case "email already verified":
 			c.JSON(http.StatusConflict, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_ALREADY_VERIFIED", Message: "Email already verified", Details: err.Error()}})
 			return
@@ -363,7 +304,7 @@ func (h *EmailHandler) SendVerificationCode(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.VerifyEmailRequest true "验证邮箱请求"
+// @Param request body types.VerifyEmailRequest true "验证邮箱请求（email+code）"
 // @Success 200 {object} types.APIResponse
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
@@ -392,9 +333,14 @@ func (h *EmailHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	err := h.emailService.VerifyEmail(c.Request.Context(), req.UserEmailID, userIDInt, req.Code)
+	if req.Email == "" || req.Code == "" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "email and code are required"}})
+		return
+	}
+
+	err := h.emailService.VerifyEmailByEmail(c.Request.Context(), userIDInt, req.Email, req.Code)
 	if err != nil {
-		logger.Error("Failed to verify email", err, "userID", userIDInt, "userEmailID", req.UserEmailID)
+		logger.Error("Failed to verify email", err, "userID", userIDInt, "email", req.Email)
 		if err.Error() == "user email not found" {
 			c.JSON(http.StatusNotFound, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found"}})
 			return

@@ -85,18 +85,6 @@ func (EmailSendLog) TableName() string {
 
 // ===== 请求响应结构体 =====
 
-// AddEmailRequest 添加邮箱请求
-type AddEmailRequest struct {
-	Email  string  `json:"email" binding:"required,email"`
-	Remark *string `json:"remark"`
-}
-
-// AddEmailResponse 添加邮箱响应
-type AddEmailResponse struct {
-	ID      int64  `json:"id"`
-	Message string `json:"message"`
-}
-
 // UpdateEmailRemarkRequest 更新邮箱备注请求
 type UpdateEmailRemarkRequest struct {
 	Remark *string `json:"remark"`
@@ -104,13 +92,14 @@ type UpdateEmailRemarkRequest struct {
 
 // SendVerificationCodeRequest 发送验证码请求
 type SendVerificationCodeRequest struct {
-	UserEmailID int64 `json:"user_email_id" binding:"required"`
+	Email  string  `json:"email"`
+	Remark *string `json:"remark"`
 }
 
 // VerifyEmailRequest 验证邮箱请求
 type VerifyEmailRequest struct {
-	UserEmailID int64  `json:"user_email_id" binding:"required"`
-	Code        string `json:"code" binding:"required"`
+	Email string `json:"email"`
+	Code  string `json:"code"`
 }
 
 // UserEmailResponse 用户邮箱响应

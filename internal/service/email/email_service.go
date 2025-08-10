@@ -27,6 +27,10 @@ type EmailService interface {
 	// 邮箱验证
 	SendVerificationCode(ctx context.Context, userEmailID int64, userID int64) error
 	VerifyEmail(ctx context.Context, userEmailID int64, userID int64, code string) error
+	// 基于 email 发送验证码（创建/复用未验证记录，允许备注更新）
+	SendVerificationCodeByEmail(ctx context.Context, userID int64, emailAddr string, remark *string) error
+	// 基于 email 校验验证码
+	VerifyEmailByEmail(ctx context.Context, userID int64, emailAddr string, code string) error
 
 	// 通知发送
 	SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error
@@ -188,6 +192,52 @@ func (s *emailService) SendVerificationCode(ctx context.Context, userEmailID int
 
 	logger.Info("Verification code sent", "email", userEmail.Email.Email, "userEmailID", userEmailID)
 	return nil
+}
+
+// SendVerificationCodeByEmail 基于 email 发送验证码
+func (s *emailService) SendVerificationCodeByEmail(ctx context.Context, userID int64, emailAddr string, remark *string) error {
+	// 获取或创建邮箱记录
+	emailRecord, err := s.repo.GetOrCreateEmail(ctx, emailAddr)
+	if err != nil {
+		return fmt.Errorf("failed to get or create email: %w", err)
+	}
+	// 获取或创建 user_email 未验证记录
+	userEmail, err := s.repo.GetUserEmailByUserAndEmailID(ctx, userID, emailRecord.ID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			if userEmail, err = s.repo.AddUserEmail(ctx, userID, emailRecord.ID, remark); err != nil {
+				return fmt.Errorf("failed to add user email: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to get user email: %w", err)
+		}
+	} else {
+		if userEmail.IsVerified {
+			return fmt.Errorf("email already added by user")
+		}
+		if err := s.repo.UpdateUserEmailRemark(ctx, userEmail.ID, userID, remark); err != nil {
+			return fmt.Errorf("failed to update remark: %w", err)
+		}
+	}
+	return s.SendVerificationCode(ctx, userEmail.ID, userID)
+}
+
+// VerifyEmailByEmail 基于 email 校验验证码
+func (s *emailService) VerifyEmailByEmail(ctx context.Context, userID int64, emailAddr string, code string) error {
+	// 获取邮箱
+	emailRecord, err := s.repo.GetEmailByAddress(ctx, emailAddr)
+	if err != nil {
+		return fmt.Errorf("failed to get email: %w", err)
+	}
+	// 获取 user_email
+	userEmail, err := s.repo.GetUserEmailByUserAndEmailID(ctx, userID, emailRecord.ID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("user email not found")
+		}
+		return fmt.Errorf("failed to get user email: %w", err)
+	}
+	return s.VerifyEmail(ctx, userEmail.ID, userID, code)
 }
 
 // VerifyEmail 验证邮箱

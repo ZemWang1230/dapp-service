@@ -1645,145 +1645,6 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "为当前用户添加新的邮箱地址，当前API返回邮箱ID，需要配合邮箱验证API使用",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Email"
-                ],
-                "summary": "添加邮箱",
-                "parameters": [
-                    {
-                        "description": "添加邮箱请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.AddEmailRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.AddEmailResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "409": {
-                        "description": "邮箱已存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "422": {
-                        "description": "参数校验失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
             }
         },
         "/api/v1/emails/send-verification": {
@@ -1793,7 +1654,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "向指定邮箱发送验证码，如果AddEmail返回成功，则使用返回的ID发送验证码即可；若AddEmail返回邮箱存在，则直接调用此API发送验证码（即重发验证码）",
+                "description": "基于邮箱发送验证码。后端会自动创建/复用未验证记录，并允许更新备注。",
                 "consumes": [
                     "application/json"
                 ],
@@ -1806,7 +1667,7 @@ const docTemplate = `{
                 "summary": "发送验证码",
                 "parameters": [
                     {
-                        "description": "发送验证码请求",
+                        "description": "发送验证码请求（email 必填，remark 可选）",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1935,7 +1796,7 @@ const docTemplate = `{
                 "summary": "验证邮箱",
                 "parameters": [
                     {
-                        "description": "验证邮箱请求",
+                        "description": "验证邮箱请求（email+code）",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -3611,31 +3472,6 @@ const docTemplate = `{
                 }
             }
         },
-        "types.AddEmailRequest": {
-            "type": "object",
-            "required": [
-                "email"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "remark": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.AddEmailResponse": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "types.AssetInfo": {
             "type": "object",
             "properties": {
@@ -4121,12 +3957,12 @@ const docTemplate = `{
         },
         "types.SendVerificationCodeRequest": {
             "type": "object",
-            "required": [
-                "user_email_id"
-            ],
             "properties": {
-                "user_email_id": {
-                    "type": "integer"
+                "email": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
                 }
             }
         },
@@ -4422,16 +4258,12 @@ const docTemplate = `{
         },
         "types.VerifyEmailRequest": {
             "type": "object",
-            "required": [
-                "code",
-                "user_email_id"
-            ],
             "properties": {
                 "code": {
                     "type": "string"
                 },
-                "user_email_id": {
-                    "type": "integer"
+                "email": {
+                    "type": "string"
                 }
             }
         },

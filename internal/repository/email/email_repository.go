@@ -21,6 +21,8 @@ type EmailRepository interface {
 	AddUserEmail(ctx context.Context, userID int64, emailID int64, remark *string) (*types.UserEmail, error)
 	GetUserEmails(ctx context.Context, userID int64, offset, limit int) ([]types.UserEmail, int64, error)
 	GetUserEmailByID(ctx context.Context, userEmailID int64, userID int64) (*types.UserEmail, error)
+	// 通过 userID + emailID 查询用户邮箱关系
+	GetUserEmailByUserAndEmailID(ctx context.Context, userID int64, emailID int64) (*types.UserEmail, error)
 	UpdateUserEmailRemark(ctx context.Context, userEmailID int64, userID int64, remark *string) error
 	DeleteUserEmail(ctx context.Context, userEmailID int64, userID int64) error
 	VerifyUserEmail(ctx context.Context, userEmailID int64, userID int64) error
@@ -148,6 +150,17 @@ func (r *emailRepository) GetUserEmailByID(ctx context.Context, userEmailID int6
 		return nil, fmt.Errorf("failed to get user email: %w", err)
 	}
 	return &userEmail, nil
+}
+
+// GetUserEmailByUserAndEmailID 通过 userID + emailID 获取用户邮箱关系
+func (r *emailRepository) GetUserEmailByUserAndEmailID(ctx context.Context, userID int64, emailID int64) (*types.UserEmail, error) {
+	var ue types.UserEmail
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND email_id = ?", userID, emailID).
+		First(&ue).Error; err != nil {
+		return nil, err
+	}
+	return &ue, nil
 }
 
 // UpdateUserEmailRemark 更新用户邮箱备注
