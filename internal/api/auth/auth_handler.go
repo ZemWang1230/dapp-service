@@ -40,9 +40,9 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		authGroup.POST("/refresh-token", h.RefreshToken)
 
 		// 获取用户资料
-		// GET /api/v1/auth/profile
+		// POST /api/v1/auth/profile
 		// http://localhost:8080/api/v1/auth/profile
-		authGroup.GET("/profile", middleware.AuthMiddleware(h.authService), h.GetProfile)
+		authGroup.POST("/profile", middleware.AuthMiddleware(h.authService), h.GetProfile)
 	}
 }
 
@@ -187,7 +187,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "用户不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/auth/profile [get]
+// @Router /api/v1/auth/profile [post]
 func (h *Handler) GetProfile(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, walletAddress, ok := middleware.GetUserFromContext(c)

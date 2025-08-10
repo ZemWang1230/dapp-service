@@ -2,7 +2,6 @@ package email
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"timelocker-backend/internal/middleware"
 	"timelocker-backend/internal/service/auth"
@@ -35,17 +34,17 @@ func (h *EmailHandler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		// 邮箱管理：不再暴露单独的添加邮箱接口，改为通过发送验证码自动创建/复用未验证记录
 		// 获取邮箱列表
-		// GET /api/v1/emails
+		// POST /api/v1/emails
 		// http://localhost:8080/api/v1/emails
-		emailGroup.GET("", h.GetEmails)
+		emailGroup.POST("", h.GetEmails)
 		// 更新邮箱备注
-		// PUT /api/v1/emails/{id}/remark
-		// http://localhost:8080/api/v1/emails/1/remark
-		emailGroup.PUT("/:id/remark", h.UpdateEmailRemark)
+		// POST /api/v1/emails/remark
+		// http://localhost:8080/api/v1/emails/remark
+		emailGroup.POST("/remark", h.UpdateEmailRemark)
 		// 删除邮箱
-		// DELETE /api/v1/emails/{id}
-		// http://localhost:8080/api/v1/emails/1
-		emailGroup.DELETE("/:id", h.DeleteEmail)
+		// POST /api/v1/emails/delete
+		// http://localhost:8080/api/v1/emails/delete
+		emailGroup.POST("/delete", h.DeleteEmail)
 
 		// 邮箱验证
 		// 发送验证码
@@ -70,12 +69,11 @@ func (h *EmailHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param page query int false "页码，默认为1" default(1)
-// @Param page_size query int false "每页大小，默认为10，最大100" default(10)
+// @Param request body types.GetEmailsRequest false "分页参数"
 // @Success 200 {object} types.APIResponse{data=types.EmailListResponse}
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/emails [get]
+// @Router /api/v1/emails [post]
 func (h *EmailHandler) GetEmails(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
@@ -90,21 +88,18 @@ func (h *EmailHandler) GetEmails(c *gin.Context) {
 		return
 	}
 
-	// 解析分页参数
-	page := 1
-	pageSize := 10
-	if p := c.Query("page"); p != "" {
-		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
-			page = parsed
-		}
+	// 解析分页参数（支持 body 优先，兼容 query）
+	req := types.GetEmailsRequest{Page: 1, PageSize: 10}
+	_ = c.ShouldBindQuery(&req)
+	_ = c.ShouldBindJSON(&req)
+	if req.Page <= 0 {
+		req.Page = 1
 	}
-	if ps := c.Query("page_size"); ps != "" {
-		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
-			pageSize = parsed
-		}
+	if req.PageSize <= 0 || req.PageSize > 100 {
+		req.PageSize = 10
 	}
 
-	result, err := h.emailService.GetUserEmails(c.Request.Context(), userIDInt, page, pageSize)
+	result, err := h.emailService.GetUserEmails(c.Request.Context(), userIDInt, req.Page, req.PageSize)
 	if err != nil {
 		logger.Error("Failed to get user emails", err, "userID", userIDInt)
 		c.JSON(http.StatusOK, types.APIResponse{Success: false, Error: &types.APIError{Code: "INTERNAL_ERROR", Message: "Failed to get emails", Details: err.Error()}})
@@ -124,8 +119,7 @@ func (h *EmailHandler) GetEmails(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "用户邮箱ID"
-// @Param request body types.UpdateEmailRemarkRequest true "更新备注请求"
+// @Param request body types.UpdateEmailRemarkWithIDRequest true "更新备注请求（包含ID）"
 // @Success 200 {object} types.APIResponse
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
@@ -133,7 +127,7 @@ func (h *EmailHandler) GetEmails(c *gin.Context) {
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "邮箱不存在"
 // @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/emails/{id}/remark [put]
+// @Router /api/v1/emails/remark [post]
 func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
@@ -148,15 +142,7 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 		return
 	}
 
-	// 获取邮箱ID
-	userEmailIDStr := c.Param("id")
-	userEmailID, err := strconv.ParseInt(userEmailIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: "Invalid email ID"}})
-		return
-	}
-
-	var req types.UpdateEmailRemarkRequest
+	var req types.UpdateEmailRemarkWithIDRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("Invalid request body", err)
 		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
@@ -171,9 +157,9 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 		}
 	}
 
-	err = h.emailService.UpdateEmailRemark(c.Request.Context(), userEmailID, userIDInt, req.Remark)
+	err := h.emailService.UpdateEmailRemark(c.Request.Context(), req.ID, userIDInt, req.Remark)
 	if err != nil {
-		logger.Error("Failed to update email remark", err, "userID", userIDInt, "userEmailID", userEmailID)
+		logger.Error("Failed to update email remark", err, "userID", userIDInt, "userEmailID", req.ID)
 		if err.Error() == "user email not found" {
 			c.JSON(http.StatusNotFound, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found"}})
 			return
@@ -195,14 +181,14 @@ func (h *EmailHandler) UpdateEmailRemark(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "用户邮箱ID"
+// @Param request body types.DeleteEmailRequest true "删除邮箱请求（包含ID）"
 // @Success 200 {object} types.APIResponse
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未授权"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权限操作该邮箱"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "邮箱不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/emails/{id} [delete]
+// @Router /api/v1/emails/delete [post]
 func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 	// 获取用户ID
 	userID, exists := c.Get("user_id")
@@ -217,17 +203,15 @@ func (h *EmailHandler) DeleteEmail(c *gin.Context) {
 		return
 	}
 
-	// 获取邮箱ID
-	userEmailIDStr := c.Param("id")
-	userEmailID, err := strconv.ParseInt(userEmailIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_PARAMS", Message: "Invalid email ID"}})
+	var req types.DeleteEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "INVALID_REQUEST", Message: "Invalid request body", Details: err.Error()}})
 		return
 	}
 
-	err = h.emailService.DeleteUserEmail(c.Request.Context(), userEmailID, userIDInt)
+	err := h.emailService.DeleteUserEmail(c.Request.Context(), req.ID, userIDInt)
 	if err != nil {
-		logger.Error("Failed to delete email", err, "userID", userIDInt, "userEmailID", userEmailID)
+		logger.Error("Failed to delete email", err, "userID", userIDInt, "userEmailID", req.ID)
 		if err.Error() == "user email not found" {
 			c.JSON(http.StatusNotFound, types.APIResponse{Success: false, Error: &types.APIError{Code: "EMAIL_NOT_FOUND", Message: "Email not found"}})
 			return

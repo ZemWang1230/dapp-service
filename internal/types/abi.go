@@ -61,3 +61,19 @@ type ABIValidationResult struct {
 	FunctionCount int      `json:"function_count"`
 	EventCount    int      `json:"event_count"`
 }
+
+// GetABIByIDRequest 按ID获取ABI请求
+type GetABIByIDRequest struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
+// UpdateABIWithIDRequest 带ID的更新ABI请求
+type UpdateABIWithIDRequest struct {
+	ID int64 `json:"id" binding:"required"`
+	UpdateABIRequest
+}
+
+// DeleteABIRequest 删除ABI请求
+type DeleteABIRequest struct {
+	ID int64 `json:"id" binding:"required"`
+}

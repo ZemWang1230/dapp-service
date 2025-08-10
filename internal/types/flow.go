@@ -4,10 +4,10 @@ import "time"
 
 // GetFlowListRequest 获取流程列表请求
 type GetFlowListRequest struct {
-	Status   *string `form:"status"`    // 状态all, waiting, ready, executed, cancelled, expired
-	Standard *string `form:"standard"`  // 标准compound, openzeppelin
-	Page     int     `form:"page"`      // 页码，默认为1
-	PageSize int     `form:"page_size"` // 每页大小，默认为10，最大100
+	Status   *string `json:"status" form:"status"`       // 状态all, waiting, ready, executed, cancelled, expired
+	Standard *string `json:"standard" form:"standard"`   // 标准compound, openzeppelin
+	Page     int     `json:"page" form:"page"`           // 页码，默认为1
+	PageSize int     `json:"page_size" form:"page_size"` // 每页大小，默认为10，最大100
 }
 
 // GetFlowListResponse 获取流程列表响应

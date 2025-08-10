@@ -90,6 +90,12 @@ type UpdateEmailRemarkRequest struct {
 	Remark *string `json:"remark"`
 }
 
+// UpdateEmailRemarkWithIDRequest 更新邮箱备注（带ID）
+type UpdateEmailRemarkWithIDRequest struct {
+	ID     int64   `json:"id" binding:"required"`
+	Remark *string `json:"remark"`
+}
+
 // SendVerificationCodeRequest 发送验证码请求
 type SendVerificationCodeRequest struct {
 	Email  string  `json:"email"`
@@ -100,6 +106,17 @@ type SendVerificationCodeRequest struct {
 type VerifyEmailRequest struct {
 	Email string `json:"email"`
 	Code  string `json:"code"`
+}
+
+// DeleteEmailRequest 删除邮箱请求
+type DeleteEmailRequest struct {
+	ID int64 `json:"id" binding:"required"`
+}
+
+// GetEmailsRequest 获取邮箱列表请求
+type GetEmailsRequest struct {
+	Page     int `json:"page" form:"page"`
+	PageSize int `json:"page_size" form:"page_size"`
 }
 
 // UserEmailResponse 用户邮箱响应

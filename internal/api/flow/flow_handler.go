@@ -33,13 +33,13 @@ func (h *FlowHandler) RegisterRoutes(router *gin.RouterGroup) {
 	flows := router.Group("/flows")
 	{
 		// 获取与用户相关的流程列表（需要鉴权）
-		// GET /api/v1/flows/list
-		// http://localhost:8080/api/v1/flows/list?status=all&standard=openzeppelin
-		flows.GET("/list", middleware.AuthMiddleware(h.authService), h.GetFlowList)
+		// POST /api/v1/flows/list
+		// http://localhost:8080/api/v1/flows/list
+		flows.POST("/list", middleware.AuthMiddleware(h.authService), h.GetFlowList)
 		// 获取交易详情
-		// GET /api/v1/flows/transaction/detail
-		// http://localhost:8080/api/v1/flows/transaction/detail?standard=openzeppelin&tx_hash=0x...
-		flows.GET("/transaction/detail", h.GetTransactionDetail)
+		// POST /api/v1/flows/transaction/detail
+		// http://localhost:8080/api/v1/flows/transaction/detail
+		flows.POST("/transaction/detail", h.GetTransactionDetail)
 	}
 }
 
@@ -50,15 +50,12 @@ func (h *FlowHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param status query string false "流程状态" Enums(all,waiting,ready,executed,cancelled,expired)
-// @Param standard query string false "Timelock标准" Enums(compound,openzeppelin)
-// @Param page query int false "页码，默认1" default(1)
-// @Param page_size query int false "每页大小，默认10，最大100" default(10)
+// @Param request body types.GetFlowListRequest false "查询参数"
 // @Success 200 {object} types.APIResponse{data=types.GetFlowListResponse}
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/flows/list [get]
+// @Router /api/v1/flows/list [post]
 func (h *FlowHandler) GetFlowList(c *gin.Context) {
 	// 从鉴权中间件获取用户地址
 	_, userAddressStr, ok := middleware.GetUserFromContext(c)
@@ -73,9 +70,12 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 		return
 	}
 
-	// 解析请求参数
+	// 解析请求参数（支持 body 优先，兼容 query）
 	var req types.GetFlowListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
+		// ignore
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
@@ -114,17 +114,16 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 // @Tags Flow
 // @Accept json
 // @Produce json
-// @Param standard query string true "Timelock标准" Enums(compound,openzeppelin)
-// @Param tx_hash query string true "交易哈希 (0x + 64位十六进制)"
+// @Param request body types.GetTransactionDetailRequest true "请求体"
 // @Success 200 {object} types.APIResponse{data=types.GetTransactionDetailResponse}
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误（INVALID_STANDARD / INVALID_TX_HASH）"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "交易不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/flows/transaction/detail [get]
+// @Router /api/v1/flows/transaction/detail [post]
 func (h *FlowHandler) GetTransactionDetail(c *gin.Context) {
 	// 解析请求参数
 	var req types.GetTransactionDetailRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{

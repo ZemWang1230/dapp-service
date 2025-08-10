@@ -156,8 +156,278 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/abi/delete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除用户创建的ABI。用户只能删除自己创建的ABI，不能删除平台共享的ABI。删除操作是不可逆的。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ABI"
+                ],
+                "summary": "删除ABI",
+                "parameters": [
+                    {
+                        "description": "删除ABI请求体（包含ID）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.DeleteABIRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ABI删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "无效的ABI ID",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证或令牌无效",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "无权删除该ABI或尝试删除共享ABI",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "ABI不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/abi/get": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "根据ABI ID获取详细信息。用户只能访问自己创建的ABI或平台共享的ABI。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ABI"
+                ],
+                "summary": "获取ABI详情",
+                "parameters": [
+                    {
+                        "description": "获取ABI详情请求体（包含ID）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.GetABIByIDRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "获取ABI详情成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/types.ABIResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "无效的ABI ID",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证或令牌无效",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "无权访问该ABI",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "ABI不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/abi/list": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -195,6 +465,183 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "未认证或令牌无效",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/abi/update": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。名称长度1-200；描述≤500。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ABI"
+                ],
+                "summary": "更新ABI",
+                "parameters": [
+                    {
+                        "description": "更新ABI请求体（包含ID）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.UpdateABIWithIDRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ABI更新成功",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/types.ABIResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误或ABI格式无效",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证或令牌无效",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "无权更新该ABI",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "ABI不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "409": {
+                        "description": "ABI名称已存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "422": {
+                        "description": "参数校验失败",
                         "schema": {
                             "allOf": [
                                 {
@@ -360,454 +807,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/abi/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "根据ABI ID获取详细信息。用户只能访问自己创建的ABI或平台共享的ABI。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ABI"
-                ],
-                "summary": "获取ABI详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ABI ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "获取ABI详情成功",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.ABIResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "无效的ABI ID",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "403": {
-                        "description": "无权访问该ABI",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "ABI不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。名称长度1-200；描述≤500。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ABI"
-                ],
-                "summary": "更新ABI",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ABI ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "更新ABI请求体",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.UpdateABIRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "ABI更新成功",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.ABIResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误或ABI格式无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "403": {
-                        "description": "无权更新该ABI",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "ABI不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "409": {
-                        "description": "ABI名称已存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "422": {
-                        "description": "参数校验失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "删除用户创建的ABI。用户只能删除自己创建的ABI，不能删除平台共享的ABI。删除操作是不可逆的。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ABI"
-                ],
-                "summary": "删除ABI",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "ABI ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "ABI删除成功",
-                        "schema": {
-                            "$ref": "#/definitions/types.APIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "无效的ABI ID",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未认证或令牌无效",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "403": {
-                        "description": "无权删除该ABI或尝试删除共享ABI",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "ABI不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/assets": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -959,7 +960,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/auth/profile": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1270,8 +1271,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/chain/chainid/{chain_id}": {
-            "get": {
+        "/api/v1/chain/chainid": {
+            "post": {
                 "description": "根据指定的链ID（如1代表以太坊主网）获取单个支持链的详细信息，包括链名称、原生代币、Logo等基本信息。",
                 "consumes": [
                     "application/json"
@@ -1285,12 +1286,13 @@ const docTemplate = `{
                 "summary": "根据ChainID获取链信息",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "example": 1,
-                        "description": "链ID（区块链网络ID）",
-                        "name": "chain_id",
-                        "in": "path",
-                        "required": true
+                        "description": "按ChainID获取请求体",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.GetChainByChainIDRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -1370,7 +1372,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/chain/list": {
-            "get": {
+            "post": {
                 "description": "获取所有支持的区块链列表，可根据是否测试网和是否激活状态进行筛选。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。",
                 "consumes": [
                     "application/json"
@@ -1384,18 +1386,12 @@ const docTemplate = `{
                 "summary": "获取支持的区块链列表",
                 "parameters": [
                     {
-                        "type": "boolean",
-                        "example": false,
-                        "description": "是否筛选测试网",
-                        "name": "is_testnet",
-                        "in": "query"
-                    },
-                    {
-                        "type": "boolean",
-                        "example": true,
-                        "description": "是否筛选激活状态",
-                        "name": "is_active",
-                        "in": "query"
+                        "description": "筛选参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/types.GetSupportChainsRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -1456,8 +1452,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/chain/wallet-config/{chain_id}": {
-            "get": {
+        "/api/v1/chain/wallet-config": {
+            "post": {
                 "description": "获取指定链ID的钱包插件配置数据，包括chainId、chainName、nativeCurrency、rpcUrls、blockExplorerUrls等信息，用于帮助用户在钱包插件中添加该链。",
                 "consumes": [
                     "application/json"
@@ -1471,12 +1467,13 @@ const docTemplate = `{
                 "summary": "获取钱包插件添加链的配置数据",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "example": 137,
-                        "description": "链ID",
-                        "name": "chain_id",
-                        "in": "path",
-                        "required": true
+                        "description": "获取钱包配置请求体",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.GetWalletChainConfigRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -1556,7 +1553,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/emails": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1575,18 +1572,12 @@ const docTemplate = `{
                 "summary": "获取用户邮箱列表",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码，默认为1",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 10,
-                        "description": "每页大小，默认为10，最大100",
-                        "name": "page_size",
-                        "in": "query"
+                        "description": "分页参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/types.GetEmailsRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -1610,6 +1601,282 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "未授权",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/emails/delete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "删除指定的邮箱地址",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Email"
+                ],
+                "summary": "删除邮箱",
+                "parameters": [
+                    {
+                        "description": "删除邮箱请求（包含ID）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.DeleteEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "无权限操作该邮箱",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "邮箱不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/emails/remark": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "更新指定邮箱的备注信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Email"
+                ],
+                "summary": "更新邮箱备注",
+                "parameters": [
+                    {
+                        "description": "更新备注请求（包含ID）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.UpdateEmailRemarkWithIDRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "无权限操作该邮箱",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "邮箱不存在",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "422": {
+                        "description": "参数校验失败",
                         "schema": {
                             "allOf": [
                                 {
@@ -1923,289 +2190,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/emails/{id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "删除指定的邮箱地址",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Email"
-                ],
-                "summary": "删除邮箱",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "用户邮箱ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.APIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "403": {
-                        "description": "无权限操作该邮箱",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "邮箱不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/emails/{id}/remark": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "更新指定邮箱的备注信息",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Email"
-                ],
-                "summary": "更新邮箱备注",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "用户邮箱ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "更新备注请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.UpdateEmailRemarkRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/types.APIResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "403": {
-                        "description": "无权限操作该邮箱",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "404": {
-                        "description": "邮箱不存在",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "422": {
-                        "description": "参数校验失败",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/flows/list": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2224,42 +2210,12 @@ const docTemplate = `{
                 "summary": "获取与用户相关的流程列表",
                 "parameters": [
                     {
-                        "enum": [
-                            "all",
-                            "waiting",
-                            "ready",
-                            "executed",
-                            "cancelled",
-                            "expired"
-                        ],
-                        "type": "string",
-                        "description": "流程状态",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "enum": [
-                            "compound",
-                            "openzeppelin"
-                        ],
-                        "type": "string",
-                        "description": "Timelock标准",
-                        "name": "standard",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 1,
-                        "description": "页码，默认1",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "default": 10,
-                        "description": "每页大小，默认10，最大100",
-                        "name": "page_size",
-                        "in": "query"
+                        "description": "查询参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/types.GetFlowListRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -2339,7 +2295,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/flows/transaction/detail": {
-            "get": {
+            "post": {
                 "description": "根据交易哈希和标准获取交易详情。standard 仅支持 compound/openzeppelin；tx_hash 必须为 0x 开头的64位十六进制。",
                 "consumes": [
                     "application/json"
@@ -2353,22 +2309,13 @@ const docTemplate = `{
                 "summary": "获取交易详情",
                 "parameters": [
                     {
-                        "enum": [
-                            "compound",
-                            "openzeppelin"
-                        ],
-                        "type": "string",
-                        "description": "Timelock标准",
-                        "name": "standard",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "交易哈希 (0x + 64位十六进制)",
-                        "name": "tx_hash",
-                        "in": "query",
-                        "required": true
+                        "description": "请求体",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.GetTransactionDetailRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -2448,7 +2395,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/sponsors/public": {
-            "get": {
+            "post": {
                 "description": "获取所有激活的赞助方和生态伙伴信息，用于在前端展示。返回的数据按照排序权重和创建时间排序。",
                 "consumes": [
                     "application/json"
@@ -2642,7 +2589,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/timelock/delete": {
-            "delete": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2801,7 +2748,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/timelock/detail": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2820,32 +2767,13 @@ const docTemplate = `{
                 "summary": "获取timelock合约详细信息",
                 "parameters": [
                     {
-                        "enum": [
-                            "compound",
-                            "openzeppelin"
-                        ],
-                        "type": "string",
-                        "example": "openzeppelin",
-                        "description": "按合约标准",
-                        "name": "standard",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "example": 1,
-                        "description": "链ID",
-                        "name": "chain_id",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "example": "0x...",
-                        "description": "合约地址",
-                        "name": "contract_address",
-                        "in": "query",
-                        "required": true
+                        "description": "获取详情请求体",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.GetTimeLockDetailRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -2979,7 +2907,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/timelock/list": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2998,26 +2926,12 @@ const docTemplate = `{
                 "summary": "获取用户timelock合约列表（按权限筛选，所有链）",
                 "parameters": [
                     {
-                        "enum": [
-                            "compound",
-                            "openzeppelin"
-                        ],
-                        "type": "string",
-                        "example": "openzeppelin",
-                        "description": "按合约标准筛选",
-                        "name": "standard",
-                        "in": "query"
-                    },
-                    {
-                        "enum": [
-                            "active",
-                            "inactive"
-                        ],
-                        "type": "string",
-                        "example": "active",
-                        "description": "按状态筛选",
-                        "name": "status",
-                        "in": "query"
+                        "description": "查询参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/types.GetTimeLockListRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -3173,7 +3087,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/timelock/update": {
-            "put": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -3326,32 +3240,6 @@ const docTemplate = `{
                                     }
                                 }
                             ]
-                        }
-                    }
-                }
-            }
-        },
-        "/health": {
-            "get": {
-                "description": "检查TimeLocker后端服务的健康状态，返回服务状态、服务名称和版本信息。此接口用于监控系统可用性。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "System"
-                ],
-                "summary": "服务健康检查",
-                "responses": {
-                    "200": {
-                        "description": "服务健康状态正常",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
                         }
                     }
                 }
@@ -3671,6 +3559,28 @@ const docTemplate = `{
                 }
             }
         },
+        "types.DeleteABIRequest": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "types.DeleteEmailRequest": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
         "types.DeleteTimeLockRequest": {
             "type": "object",
             "required": [
@@ -3789,6 +3699,60 @@ const docTemplate = `{
                 }
             }
         },
+        "types.GetABIByIDRequest": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "types.GetChainByChainIDRequest": {
+            "type": "object",
+            "required": [
+                "chain_id"
+            ],
+            "properties": {
+                "chain_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "types.GetEmailsRequest": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                }
+            }
+        },
+        "types.GetFlowListRequest": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "description": "页码，默认为1",
+                    "type": "integer"
+                },
+                "page_size": {
+                    "description": "每页大小，默认为10，最大100",
+                    "type": "integer"
+                },
+                "standard": {
+                    "description": "标准compound, openzeppelin",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "状态all, waiting, ready, executed, cancelled, expired",
+                    "type": "string"
+                }
+            }
+        },
         "types.GetFlowListResponse": {
             "type": "object",
             "properties": {
@@ -3822,6 +3786,19 @@ const docTemplate = `{
                 }
             }
         },
+        "types.GetSupportChainsRequest": {
+            "type": "object",
+            "properties": {
+                "is_active": {
+                    "description": "筛选激活状态",
+                    "type": "boolean"
+                },
+                "is_testnet": {
+                    "description": "筛选测试网/主网",
+                    "type": "boolean"
+                }
+            }
+        },
         "types.GetSupportChainsResponse": {
             "type": "object",
             "properties": {
@@ -3836,6 +3813,29 @@ const docTemplate = `{
                 }
             }
         },
+        "types.GetTimeLockDetailRequest": {
+            "type": "object",
+            "required": [
+                "chain_id",
+                "contract_address",
+                "standard"
+            ],
+            "properties": {
+                "chain_id": {
+                    "type": "integer"
+                },
+                "contract_address": {
+                    "type": "string"
+                },
+                "standard": {
+                    "type": "string",
+                    "enum": [
+                        "compound",
+                        "openzeppelin"
+                    ]
+                }
+            }
+        },
         "types.GetTimeLockDetailResponse": {
             "type": "object",
             "properties": {
@@ -3846,6 +3846,17 @@ const docTemplate = `{
                     "$ref": "#/definitions/types.OpenzeppelinTimeLockWithPermission"
                 },
                 "standard": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.GetTimeLockListRequest": {
+            "type": "object",
+            "properties": {
+                "standard": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -3870,6 +3881,27 @@ const docTemplate = `{
                 }
             }
         },
+        "types.GetTransactionDetailRequest": {
+            "type": "object",
+            "required": [
+                "standard",
+                "tx_hash"
+            ],
+            "properties": {
+                "standard": {
+                    "description": "标准",
+                    "type": "string",
+                    "enum": [
+                        "compound",
+                        "openzeppelin"
+                    ]
+                },
+                "tx_hash": {
+                    "description": "交易哈希",
+                    "type": "string"
+                }
+            }
+        },
         "types.GetTransactionDetailResponse": {
             "type": "object",
             "properties": {
@@ -3880,6 +3912,17 @@ const docTemplate = `{
                             "$ref": "#/definitions/types.TimelockTransactionDetail"
                         }
                     ]
+                }
+            }
+        },
+        "types.GetWalletChainConfigRequest": {
+            "type": "object",
+            "required": [
+                "chain_id"
+            ],
+            "properties": {
+                "chain_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -4136,10 +4179,11 @@ const docTemplate = `{
                 }
             }
         },
-        "types.UpdateABIRequest": {
+        "types.UpdateABIWithIDRequest": {
             "type": "object",
             "required": [
                 "abi_content",
+                "id",
                 "name"
             ],
             "properties": {
@@ -4150,6 +4194,9 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 500
                 },
+                "id": {
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 200,
@@ -4157,9 +4204,15 @@ const docTemplate = `{
                 }
             }
         },
-        "types.UpdateEmailRemarkRequest": {
+        "types.UpdateEmailRemarkWithIDRequest": {
             "type": "object",
+            "required": [
+                "id"
+            ],
             "properties": {
+                "id": {
+                    "type": "integer"
+                },
                 "remark": {
                     "type": "string"
                 }

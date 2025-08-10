@@ -215,6 +215,20 @@ definitions:
     - contract_address
     - standard
     type: object
+  types.DeleteABIRequest:
+    properties:
+      id:
+        type: integer
+    required:
+    - id
+    type: object
+  types.DeleteEmailRequest:
+    properties:
+      id:
+        type: integer
+    required:
+    - id
+    type: object
   types.DeleteTimeLockRequest:
     properties:
       chain_id:
@@ -300,6 +314,42 @@ definitions:
         description: 价值
         type: string
     type: object
+  types.GetABIByIDRequest:
+    properties:
+      id:
+        type: integer
+    required:
+    - id
+    type: object
+  types.GetChainByChainIDRequest:
+    properties:
+      chain_id:
+        type: integer
+    required:
+    - chain_id
+    type: object
+  types.GetEmailsRequest:
+    properties:
+      page:
+        type: integer
+      page_size:
+        type: integer
+    type: object
+  types.GetFlowListRequest:
+    properties:
+      page:
+        description: 页码，默认为1
+        type: integer
+      page_size:
+        description: 每页大小，默认为10，最大100
+        type: integer
+      standard:
+        description: 标准compound, openzeppelin
+        type: string
+      status:
+        description: 状态all, waiting, ready, executed, cancelled, expired
+        type: string
+    type: object
   types.GetFlowListResponse:
     properties:
       flows:
@@ -322,6 +372,15 @@ definitions:
           $ref: '#/definitions/types.SponsorInfo'
         type: array
     type: object
+  types.GetSupportChainsRequest:
+    properties:
+      is_active:
+        description: 筛选激活状态
+        type: boolean
+      is_testnet:
+        description: 筛选测试网/主网
+        type: boolean
+    type: object
   types.GetSupportChainsResponse:
     properties:
       chains:
@@ -331,6 +390,22 @@ definitions:
       total:
         type: integer
     type: object
+  types.GetTimeLockDetailRequest:
+    properties:
+      chain_id:
+        type: integer
+      contract_address:
+        type: string
+      standard:
+        enum:
+        - compound
+        - openzeppelin
+        type: string
+    required:
+    - chain_id
+    - contract_address
+    - standard
+    type: object
   types.GetTimeLockDetailResponse:
     properties:
       compound_data:
@@ -338,6 +413,13 @@ definitions:
       openzeppelin_data:
         $ref: '#/definitions/types.OpenzeppelinTimeLockWithPermission'
       standard:
+        type: string
+    type: object
+  types.GetTimeLockListRequest:
+    properties:
+      standard:
+        type: string
+      status:
         type: string
     type: object
   types.GetTimeLockListResponse:
@@ -353,12 +435,34 @@ definitions:
       total:
         type: integer
     type: object
+  types.GetTransactionDetailRequest:
+    properties:
+      standard:
+        description: 标准
+        enum:
+        - compound
+        - openzeppelin
+        type: string
+      tx_hash:
+        description: 交易哈希
+        type: string
+    required:
+    - standard
+    - tx_hash
+    type: object
   types.GetTransactionDetailResponse:
     properties:
       detail:
         allOf:
         - $ref: '#/definitions/types.TimelockTransactionDetail'
         description: 交易详情
+    type: object
+  types.GetWalletChainConfigRequest:
+    properties:
+      chain_id:
+        type: integer
+    required:
+    - chain_id
     type: object
   types.NativeCurrencyConfig:
     properties:
@@ -539,25 +643,32 @@ definitions:
         description: 交易状态（success, failed）
         type: string
     type: object
-  types.UpdateABIRequest:
+  types.UpdateABIWithIDRequest:
     properties:
       abi_content:
         type: string
       description:
         maxLength: 500
         type: string
+      id:
+        type: integer
       name:
         maxLength: 200
         minLength: 1
         type: string
     required:
     - abi_content
+    - id
     - name
     type: object
-  types.UpdateEmailRemarkRequest:
+  types.UpdateEmailRemarkWithIDRequest:
     properties:
+      id:
+        type: integer
       remark:
         type: string
+    required:
+    - id
     type: object
   types.UpdateTimeLockRequest:
     properties:
@@ -761,17 +872,18 @@ paths:
       summary: 创建ABI
       tags:
       - ABI
-  /api/v1/abi/{id}:
-    delete:
+  /api/v1/abi/delete:
+    post:
       consumes:
       - application/json
       description: 删除用户创建的ABI。用户只能删除自己创建的ABI，不能删除平台共享的ABI。删除操作是不可逆的。
       parameters:
-      - description: ABI ID
-        in: path
-        name: id
+      - description: 删除ABI请求体（包含ID）
+        in: body
+        name: request
         required: true
-        type: integer
+        schema:
+          $ref: '#/definitions/types.DeleteABIRequest'
       produces:
       - application/json
       responses:
@@ -829,16 +941,18 @@ paths:
       summary: 删除ABI
       tags:
       - ABI
-    get:
+  /api/v1/abi/get:
+    post:
       consumes:
       - application/json
       description: 根据ABI ID获取详细信息。用户只能访问自己创建的ABI或平台共享的ABI。
       parameters:
-      - description: ABI ID
-        in: path
-        name: id
+      - description: 获取ABI详情请求体（包含ID）
+        in: body
+        name: request
         required: true
-        type: integer
+        schema:
+          $ref: '#/definitions/types.GetABIByIDRequest'
       produces:
       - application/json
       responses:
@@ -901,22 +1015,58 @@ paths:
       summary: 获取ABI详情
       tags:
       - ABI
-    put:
+  /api/v1/abi/list:
+    post:
+      consumes:
+      - application/json
+      description: 获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI。返回结果分为两个部分：用户ABI和共享ABI。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取ABI列表成功
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.ABIListResponse'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取ABI列表
+      tags:
+      - ABI
+  /api/v1/abi/update:
+    post:
       consumes:
       - application/json
       description: 更新用户创建的ABI。系统会重新验证ABI格式。用户只能更新自己创建的ABI。名称长度1-200；描述≤500。
       parameters:
-      - description: ABI ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 更新ABI请求体
+      - description: 更新ABI请求体（包含ID）
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/types.UpdateABIRequest'
+          $ref: '#/definitions/types.UpdateABIWithIDRequest'
       produces:
       - application/json
       responses:
@@ -997,46 +1147,6 @@ paths:
       summary: 更新ABI
       tags:
       - ABI
-  /api/v1/abi/list:
-    get:
-      consumes:
-      - application/json
-      description: 获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI。返回结果分为两个部分：用户ABI和共享ABI。
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 获取ABI列表成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.ABIListResponse'
-              type: object
-        "401":
-          description: 未认证或令牌无效
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      security:
-      - BearerAuth: []
-      summary: 获取ABI列表
-      tags:
-      - ABI
   /api/v1/abi/validate:
     post:
       consumes:
@@ -1106,7 +1216,7 @@ paths:
       tags:
       - ABI
   /api/v1/assets:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取当前认证用户在所有支持的区块链上的资产信息，包括代币余额、USD价值、价格变化等。如果数据库中没有缓存数据，系统会自动从区块链上刷新最新的资产信息。资产按USD价值从高到低排序。
@@ -1186,7 +1296,7 @@ paths:
       tags:
       - Assets
   /api/v1/auth/profile:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取当前认证用户的详细资料信息，包括钱包地址、创建时间等。需要有效的JWT令牌。
@@ -1351,18 +1461,18 @@ paths:
       summary: 钱包连接认证
       tags:
       - Authentication
-  /api/v1/chain/chainid/{chain_id}:
-    get:
+  /api/v1/chain/chainid:
+    post:
       consumes:
       - application/json
       description: 根据指定的链ID（如1代表以太坊主网）获取单个支持链的详细信息，包括链名称、原生代币、Logo等基本信息。
       parameters:
-      - description: 链ID（区块链网络ID）
-        example: 1
-        in: path
-        name: chain_id
+      - description: 按ChainID获取请求体
+        in: body
+        name: request
         required: true
-        type: integer
+        schema:
+          $ref: '#/definitions/types.GetChainByChainIDRequest'
       produces:
       - application/json
       responses:
@@ -1406,21 +1516,16 @@ paths:
       tags:
       - Chain
   /api/v1/chain/list:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取所有支持的区块链列表，可根据是否测试网和是否激活状态进行筛选。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。
       parameters:
-      - description: 是否筛选测试网
-        example: false
-        in: query
-        name: is_testnet
-        type: boolean
-      - description: 是否筛选激活状态
-        example: true
-        in: query
-        name: is_active
-        type: boolean
+      - description: 筛选参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/types.GetSupportChainsRequest'
       produces:
       - application/json
       responses:
@@ -1454,18 +1559,18 @@ paths:
       summary: 获取支持的区块链列表
       tags:
       - Chain
-  /api/v1/chain/wallet-config/{chain_id}:
-    get:
+  /api/v1/chain/wallet-config:
+    post:
       consumes:
       - application/json
       description: 获取指定链ID的钱包插件配置数据，包括chainId、chainName、nativeCurrency、rpcUrls、blockExplorerUrls等信息，用于帮助用户在钱包插件中添加该链。
       parameters:
-      - description: 链ID
-        example: 137
-        in: path
-        name: chain_id
+      - description: 获取钱包配置请求体
+        in: body
+        name: request
         required: true
-        type: integer
+        schema:
+          $ref: '#/definitions/types.GetWalletChainConfigRequest'
       produces:
       - application/json
       responses:
@@ -1509,21 +1614,16 @@ paths:
       tags:
       - Chain
   /api/v1/emails:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取当前用户的所有邮箱地址
       parameters:
-      - default: 1
-        description: 页码，默认为1
-        in: query
-        name: page
-        type: integer
-      - default: 10
-        description: 每页大小，默认为10，最大100
-        in: query
-        name: page_size
-        type: integer
+      - description: 分页参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/types.GetEmailsRequest'
       produces:
       - application/json
       responses:
@@ -1559,17 +1659,18 @@ paths:
       summary: 获取用户邮箱列表
       tags:
       - Email
-  /api/v1/emails/{id}:
-    delete:
+  /api/v1/emails/delete:
+    post:
       consumes:
       - application/json
       description: 删除指定的邮箱地址
       parameters:
-      - description: 用户邮箱ID
-        in: path
-        name: id
+      - description: 删除邮箱请求（包含ID）
+        in: body
+        name: request
         required: true
-        type: integer
+        schema:
+          $ref: '#/definitions/types.DeleteEmailRequest'
       produces:
       - application/json
       responses:
@@ -1627,23 +1728,18 @@ paths:
       summary: 删除邮箱
       tags:
       - Email
-  /api/v1/emails/{id}/remark:
-    put:
+  /api/v1/emails/remark:
+    post:
       consumes:
       - application/json
       description: 更新指定邮箱的备注信息
       parameters:
-      - description: 用户邮箱ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 更新备注请求
+      - description: 更新备注请求（包含ID）
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/types.UpdateEmailRemarkRequest'
+          $ref: '#/definitions/types.UpdateEmailRemarkWithIDRequest'
       produces:
       - application/json
       responses:
@@ -1858,39 +1954,16 @@ paths:
       tags:
       - Email
   /api/v1/flows/list:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取与用户相关的timelock流程列表，包括发起的和有权限管理的
       parameters:
-      - description: 流程状态
-        enum:
-        - all
-        - waiting
-        - ready
-        - executed
-        - cancelled
-        - expired
-        in: query
-        name: status
-        type: string
-      - description: Timelock标准
-        enum:
-        - compound
-        - openzeppelin
-        in: query
-        name: standard
-        type: string
-      - default: 1
-        description: 页码，默认1
-        in: query
-        name: page
-        type: integer
-      - default: 10
-        description: 每页大小，默认10，最大100
-        in: query
-        name: page_size
-        type: integer
+      - description: 查询参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/types.GetFlowListRequest'
       produces:
       - application/json
       responses:
@@ -1936,25 +2009,18 @@ paths:
       tags:
       - Flow
   /api/v1/flows/transaction/detail:
-    get:
+    post:
       consumes:
       - application/json
       description: 根据交易哈希和标准获取交易详情。standard 仅支持 compound/openzeppelin；tx_hash 必须为
         0x 开头的64位十六进制。
       parameters:
-      - description: Timelock标准
-        enum:
-        - compound
-        - openzeppelin
-        in: query
-        name: standard
+      - description: 请求体
+        in: body
+        name: request
         required: true
-        type: string
-      - description: 交易哈希 (0x + 64位十六进制)
-        in: query
-        name: tx_hash
-        required: true
-        type: string
+        schema:
+          $ref: '#/definitions/types.GetTransactionDetailRequest'
       produces:
       - application/json
       responses:
@@ -1998,7 +2064,7 @@ paths:
       tags:
       - Flow
   /api/v1/sponsors/public:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取所有激活的赞助方和生态伙伴信息，用于在前端展示。返回的数据按照排序权重和创建时间排序。
@@ -2102,7 +2168,7 @@ paths:
       tags:
       - Timelock
   /api/v1/timelock/delete:
-    delete:
+    post:
       consumes:
       - application/json
       description: 硬删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是硬删除，数据从数据库中删除。合约地址必须为有效以太坊地址（0x
@@ -2186,33 +2252,18 @@ paths:
       tags:
       - Timelock
   /api/v1/timelock/detail:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。合约地址必须为有效以太坊地址（0x
         + 40位十六进制）。
       parameters:
-      - description: 按合约标准
-        enum:
-        - compound
-        - openzeppelin
-        example: openzeppelin
-        in: query
-        name: standard
+      - description: 获取详情请求体
+        in: body
+        name: request
         required: true
-        type: string
-      - description: 链ID
-        example: 1
-        in: query
-        name: chain_id
-        required: true
-        type: integer
-      - description: 合约地址
-        example: 0x...
-        in: query
-        name: contract_address
-        required: true
-        type: string
+        schema:
+          $ref: '#/definitions/types.GetTimeLockDetailRequest'
       produces:
       - application/json
       responses:
@@ -2285,27 +2336,16 @@ paths:
       tags:
       - Timelock
   /api/v1/timelock/list:
-    get:
+    post:
       consumes:
       - application/json
       description: 获取当前用户在所有链上有权限访问的timelock合约列表。支持按合约标准和状态进行筛选。返回的列表根据用户权限进行精细控制，只显示用户作为创建者、管理员、提议者、执行者的合约。
       parameters:
-      - description: 按合约标准筛选
-        enum:
-        - compound
-        - openzeppelin
-        example: openzeppelin
-        in: query
-        name: standard
-        type: string
-      - description: 按状态筛选
-        enum:
-        - active
-        - inactive
-        example: active
-        in: query
-        name: status
-        type: string
+      - description: 查询参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/types.GetTimeLockListRequest'
       produces:
       - application/json
       responses:
@@ -2391,7 +2431,7 @@ paths:
       tags:
       - Timelock
   /api/v1/timelock/update:
-    put:
+    post:
       consumes:
       - application/json
       description: 更新指定timelock合约的备注信息。只有合约的创建者/导入者才能更新备注。备注信息用于帮助用户管理和识别不同的timelock合约。合约地址必须为有效以太坊地址（0x
@@ -2474,23 +2514,6 @@ paths:
       summary: 更新timelock合约备注
       tags:
       - Timelock
-  /health:
-    get:
-      consumes:
-      - application/json
-      description: 检查TimeLocker后端服务的健康状态，返回服务状态、服务名称和版本信息。此接口用于监控系统可用性。
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 服务健康状态正常
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: 服务健康检查
-      tags:
-      - System
 schemes:
 - http
 - https

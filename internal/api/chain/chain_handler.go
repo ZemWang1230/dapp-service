@@ -2,7 +2,6 @@ package chain
 
 import (
 	"net/http"
-	"strconv"
 
 	"timelocker-backend/internal/service/chain"
 	"timelocker-backend/internal/types"
@@ -29,19 +28,19 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	chainGroup := router.Group("/chain")
 	{
 		// 获取支持链列表
-		// GET /api/v1/chain/list
-		// http://localhost:8080/api/v1/chain/list?is_testnet=false&is_active=true
-		chainGroup.GET("/list", h.GetSupportChains)
+		// POST /api/v1/chain/list
+		// http://localhost:8080/api/v1/chain/list
+		chainGroup.POST("/list", h.GetSupportChains)
 
 		// 根据ChainID获取链信息
-		// GET /api/v1/chain/chainid/:chain_id
-		// http://localhost:8080/api/v1/chain/chainid/1
-		chainGroup.GET("/chainid/:chain_id", h.GetChainByChainID)
+		// POST /api/v1/chain/chainid
+		// http://localhost:8080/api/v1/chain/chainid
+		chainGroup.POST("/chainid", h.GetChainByChainID)
 
 		// 获取钱包插件添加链的配置数据
-		// GET /api/v1/chain/wallet-config/:chain_id
-		// http://localhost:8080/api/v1/chain/wallet-config/1
-		chainGroup.GET("/wallet-config/:chain_id", h.GetWalletChainConfig)
+		// POST /api/v1/chain/wallet-config
+		// http://localhost:8080/api/v1/chain/wallet-config
+		chainGroup.POST("/wallet-config", h.GetWalletChainConfig)
 	}
 }
 
@@ -51,17 +50,18 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Tags Chain
 // @Accept json
 // @Produce json
-// @Param is_testnet query bool false "是否筛选测试网" example(false)
-// @Param is_active query bool false "是否筛选激活状态" example(true)
+// @Param request body types.GetSupportChainsRequest false "筛选参数"
 // @Success 200 {object} types.APIResponse{data=types.GetSupportChainsResponse} "成功获取支持链列表"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/chain/list [get]
+// @Router /api/v1/chain/list [post]
 func (h *Handler) GetSupportChains(c *gin.Context) {
 	var req types.GetSupportChainsRequest
-
-	// 绑定查询参数
+	// 绑定参数（支持 body 优先，兼容 query）
 	if err := c.ShouldBindQuery(&req); err != nil {
+		// ignore, will try JSON
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		logger.Error("GetSupportChains BindQuery Error: ", err)
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
@@ -101,30 +101,29 @@ func (h *Handler) GetSupportChains(c *gin.Context) {
 // @Tags Chain
 // @Accept json
 // @Produce json
-// @Param chain_id path int true "链ID（区块链网络ID）" example(1)
+// @Param request body types.GetChainByChainIDRequest true "按ChainID获取请求体"
 // @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/chain/chainid/{chain_id} [get]
+// @Router /api/v1/chain/chainid [post]
 func (h *Handler) GetChainByChainID(c *gin.Context) {
-	chainIDStr := c.Param("chain_id")
-	chainID, err := strconv.ParseInt(chainIDStr, 10, 64)
-	if err != nil {
+	var req types.GetChainByChainIDRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INVALID_CHAIN_ID",
-				Message: "Invalid chain ID format",
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request parameters",
 				Details: err.Error(),
 			},
 		})
-		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainIDStr)
+		logger.Error("GetChainByChainID Error: ", err)
 		return
 	}
 
 	// 调用服务层
-	chain, err := h.chainService.GetChainByChainID(c.Request.Context(), chainID)
+	chain, err := h.chainService.GetChainByChainID(c.Request.Context(), req.ChainID)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -145,11 +144,11 @@ func (h *Handler) GetChainByChainID(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("GetChainByChainID Error: ", err, "chain_id", chainID)
+		logger.Error("GetChainByChainID Error: ", err, "chain_id", req.ChainID)
 		return
 	}
 
-	logger.Info("GetChainByChainID: ", "chain_id", chainID, "chain_name", chain.ChainName)
+	logger.Info("GetChainByChainID: ", "chain_id", req.ChainID, "chain_name", chain.ChainName)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    chain,
@@ -162,34 +161,29 @@ func (h *Handler) GetChainByChainID(c *gin.Context) {
 // @Tags Chain
 // @Accept json
 // @Produce json
-// @Param chain_id path int true "链ID" example(137)
+// @Param request body types.GetWalletChainConfigRequest true "获取钱包配置请求体"
 // @Success 200 {object} types.APIResponse{data=types.WalletChainConfig} "成功获取钱包配置数据"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/chain/wallet-config/{chain_id} [get]
+// @Router /api/v1/chain/wallet-config [post]
 func (h *Handler) GetWalletChainConfig(c *gin.Context) {
-	chainIDStr := c.Param("chain_id")
-	chainID := int64(0)
-
-	// 转换链ID
-	if parsed, err := strconv.ParseInt(chainIDStr, 10, 64); err != nil {
+	var req types.GetWalletChainConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INVALID_CHAIN_ID",
-				Message: "Invalid chain ID format",
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request parameters",
 				Details: err.Error(),
 			},
 		})
-		logger.Error("GetWalletChainConfig Error: ", err, "chain_id", chainIDStr)
+		logger.Error("GetWalletChainConfig Error: ", err)
 		return
-	} else {
-		chainID = parsed
 	}
 
 	// 调用服务层
-	config, err := h.chainService.GetWalletChainConfig(c.Request.Context(), chainID)
+	config, err := h.chainService.GetWalletChainConfig(c.Request.Context(), req.ChainID)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -210,11 +204,11 @@ func (h *Handler) GetWalletChainConfig(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("GetWalletChainConfig Error: ", err, "chain_id", chainID)
+		logger.Error("GetWalletChainConfig Error: ", err, "chain_id", req.ChainID)
 		return
 	}
 
-	logger.Info("GetWalletChainConfig: ", "chain_id", chainID, "chain_name", config.ChainName)
+	logger.Info("GetWalletChainConfig: ", "chain_id", req.ChainID, "chain_name", config.ChainName)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    config,

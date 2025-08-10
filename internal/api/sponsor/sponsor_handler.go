@@ -29,7 +29,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		// 获取公开的赞助方和生态伙伴列表
 		// http://localhost:8080/api/v1/sponsors/public
-		publicGroup.GET("/public", h.GetPublicSponsors)
+		publicGroup.POST("/public", h.GetPublicSponsors)
 	}
 }
 
@@ -41,7 +41,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Produce json
 // @Success 200 {object} types.APIResponse{data=types.GetPublicSponsorsResponse} "成功获取赞助方和生态伙伴列表"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "获取赞助方列表失败"
-// @Router /api/v1/sponsors/public [get]
+// @Router /api/v1/sponsors/public [post]
 func (h *Handler) GetPublicSponsors(c *gin.Context) {
 	logger.Info("GetPublicSponsors: getting public sponsors")
 

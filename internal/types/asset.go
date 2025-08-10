@@ -168,6 +168,11 @@ type GetChainByChainIDRequest struct {
 	ChainID int64 `json:"chain_id" form:"chain_id" binding:"required"`
 }
 
+// GetWalletChainConfigRequest 获取钱包配置请求
+type GetWalletChainConfigRequest struct {
+	ChainID int64 `json:"chain_id" binding:"required"`
+}
+
 // ChainRPCInfo 链的RPC信息（从数据库获取）
 type ChainRPCInfo struct {
 	ChainName          string  `json:"chain_name" db:"chain_name"`

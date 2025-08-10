@@ -3,7 +3,6 @@ package abi
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"timelocker-backend/internal/middleware"
 	abiService "timelocker-backend/internal/service/abi"
@@ -37,8 +36,8 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		abiGroup.Use(middleware.AuthMiddleware(h.authService))
 
 		// 获取ABI列表（用户的+共享的）
-		// GET /api/v1/abi/list
-		abiGroup.GET("/list", h.GetABIList)
+		// POST /api/v1/abi/list
+		abiGroup.POST("/list", h.GetABIList)
 
 		// 创建新的ABI
 		// POST /api/v1/abi
@@ -49,16 +48,16 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		abiGroup.POST("/validate", h.ValidateABI)
 
 		// 获取ABI详情
-		// GET /api/v1/abi/:id
-		abiGroup.GET("/:id", h.GetABIByID)
+		// POST /api/v1/abi/get
+		abiGroup.POST("/get", h.GetABIByID)
 
 		// 更新ABI
-		// PUT /api/v1/abi/:id
-		abiGroup.PUT("/:id", h.UpdateABI)
+		// POST /api/v1/abi/update
+		abiGroup.POST("/update", h.UpdateABI)
 
 		// 删除ABI
-		// DELETE /api/v1/abi/:id
-		abiGroup.DELETE("/:id", h.DeleteABI)
+		// POST /api/v1/abi/delete
+		abiGroup.POST("/delete", h.DeleteABI)
 	}
 }
 
@@ -153,7 +152,7 @@ func (h *Handler) CreateABI(c *gin.Context) {
 // @Success 200 {object} types.APIResponse{data=types.ABIListResponse} "获取ABI列表成功"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/abi/list [get]
+// @Router /api/v1/abi/list [post]
 func (h *Handler) GetABIList(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, walletAddress, ok := middleware.GetUserFromContext(c)
@@ -197,14 +196,14 @@ func (h *Handler) GetABIList(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "ABI ID"
+// @Param request body types.GetABIByIDRequest true "获取ABI详情请求体（包含ID）"
 // @Success 200 {object} types.APIResponse{data=types.ABIResponse} "获取ABI详情成功"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "无效的ABI ID"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问该ABI"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "ABI不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/abi/{id} [get]
+// @Router /api/v1/abi/get [post]
 func (h *Handler) GetABIByID(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, walletAddress, ok := middleware.GetUserFromContext(c)
@@ -220,24 +219,23 @@ func (h *Handler) GetABIByID(c *gin.Context) {
 		return
 	}
 
-	// 获取路径参数
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	// 绑定请求体
+	var req types.GetABIByIDRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INVALID_ID",
-				Message: "Invalid ABI ID",
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request parameters",
 				Details: err.Error(),
 			},
 		})
-		logger.Error("GetABIByID Error:", errors.New("invalid ABI ID"), "id", idStr)
+		logger.Error("GetABIByID Error:", errors.New("invalid request parameters"), "error", err)
 		return
 	}
 
 	// 调用服务层
-	response, err := h.abiService.GetABIByID(c.Request.Context(), id, walletAddress)
+	response, err := h.abiService.GetABIByID(c.Request.Context(), req.ID, walletAddress)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -261,11 +259,11 @@ func (h *Handler) GetABIByID(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("GetABIByID Error:", err, "id", id, "wallet_address", walletAddress)
+		logger.Error("GetABIByID Error:", err, "id", req.ID, "wallet_address", walletAddress)
 		return
 	}
 
-	logger.Info("GetABIByID Success:", "id", id, "wallet_address", walletAddress, "name", response.Name)
+	logger.Info("GetABIByID Success:", "id", req.ID, "wallet_address", walletAddress, "name", response.Name)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -279,8 +277,7 @@ func (h *Handler) GetABIByID(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "ABI ID"
-// @Param request body types.UpdateABIRequest true "更新ABI请求体"
+// @Param request body types.UpdateABIWithIDRequest true "更新ABI请求体（包含ID）"
 // @Success 200 {object} types.APIResponse{data=types.ABIResponse} "ABI更新成功"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或ABI格式无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -289,7 +286,7 @@ func (h *Handler) GetABIByID(c *gin.Context) {
 // @Failure 409 {object} types.APIResponse{error=types.APIError} "ABI名称已存在"
 // @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/abi/{id} [put]
+// @Router /api/v1/abi/update [post]
 func (h *Handler) UpdateABI(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, walletAddress, ok := middleware.GetUserFromContext(c)
@@ -305,23 +302,7 @@ func (h *Handler) UpdateABI(c *gin.Context) {
 		return
 	}
 
-	// 获取路径参数
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_ID",
-				Message: "Invalid ABI ID",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("UpdateABI Error:", errors.New("invalid ABI ID"), "id", idStr)
-		return
-	}
-
-	var req types.UpdateABIRequest
+	var req types.UpdateABIWithIDRequest
 	// 绑定请求参数
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -337,7 +318,7 @@ func (h *Handler) UpdateABI(c *gin.Context) {
 	}
 
 	// 调用服务层
-	response, err := h.abiService.UpdateABI(c.Request.Context(), id, walletAddress, &req)
+	response, err := h.abiService.UpdateABI(c.Request.Context(), req.ID, walletAddress, &req.UpdateABIRequest)
 	if err != nil {
 		var statusCode int
 		var errorCode string
@@ -367,11 +348,11 @@ func (h *Handler) UpdateABI(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("UpdateABI Error:", err, "id", id, "wallet_address", walletAddress)
+		logger.Error("UpdateABI Error:", err, "id", req.ID, "wallet_address", walletAddress)
 		return
 	}
 
-	logger.Info("UpdateABI Success:", "id", id, "wallet_address", walletAddress, "name", req.Name)
+	logger.Info("UpdateABI Success:", "id", req.ID, "wallet_address", walletAddress, "name", req.Name)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,
@@ -385,14 +366,14 @@ func (h *Handler) UpdateABI(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "ABI ID"
+// @Param request body types.DeleteABIRequest true "删除ABI请求体（包含ID）"
 // @Success 200 {object} types.APIResponse "ABI删除成功"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "无效的ABI ID"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权删除该ABI或尝试删除共享ABI"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "ABI不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/abi/{id} [delete]
+// @Router /api/v1/abi/delete [post]
 func (h *Handler) DeleteABI(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, walletAddress, ok := middleware.GetUserFromContext(c)
@@ -408,25 +389,22 @@ func (h *Handler) DeleteABI(c *gin.Context) {
 		return
 	}
 
-	// 获取路径参数
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	var req types.DeleteABIRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INVALID_ID",
-				Message: "Invalid ABI ID",
+				Code:    "INVALID_REQUEST",
+				Message: "Invalid request parameters",
 				Details: err.Error(),
 			},
 		})
-		logger.Error("DeleteABI Error:", errors.New("invalid ABI ID"), "id", idStr)
+		logger.Error("DeleteABI Error:", errors.New("invalid request parameters"), "error", err)
 		return
 	}
 
 	// 调用服务层
-	err = h.abiService.DeleteABI(c.Request.Context(), id, walletAddress)
-	if err != nil {
+	if err := h.abiService.DeleteABI(c.Request.Context(), req.ID, walletAddress); err != nil {
 		var statusCode int
 		var errorCode string
 
@@ -452,11 +430,11 @@ func (h *Handler) DeleteABI(c *gin.Context) {
 				Message: err.Error(),
 			},
 		})
-		logger.Error("DeleteABI Error:", err, "id", id, "wallet_address", walletAddress)
+		logger.Error("DeleteABI Error:", err, "id", req.ID, "wallet_address", walletAddress)
 		return
 	}
 
-	logger.Info("DeleteABI Success:", "id", id, "wallet_address", walletAddress)
+	logger.Info("DeleteABI Success:", "id", req.ID, "wallet_address", walletAddress)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    gin.H{"message": "ABI deleted successfully"},

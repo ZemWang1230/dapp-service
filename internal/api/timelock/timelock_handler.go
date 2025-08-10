@@ -40,24 +40,24 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		timeLockGroup.POST("/create-or-import", h.CreateOrImportTimeLock)
 
 		// 获取timelock列表（根据用户权限筛选）
-		// GET /api/v1/timelock/list
-		// http://localhost:8080/api/v1/timelock/list?user_address=0x...&standard=compound&status=active
-		timeLockGroup.GET("/list", h.GetTimeLockList)
+		// POST /api/v1/timelock/list
+		// http://localhost:8080/api/v1/timelock/list
+		timeLockGroup.POST("/list", h.GetTimeLockList)
 
 		// 获取timelock详情
-		// GET /api/v1/timelock/detail
-		// http://localhost:8080/api/v1/timelock/detail?standard=openzeppelin&chain_id=1&contract_address=0x...
-		timeLockGroup.GET("/detail", h.GetTimeLockDetail)
+		// POST /api/v1/timelock/detail
+		// http://localhost:8080/api/v1/timelock/detail
+		timeLockGroup.POST("/detail", h.GetTimeLockDetail)
 
 		// 更新timelock备注
-		// PUT /api/v1/timelock/update
+		// POST /api/v1/timelock/update
 		// http://localhost:8080/api/v1/timelock/update
-		timeLockGroup.PUT("/update", h.UpdateTimeLock)
+		timeLockGroup.POST("/update", h.UpdateTimeLock)
 
 		// 删除timelock
-		// DELETE /api/v1/timelock/delete
+		// POST /api/v1/timelock/delete
 		// http://localhost:8080/api/v1/timelock/delete
-		timeLockGroup.DELETE("/delete", h.DeleteTimeLock)
+		timeLockGroup.POST("/delete", h.DeleteTimeLock)
 
 		// 刷新用户所有timelock合约权限
 		// POST /api/v1/timelock/refresh-permissions
@@ -176,13 +176,12 @@ func (h *Handler) CreateOrImportTimeLock(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param standard query string false "按合约标准筛选" Enums(compound,openzeppelin) example(openzeppelin)
-// @Param status query string false "按状态筛选" Enums(active,inactive) example(active)
+// @Param request body types.GetTimeLockListRequest false "查询参数"
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockListResponse} "成功获取timelock合约列表"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准无效"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/list [get]
+// @Router /api/v1/timelock/list [post]
 func (h *Handler) GetTimeLockList(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
@@ -199,8 +198,11 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 	}
 
 	var req types.GetTimeLockListRequest
-	// 绑定查询参数
+	// 绑定参数（支持 body 优先，兼容 query）
 	if err := c.ShouldBindQuery(&req); err != nil {
+		// ignore
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
@@ -253,9 +255,7 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param standard query string true "按合约标准" Enums(compound,openzeppelin) example(openzeppelin)
-// @Param chain_id query int true "链ID" example(1)
-// @Param contract_address query string true "合约地址" example(0x...)
+// @Param request body types.GetTimeLockDetailRequest true "获取详情请求体"
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockDetailResponse} "成功获取timelock合约详情"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误或标准/地址无效（INVALID_STANDARD / INVALID_CONTRACT_ADDRESS）"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
@@ -263,7 +263,7 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/detail [get]
+// @Router /api/v1/timelock/detail [post]
 func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
@@ -281,7 +281,7 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 
 	var req types.GetTimeLockDetailRequest
 	// 绑定请求参数
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
@@ -368,7 +368,7 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/update [put]
+// @Router /api/v1/timelock/update [post]
 func (h *Handler) UpdateTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
@@ -476,7 +476,7 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 422 {object} types.APIResponse{error=types.APIError} "参数校验失败"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/delete [delete]
+// @Router /api/v1/timelock/delete [post]
 func (h *Handler) DeleteTimeLock(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)

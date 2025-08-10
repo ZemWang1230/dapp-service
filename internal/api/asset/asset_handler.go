@@ -33,7 +33,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	{
 		// 获取用户资产
 		// http://localhost:8080/api/v1/assets
-		assetGroup.GET("/", h.GetUserAssets)
+		assetGroup.POST("/", h.GetUserAssets)
 		// 刷新用户资产
 		// http://localhost:8080/api/v1/assets/refresh
 		assetGroup.POST("/refresh", h.RefreshUserAssets)
@@ -50,7 +50,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 // @Success 200 {object} types.APIResponse{data=types.UserAssetResponse} "成功获取用户资产信息"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "获取资产信息失败或区块链查询错误"
-// @Router /api/v1/assets [get]
+// @Router /api/v1/assets [post]
 func (h *Handler) GetUserAssets(c *gin.Context) {
 	// 从JWT中获取用户信息
 	_, walletAddress, ok := middleware.GetUserFromContext(c)

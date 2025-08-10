@@ -4,8 +4,8 @@ import "time"
 
 // GetTransactionDetailRequest 获取交易详情请求
 type GetTransactionDetailRequest struct {
-	Standard string `form:"standard" binding:"required,oneof=compound openzeppelin"` // 标准
-	TxHash   string `form:"tx_hash" binding:"required"`                              // 交易哈希
+	Standard string `json:"standard" form:"standard" binding:"required,oneof=compound openzeppelin"` // 标准
+	TxHash   string `json:"tx_hash" form:"tx_hash" binding:"required"`                               // 交易哈希
 }
 
 // GetTransactionDetailResponse 获取交易详情响应

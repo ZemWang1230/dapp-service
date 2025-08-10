@@ -61,22 +61,6 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 
-// healthCheck 健康检查端点
-// @Summary 服务健康检查
-// @Description 检查TimeLocker后端服务的健康状态，返回服务状态、服务名称和版本信息。此接口用于监控系统可用性。
-// @Tags System
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]string "服务健康状态正常"
-// @Router /health [get]
-func healthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"service": "timelocker-backend",
-		"version": "2.0.0",
-	})
-}
-
 // updateAllScannersStatusToPaused 更新所有扫链器状态为暂停
 func updateAllScannersStatusToPaused(ctx context.Context, progressRepo scannerRepo.ProgressRepository) error {
 	// 批量更新所有运行中的扫描器状态为 paused
@@ -193,14 +177,11 @@ func main() {
 
 	// 11. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
-	docs.SwaggerInfo.Title = "TimeLocker Backend API v2.0"
+	docs.SwaggerInfo.Title = "TimeLocker Backend API v1.0"
 	docs.SwaggerInfo.Description = "TimeLocker Backend API"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// 12. 健康检查端点
-	router.GET("/health", healthCheck)
-
-	// 13. 启动RPC管理器
+	// 12. 启动RPC管理器
 	rpcManager := scannerService.NewRPCManager(cfg, chainRepository)
 	if err := rpcManager.Start(ctx); err != nil {
 		logger.Error("Failed to start RPC manager", err)
@@ -208,7 +189,7 @@ func main() {
 		logger.Info("RPC Manager started successfully")
 	}
 
-	// 14. 启动扫链管理器
+	// 13. 启动扫链管理器
 	scannerManager := scannerService.NewManager(
 		cfg,
 		chainRepository,
@@ -225,12 +206,12 @@ func main() {
 		logger.Info("Scanner Manager started successfully")
 	}
 
-	// 15. 初始化timelock服务（依赖RPC管理器）
+	// 14. 初始化timelock服务（依赖RPC管理器）
 	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, rpcManager, cfg)
 	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
 	timelockHandler.RegisterRoutes(v1)
 
-	// 16. 启动定时任务
+	// 15. 启动定时任务
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -254,7 +235,7 @@ func main() {
 		}
 	}()
 
-	// 17. 启动邮箱验证码清理定时任务
+	// 16. 启动邮箱验证码清理定时任务
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -278,7 +259,7 @@ func main() {
 		}
 	}()
 
-	// 18. 启动HTTP服务器
+	// 17. 启动HTTP服务器
 	addr := ":" + cfg.Server.Port
 	srv := &http.Server{
 		Addr:    addr,
@@ -297,11 +278,11 @@ func main() {
 		}
 	}()
 
-	// 19. 等待关闭信号
+	// 18. 等待关闭信号
 	<-sigCh
 	logger.Info("Received shutdown signal, starting graceful shutdown...")
 
-	// 20. 开始优雅关闭（逆序关闭）
+	// 19. 开始优雅关闭（逆序关闭）
 
 	// Step 1: 停止HTTP服务器（最后启动的最先关闭）
 	logger.Info("Stopping HTTP server...")
