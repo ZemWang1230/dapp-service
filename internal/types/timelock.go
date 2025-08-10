@@ -91,9 +91,9 @@ type GetTimeLockListResponse struct {
 
 // GetTimeLockDetailRequest 获取timelock详情请求
 type GetTimeLockDetailRequest struct {
-	Standard        string `json:"standard" binding:"required,oneof=compound openzeppelin"`
-	ChainID         int    `json:"chain_id" binding:"required"`
-	ContractAddress string `json:"contract_address" binding:"required"`
+	Standard        string `json:"standard" form:"standard" binding:"required,oneof=compound openzeppelin"`
+	ChainID         int    `json:"chain_id" form:"chain_id" binding:"required"`
+	ContractAddress string `json:"contract_address" form:"contract_address" binding:"required"`
 }
 
 // GetTimeLockDetailResponse timelock详情响应

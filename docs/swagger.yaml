@@ -347,22 +347,6 @@ definitions:
       total:
         type: integer
     type: object
-  types.GetTimeLockDetailRequest:
-    properties:
-      chain_id:
-        type: integer
-      contract_address:
-        type: string
-      standard:
-        enum:
-        - compound
-        - openzeppelin
-        type: string
-    required:
-    - chain_id
-    - contract_address
-    - standard
-    type: object
   types.GetTimeLockDetailResponse:
     properties:
       compound_data:
@@ -2021,17 +2005,32 @@ paths:
       tags:
       - Timelock
   /api/v1/timelock/detail:
-    post:
+    get:
       consumes:
       - application/json
       description: 获取指定timelock合约的完整详细信息，包括合约的基本信息、治理参数以及用户权限信息。只有具有相应权限的用户才能查看详细信息。
       parameters:
-      - description: 获取详情的请求体（地址从鉴权获取）
-        in: body
-        name: request
+      - description: 按合约标准
+        enum:
+        - compound
+        - openzeppelin
+        example: openzeppelin
+        in: query
+        name: standard
         required: true
-        schema:
-          $ref: '#/definitions/types.GetTimeLockDetailRequest'
+        type: string
+      - description: 链ID
+        example: 1
+        in: query
+        name: chain_id
+        required: true
+        type: integer
+      - description: 合约地址
+        example: 0x...
+        in: query
+        name: contract_address
+        required: true
+        type: string
       produces:
       - application/json
       responses:

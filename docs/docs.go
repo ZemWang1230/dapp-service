@@ -2319,7 +2319,7 @@ const docTemplate = `{
             }
         },
         "/api/v1/timelock/detail": {
-            "post": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -2338,13 +2338,32 @@ const docTemplate = `{
                 "summary": "获取timelock合约详细信息",
                 "parameters": [
                     {
-                        "description": "获取详情的请求体（地址从鉴权获取）",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/types.GetTimeLockDetailRequest"
-                        }
+                        "enum": [
+                            "compound",
+                            "openzeppelin"
+                        ],
+                        "type": "string",
+                        "example": "openzeppelin",
+                        "description": "按合约标准",
+                        "name": "standard",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "链ID",
+                        "name": "chain_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "0x...",
+                        "description": "合约地址",
+                        "name": "contract_address",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -3339,29 +3358,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "types.GetTimeLockDetailRequest": {
-            "type": "object",
-            "required": [
-                "chain_id",
-                "contract_address",
-                "standard"
-            ],
-            "properties": {
-                "chain_id": {
-                    "type": "integer"
-                },
-                "contract_address": {
-                    "type": "string"
-                },
-                "standard": {
-                    "type": "string",
-                    "enum": [
-                        "compound",
-                        "openzeppelin"
-                    ]
                 }
             }
         },

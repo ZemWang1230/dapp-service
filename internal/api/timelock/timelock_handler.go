@@ -43,9 +43,9 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 		timeLockGroup.GET("/list", h.GetTimeLockList)
 
 		// 获取timelock详情
-		// POST /api/v1/timelock/detail
-		// http://localhost:8080/api/v1/timelock/detail
-		timeLockGroup.POST("/detail", h.GetTimeLockDetail)
+		// GET /api/v1/timelock/detail
+		// http://localhost:8080/api/v1/timelock/detail?standard=openzeppelin&chain_id=1&contract_address=0x...
+		timeLockGroup.GET("/detail", h.GetTimeLockDetail)
 
 		// 更新timelock备注
 		// PUT /api/v1/timelock/update
@@ -243,14 +243,16 @@ func (h *Handler) GetTimeLockList(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.GetTimeLockDetailRequest true "获取详情的请求体（地址从鉴权获取）"
+// @Param standard query string true "按合约标准" Enums(compound,openzeppelin) example(openzeppelin)
+// @Param chain_id query int true "链ID" example(1)
+// @Param contract_address query string true "合约地址" example(0x...)
 // @Success 200 {object} types.APIResponse{data=types.GetTimeLockDetailResponse} "成功获取timelock合约详情"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 403 {object} types.APIResponse{error=types.APIError} "无权访问此timelock合约"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "timelock合约不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/timelock/detail [post]
+// @Router /api/v1/timelock/detail [get]
 func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
@@ -268,16 +270,16 @@ func (h *Handler) GetTimeLockDetail(c *gin.Context) {
 
 	var req types.GetTimeLockDetailRequest
 	// 绑定请求参数
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
+				Message: "Invalid query parameters",
 				Details: err.Error(),
 			},
 		})
-		logger.Error("GetTimeLockDetail error", err, "message", "invalid request parameters", "user_address", userAddress)
+		logger.Error("GetTimeLockDetail error", err, "message", "invalid query parameters", "user_address", userAddress)
 		return
 	}
 
