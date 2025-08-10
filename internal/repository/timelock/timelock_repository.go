@@ -101,16 +101,14 @@ func (r *repository) UpdateCompoundTimeLock(ctx context.Context, timeLock *types
 	return nil
 }
 
-// DeleteCompoundTimeLock 删除compound timelock合约（软删除）
+// DeleteCompoundTimeLock 硬删除 compound timelock 合约（仅删除合约行，不清理其他表）
 func (r *repository) DeleteCompoundTimeLock(ctx context.Context, chainID int, contractAddress string) error {
 	if err := r.db.WithContext(ctx).
-		Model(&types.CompoundTimeLock{}).
 		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
-		Update("status", "deleted").Error; err != nil {
+		Delete(&types.CompoundTimeLock{}).Error; err != nil {
 		logger.Error("DeleteCompoundTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress)
 		return err
 	}
-
 	logger.Info("DeleteCompoundTimeLock success", "chain_id", chainID, "contract_address", contractAddress)
 	return nil
 }
@@ -170,16 +168,14 @@ func (r *repository) UpdateOpenzeppelinTimeLock(ctx context.Context, timeLock *t
 	return nil
 }
 
-// DeleteOpenzeppelinTimeLock 删除openzeppelin timelock合约（软删除）
+// DeleteOpenzeppelinTimeLock 硬删除 openzeppelin timelock 合约（仅删除合约行，不清理其他表）
 func (r *repository) DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int, contractAddress string) error {
 	if err := r.db.WithContext(ctx).
-		Model(&types.OpenzeppelinTimeLock{}).
 		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
-		Update("status", "deleted").Error; err != nil {
+		Delete(&types.OpenzeppelinTimeLock{}).Error; err != nil {
 		logger.Error("DeleteOpenzeppelinTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress)
 		return err
 	}
-
 	logger.Info("DeleteOpenzeppelinTimeLock success", "chain_id", chainID, "contract_address", contractAddress)
 	return nil
 }

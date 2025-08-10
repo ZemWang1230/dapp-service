@@ -463,7 +463,7 @@ func (h *Handler) UpdateTimeLock(c *gin.Context) {
 
 // DeleteTimeLock 删除timelock
 // @Summary 删除timelock合约记录
-// @Description 软删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是软删除，数据仍保留在数据库中但标记为已删除状态。合约地址必须为有效以太坊地址（0x + 40位十六进制）。
+// @Description 硬删除指定的timelock合约记录。只有合约的创建者/导入者才能删除合约记录。删除操作是硬删除，数据从数据库中删除。合约地址必须为有效以太坊地址（0x + 40位十六进制）。
 // @Tags Timelock
 // @Accept json
 // @Produce json
