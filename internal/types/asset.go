@@ -55,11 +55,11 @@ type UserAsset struct {
 	TokenSymbol     string    `json:"token_symbol" gorm:"size:20;not null"`                                                                                      // 代币符号
 	TokenName       string    `json:"token_name" gorm:"size:100;not null"`                                                                                       // 代币名称
 	TokenDecimals   int       `json:"token_decimals" gorm:"not null;default:18"`                                                                                 // 代币精度
-	Balance         string    `json:"balance" gorm:"type:varchar(100);not null;default:'0'"`                                                                     // 格式化余额
-	BalanceWei      string    `json:"balance_wei" gorm:"type:varchar(100);not null;default:'0'"`                                                                 // Wei单位余额
-	USDValue        float64   `json:"usd_value" gorm:"type:decimal(20,8);default:0"`                                                                             // USD价值
-	TokenPrice      float64   `json:"token_price" gorm:"type:decimal(20,8);default:0"`                                                                           // 代币价格
-	PriceChange24h  float64   `json:"price_change_24h" gorm:"type:decimal(10,4);default:0"`                                                                      // 24小时价格涨跌幅（%）
+	Balance         string    `json:"balance" gorm:"type:varchar(200);not null;default:'0'"`                                                                     // 格式化余额
+	BalanceWei      string    `json:"balance_wei" gorm:"type:varchar(200);not null;default:'0'"`                                                                 // Wei单位余额
+	USDValue        float64   `json:"usd_value" gorm:"type:decimal(200,10);default:0"`                                                                           // USD价值
+	TokenPrice      float64   `json:"token_price" gorm:"type:decimal(200,10);default:0"`                                                                         // 代币价格
+	PriceChange24h  float64   `json:"price_change_24h" gorm:"type:decimal(200,10);default:0"`                                                                    // 24小时价格涨跌幅（%）
 	IsNative        bool      `json:"is_native" gorm:"not null;default:false"`                                                                                   // 是否为原生代币
 	TokenLogoURL    string    `json:"token_logo_url" gorm:"type:text"`                                                                                           // 代币Logo URL
 	ChainLogoURL    string    `json:"chain_logo_url" gorm:"type:text"`                                                                                           // 链Logo URL

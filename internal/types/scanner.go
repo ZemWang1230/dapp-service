@@ -40,7 +40,7 @@ type CompoundTimelockTransaction struct {
 	EventData              string    `json:"event_data" gorm:"type:jsonb;not null"`              // 事件数据
 	EventTxHash            *string   `json:"event_tx_hash" gorm:"size:128;index"`                // 事件交易哈希
 	EventTarget            *string   `json:"event_target" gorm:"size:42"`                        // 事件目标地址
-	EventValue             string    `json:"event_value" gorm:"type:decimal(36,0);default:0"`    // 事件价值
+	EventValue             string    `json:"event_value" gorm:"type:decimal(200,0);default:0"`   // 事件价值
 	EventFunctionSignature *string   `json:"event_function_signature" gorm:"size:200"`           // 事件函数签名
 	EventCallData          []byte    `json:"event_call_data" gorm:"type:bytea"`                  // 事件调用参数数据
 	EventEta               *int64    `json:"event_eta"`                                          // 事件ETA（预计执行时间）
@@ -70,7 +70,7 @@ type OpenZeppelinTimelockTransaction struct {
 	EventID          *string   `json:"event_id" gorm:"size:66"`                            // 事件ID
 	EventIndex       int       `json:"event_index"`                                        // 事件索引
 	EventTarget      *string   `json:"event_target" gorm:"size:42"`                        // 事件目标地址
-	EventValue       string    `json:"event_value" gorm:"type:decimal(36,0);default:0"`    // 事件价值
+	EventValue       string    `json:"event_value" gorm:"type:decimal(200,0);default:0"`   // 事件价值
 	EventCallData    []byte    `json:"event_call_data" gorm:"type:bytea"`                  // 事件调用数据（包含函数签名和参数）
 	EventPredecessor *string   `json:"event_predecessor" gorm:"size:66"`                   // 事件前驱（包含前驱交易哈希）
 	EventDelay       *int64    `json:"event_delay"`                                        // 事件延迟
@@ -103,7 +103,7 @@ type TimelockTransactionFlow struct {
 	ExpiredAt        *time.Time `json:"expired_at"`                                             // 过期时间（Compound的有过期时间ETA+GracePeriod，OpenZeppelin没有）
 	TargetAddress    *string    `json:"target_address" gorm:"size:42"`                          // 目标地址
 	CallData         []byte     `json:"call_data" gorm:"type:bytea"`                            // 调用数据（包含函数签名和参数）
-	Value            string     `json:"value" gorm:"type:decimal(36,0);default:0"`              // 价值
+	Value            string     `json:"value" gorm:"type:decimal(200,0);default:0"`             // 价值
 	CreatedAt        time.Time  `json:"created_at" gorm:"autoCreateTime"`                       // 创建时间
 	UpdatedAt        time.Time  `json:"updated_at" gorm:"autoUpdateTime"`                       // 更新时间
 }
