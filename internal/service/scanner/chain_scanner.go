@@ -151,6 +151,11 @@ func (cs *ChainScanner) scanLoop(ctx context.Context) {
 			logger.Info("Scan loop stopped by stop channel", "chain_id", cs.chainInfo.ChainID)
 			return
 		default:
+			// 若状态为 paused（例如上次优雅退出后残留），在真正开始扫描前恢复为 running
+			if cs.progress.ScanStatus == "paused" {
+				cs.updateProgressStatus("running", "")
+			}
+
 			if err := cs.scanBlocks(ctx); err != nil {
 				logger.Error("Scan blocks failed", err, "chain_id", cs.chainInfo.ChainID)
 				cs.updateProgressStatus("error", err.Error())
@@ -164,7 +169,7 @@ func (cs *ChainScanner) scanLoop(ctx context.Context) {
 					return
 				}
 			} else {
-				// 扫描成功，确保状态为running（处理从错误状态恢复的情况）
+				// 扫描成功，确保状态为 running（处理从错误状态恢复的情况）
 				if cs.progress.ScanStatus == "error" || cs.progress.ErrorMessage != nil {
 					cs.updateProgressStatus("running", "")
 				}
