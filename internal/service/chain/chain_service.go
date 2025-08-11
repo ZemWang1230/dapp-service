@@ -12,7 +12,7 @@ import (
 // Service 支持链服务接口
 type Service interface {
 	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) (*types.GetSupportChainsResponse, error)
-	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error)
+	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChainResponse, error)
 	GetWalletChainConfig(ctx context.Context, chainID int64) (*types.WalletChainConfig, error)
 }
 
@@ -39,8 +39,47 @@ func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportCha
 		return nil, fmt.Errorf("failed to get support chains: %w", err)
 	}
 
+	// 转换为响应结构，解析JSON字段
+	converted := make([]types.SupportChainResponse, 0, len(chains))
+	for _, ch := range chains {
+		var rpcURLs []string
+		if err := json.Unmarshal([]byte(ch.OfficialRPCUrls), &rpcURLs); err != nil {
+			logger.Error("GetSupportChains: failed to parse official RPC URLs", err, "chain_id", ch.ChainID)
+			rpcURLs = []string{}
+		}
+
+		var explorers []string
+		if err := json.Unmarshal([]byte(ch.BlockExplorerUrls), &explorers); err != nil {
+			logger.Error("GetSupportChains: failed to parse block explorer URLs", err, "chain_id", ch.ChainID)
+			explorers = []string{}
+		}
+
+		var firstExplorer string
+		if len(explorers) > 0 {
+			firstExplorer = explorers[0]
+		}
+
+		converted = append(converted, types.SupportChainResponse{
+			ID:                     ch.ID,
+			ChainName:              ch.ChainName,
+			DisplayName:            ch.DisplayName,
+			ChainID:                ch.ChainID,
+			NativeCurrencyName:     ch.NativeCurrencyName,
+			NativeCurrencySymbol:   ch.NativeCurrencySymbol,
+			NativeCurrencyDecimals: ch.NativeCurrencyDecimals,
+			LogoURL:                ch.LogoURL,
+			IsTestnet:              ch.IsTestnet,
+			IsActive:               ch.IsActive,
+			AlchemyRPCTemplate:     ch.AlchemyRPCTemplate,
+			InfuraRPCTemplate:      ch.InfuraRPCTemplate,
+			OfficialRPCUrls:        rpcURLs,
+			BlockExplorerUrls:      firstExplorer,
+			RPCEnabled:             ch.RPCEnabled,
+		})
+	}
+
 	response := &types.GetSupportChainsResponse{
-		Chains: chains,
+		Chains: converted,
 		Total:  total,
 	}
 
@@ -49,7 +88,7 @@ func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportCha
 }
 
 // GetChainByChainID 根据ChainID获取链信息
-func (s *service) GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChain, error) {
+func (s *service) GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChainResponse, error) {
 	logger.Info("GetChainByChainID start: ", "chain_id", chainID)
 
 	chain, err := s.chainRepo.GetChainByChainID(ctx, chainID)
@@ -58,8 +97,44 @@ func (s *service) GetChainByChainID(ctx context.Context, chainID int64) (*types.
 		return nil, err
 	}
 
+	// 解析官方RPC URLs
+	var officialRPCs []string
+	if err := json.Unmarshal([]byte(chain.OfficialRPCUrls), &officialRPCs); err != nil {
+		logger.Error("GetChainByChainID: failed to parse official RPC URLs", err, "chain_id", chainID)
+		officialRPCs = []string{}
+	}
+
+	// 解析区块浏览器URLs，并取第一个
+	var explorerList []string
+	if err := json.Unmarshal([]byte(chain.BlockExplorerUrls), &explorerList); err != nil {
+		logger.Error("GetChainByChainID: failed to parse block explorer URLs", err, "chain_id", chainID)
+		explorerList = []string{}
+	}
+	var firstExplorer string
+	if len(explorerList) > 0 {
+		firstExplorer = explorerList[0]
+	}
+
+	resp := &types.SupportChainResponse{
+		ID:                     chain.ID,
+		ChainName:              chain.ChainName,
+		DisplayName:            chain.DisplayName,
+		ChainID:                chain.ChainID,
+		NativeCurrencyName:     chain.NativeCurrencyName,
+		NativeCurrencySymbol:   chain.NativeCurrencySymbol,
+		NativeCurrencyDecimals: chain.NativeCurrencyDecimals,
+		LogoURL:                chain.LogoURL,
+		IsTestnet:              chain.IsTestnet,
+		IsActive:               chain.IsActive,
+		AlchemyRPCTemplate:     chain.AlchemyRPCTemplate,
+		InfuraRPCTemplate:      chain.InfuraRPCTemplate,
+		OfficialRPCUrls:        officialRPCs,
+		BlockExplorerUrls:      firstExplorer,
+		RPCEnabled:             chain.RPCEnabled,
+	}
+
 	logger.Info("GetChainByChainID success: ", "chain_id", chainID, "chain_name", chain.ChainName)
-	return chain, nil
+	return resp, nil
 }
 
 // GetWalletChainConfig 获取钱包插件添加链的配置数据
@@ -81,12 +156,16 @@ func (s *service) GetWalletChainConfig(ctx context.Context, chainID int64) (*typ
 		officialRPCs = []string{}
 	}
 
-	// 解析区块浏览器URLs
+	// 解析区块浏览器URLs，取第一个
 	var blockExplorers []string
 	if err := json.Unmarshal([]byte(chain.BlockExplorerUrls), &blockExplorers); err != nil {
 		logger.Error("GetWalletChainConfig: failed to parse block explorer URLs", err, "chain_id", chainID)
 		// 使用默认值
 		blockExplorers = []string{}
+	}
+	var firstExplorer string
+	if len(blockExplorers) > 0 {
+		firstExplorer = blockExplorers[0]
 	}
 
 	// 构建钱包配置
@@ -99,7 +178,7 @@ func (s *service) GetWalletChainConfig(ctx context.Context, chainID int64) (*typ
 			Decimals: chain.NativeCurrencyDecimals,
 		},
 		RPCUrls:           officialRPCs,
-		BlockExplorerUrls: blockExplorers,
+		BlockExplorerUrls: firstExplorer,
 	}
 
 	logger.Info("GetWalletChainConfig success: ", "chain_id", chainID, "chain_name", config.ChainName)

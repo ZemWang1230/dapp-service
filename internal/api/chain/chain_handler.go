@@ -102,7 +102,7 @@ func (h *Handler) GetSupportChains(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body types.GetChainByChainIDRequest true "按ChainID获取请求体"
-// @Success 200 {object} types.APIResponse{data=types.SupportChain} "成功获取链信息"
+// @Success 200 {object} types.APIResponse{data=types.SupportChainResponse} "成功获取链信息"
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 404 {object} types.APIResponse{error=types.APIError} "链不存在"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"

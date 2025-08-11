@@ -25,6 +25,26 @@ type SupportChain struct {
 	UpdatedAt              time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
+// SupportChainResponse 支持链对外响应结构（将字符串JSON字段转换为更易用的类型）
+type SupportChainResponse struct {
+	ID                     int64    `json:"id"`
+	ChainName              string   `json:"chain_name"`
+	DisplayName            string   `json:"display_name"`
+	ChainID                int64    `json:"chain_id"`
+	NativeCurrencyName     string   `json:"native_currency_name"`
+	NativeCurrencySymbol   string   `json:"native_currency_symbol"`
+	NativeCurrencyDecimals int      `json:"native_currency_decimals"`
+	LogoURL                string   `json:"logo_url"`
+	IsTestnet              bool     `json:"is_testnet"`
+	IsActive               bool     `json:"is_active"`
+	AlchemyRPCTemplate     string   `json:"alchemy_rpc_template"`
+	InfuraRPCTemplate      string   `json:"infura_rpc_template"`
+	OfficialRPCUrls        []string `json:"official_rpc_urls"`
+	// 返回单个区块浏览器URL（取第一个），字段名保持不变以兼容前端
+	BlockExplorerUrls string `json:"block_explorer_urls"`
+	RPCEnabled        bool   `json:"rpc_enabled"`
+}
+
 // TableName 设置表名
 func (SupportChain) TableName() string {
 	return "support_chains"
@@ -36,7 +56,7 @@ type WalletChainConfig struct {
 	ChainName         string               `json:"chainName"`
 	NativeCurrency    NativeCurrencyConfig `json:"nativeCurrency"`
 	RPCUrls           []string             `json:"rpcUrls"`
-	BlockExplorerUrls []string             `json:"blockExplorerUrls"`
+	BlockExplorerUrls string               `json:"blockExplorerUrls"`
 }
 
 // NativeCurrencyConfig 原生货币配置
@@ -154,8 +174,8 @@ type GetSupportChainsRequest struct {
 
 // GetSupportChainsResponse 获取支持链列表响应
 type GetSupportChainsResponse struct {
-	Chains []SupportChain `json:"chains"`
-	Total  int64          `json:"total"`
+	Chains []SupportChainResponse `json:"chains"`
+	Total  int64                  `json:"total"`
 }
 
 // GetChainByIDRequest 根据ID获取链信息请求
