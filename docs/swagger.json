@@ -1305,7 +1305,7 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/types.SupportChain"
+                                            "$ref": "#/definitions/types.SupportChainResponse"
                                         }
                                     }
                                 }
@@ -3803,7 +3803,7 @@
                 "chains": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/types.SupportChain"
+                        "$ref": "#/definitions/types.SupportChainResponse"
                     }
                 },
                 "total": {
@@ -4066,73 +4066,57 @@
                 "SponsorTypeSponsor"
             ]
         },
-        "types.SupportChain": {
+        "types.SupportChainResponse": {
             "type": "object",
             "properties": {
                 "alchemy_rpc_template": {
-                    "description": "Alchemy RPC URL模板",
                     "type": "string"
                 },
                 "block_explorer_urls": {
-                    "description": "区块浏览器URLs (JSON数组)",
+                    "description": "返回单个区块浏览器URL（取第一个），字段名保持不变以兼容前端",
                     "type": "string"
                 },
                 "chain_id": {
-                    "description": "链ID",
                     "type": "integer"
                 },
                 "chain_name": {
-                    "description": "Covalent API的chainName",
-                    "type": "string"
-                },
-                "created_at": {
                     "type": "string"
                 },
                 "display_name": {
-                    "description": "显示名称",
                     "type": "string"
                 },
                 "id": {
                     "type": "integer"
                 },
                 "infura_rpc_template": {
-                    "description": "Infura RPC URL模板",
                     "type": "string"
                 },
                 "is_active": {
-                    "description": "是否激活",
                     "type": "boolean"
                 },
                 "is_testnet": {
-                    "description": "是否是测试网",
                     "type": "boolean"
                 },
                 "logo_url": {
-                    "description": "链Logo URL",
                     "type": "string"
                 },
                 "native_currency_decimals": {
-                    "description": "原生货币精度",
                     "type": "integer"
                 },
                 "native_currency_name": {
-                    "description": "原生货币名称",
                     "type": "string"
                 },
                 "native_currency_symbol": {
-                    "description": "原生货币符号",
                     "type": "string"
                 },
                 "official_rpc_urls": {
-                    "description": "官方RPC URLs (JSON数组)",
-                    "type": "string"
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "rpc_enabled": {
-                    "description": "是否启用RPC功能",
                     "type": "boolean"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         },
@@ -4340,10 +4324,7 @@
             "type": "object",
             "properties": {
                 "blockExplorerUrls": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                    "type": "string"
                 },
                 "chainId": {
                     "type": "string"
