@@ -37,8 +37,7 @@ type UpdateABIRequest struct {
 
 // ABIListResponse ABI列表响应
 type ABIListResponse struct {
-	UserABIs   []ABI `json:"user_abis"`   // 用户创建的ABI
-	SharedABIs []ABI `json:"shared_abis"` // 平台共享的ABI
+	ABIs []ABI `json:"abis"` // 用户创建的ABI及平台共享的ABI
 }
 
 // ABIResponse ABI详情响应

@@ -118,8 +118,7 @@ func (s *service) GetABIList(ctx context.Context, walletAddress string) (*types.
 	}
 
 	response := &types.ABIListResponse{
-		UserABIs:   userABIs,
-		SharedABIs: sharedABIs,
+		ABIs: append(userABIs, sharedABIs...),
 	}
 
 	logger.Info("GetABIList Success:", "wallet_address", walletAddress, "user_count", len(userABIs), "shared_count", len(sharedABIs))

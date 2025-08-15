@@ -144,7 +144,7 @@ func (h *Handler) CreateABI(c *gin.Context) {
 
 // GetABIList 获取ABI列表
 // @Summary 获取ABI列表
-// @Description 获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI。返回结果分为两个部分：用户ABI和共享ABI。
+// @Description 获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI（合并在一起，利用is_shared字段区分，地址全0也表示共享ABI）。
 // @Tags ABI
 // @Accept json
 // @Produce json
@@ -182,7 +182,7 @@ func (h *Handler) GetABIList(c *gin.Context) {
 		return
 	}
 
-	logger.Info("GetABIList Success:", "wallet_address", walletAddress, "user_count", len(response.UserABIs), "shared_count", len(response.SharedABIs))
+	logger.Info("GetABIList Success:", "wallet_address", walletAddress, "abi_count", len(response.ABIs))
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
 		Data:    response,

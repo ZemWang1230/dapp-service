@@ -433,7 +433,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI。返回结果分为两个部分：用户ABI和共享ABI。",
+                "description": "获取用户可访问的ABI列表，包括用户自己创建的ABI和平台共享的ABI（合并在一起，利用is_shared字段区分，地址全0也表示共享ABI）。",
                 "consumes": [
                     "application/json"
                 ],
@@ -3284,15 +3284,8 @@ const docTemplate = `{
         "types.ABIListResponse": {
             "type": "object",
             "properties": {
-                "shared_abis": {
-                    "description": "平台共享的ABI",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.ABI"
-                    }
-                },
-                "user_abis": {
-                    "description": "用户创建的ABI",
+                "abis": {
+                    "description": "用户创建的ABI及平台共享的ABI",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/types.ABI"
