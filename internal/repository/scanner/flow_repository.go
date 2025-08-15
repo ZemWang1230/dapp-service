@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 	"timelocker-backend/internal/types"
@@ -24,8 +23,9 @@ type FlowRepository interface {
 	BatchUpdateFlowStatus(ctx context.Context, flows []types.TimelockTransactionFlow, toStatus string) error
 
 	// 新API查询方法
-	GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error)
-	GetTransactionDetail(ctx context.Context, standard string, txHash string) (*types.TimelockTransactionDetail, error)
+	GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error)
+	GetCompoundTransactionDetail(ctx context.Context, standard string, txHash string) (*types.CompoundTimelockTransactionDetail, error)
+	GetQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error)
 }
 
 type flowRepository struct {
@@ -170,8 +170,8 @@ func (r *flowRepository) BatchUpdateFlowStatus(ctx context.Context, flows []type
 	return nil
 }
 
-// GetUserRelatedFlows 获取与用户相关的流程列表
-func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error) {
+// GetUserRelatedCompoundFlows 获取与用户相关的流程列表
+func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error) {
 	userAddress = strings.ToLower(userAddress)
 
 	// 构建查询条件
@@ -231,7 +231,7 @@ func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress st
 	// 计算总数
 	var total int64
 	if err := query.Where(finalWhere, args...).Count(&total).Error; err != nil {
-		logger.Error("GetUserRelatedFlows Count Error", err, "user", userAddress)
+		logger.Error("GetUserRelatedCompoundFlows Count Error", err, "user", userAddress)
 		return nil, 0, err
 	}
 
@@ -248,7 +248,7 @@ func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress st
 	err := dataQuery.Find(&flows).Error
 
 	if err != nil {
-		logger.Error("GetUserRelatedFlows Error", err, "user", userAddress)
+		logger.Error("GetUserRelatedCompoundFlows Error", err, "user", userAddress)
 		return nil, 0, err
 	}
 
@@ -256,8 +256,8 @@ func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress st
 }
 
 // GetTransactionDetail 获取交易详情
-func (r *flowRepository) GetTransactionDetail(ctx context.Context, standard string, txHash string) (*types.TimelockTransactionDetail, error) {
-	var detail types.TimelockTransactionDetail
+func (r *flowRepository) GetCompoundTransactionDetail(ctx context.Context, standard string, txHash string) (*types.CompoundTimelockTransactionDetail, error) {
+	var detail types.CompoundTimelockTransactionDetail
 
 	if standard == "compound" {
 		// 查询compound交易表
@@ -275,48 +275,43 @@ func (r *flowRepository) GetTransactionDetail(ctx context.Context, standard stri
 		}
 
 		// 转换为统一格式
-		detail = types.TimelockTransactionDetail{
-			TxHash:          tx.TxHash,
-			BlockNumber:     tx.BlockNumber,
-			BlockTimestamp:  tx.BlockTimestamp,
-			ChainID:         tx.ChainID,
-			ChainName:       tx.ChainName,
-			ContractAddress: tx.ContractAddress,
-			FromAddress:     tx.FromAddress,
-			ToAddress:       tx.ToAddress,
-			TxStatus:        tx.TxStatus,
+		detail = types.CompoundTimelockTransactionDetail{
+			TxHash:                 tx.TxHash,
+			BlockNumber:            tx.BlockNumber,
+			BlockTimestamp:         tx.BlockTimestamp,
+			ChainID:                tx.ChainID,
+			ChainName:              tx.ChainName,
+			ContractAddress:        tx.ContractAddress,
+			FromAddress:            tx.FromAddress,
+			ToAddress:              tx.ToAddress,
+			TxStatus:               tx.TxStatus,
+			EventFunctionSignature: tx.EventFunctionSignature,
+			EventCallData:          tx.EventCallData,
+			EventEta:               tx.EventEta,
+			EventTarget:            tx.EventTarget,
+			EventValue:             tx.EventValue,
+			EventTxHash:            tx.EventTxHash,
 		}
 
-	} else if standard == "openzeppelin" {
-		// 查询openzeppelin交易表
-		var tx types.OpenZeppelinTimelockTransaction
-		err := r.db.WithContext(ctx).
-			Where("tx_hash = ?", txHash).
-			First(&tx).Error
+	}
+	return &detail, nil
+}
 
-		if err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return nil, nil
-			}
-			logger.Error("GetTransactionDetail OpenZeppelin Error", err, "tx_hash", txHash)
-			return nil, err
-		}
+// GetQueueTransactionFunctionSignature 获取队列交易的函数签名
+func (r *flowRepository) GetQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error) {
+	var tx types.CompoundTimelockTransaction
+	err := r.db.WithContext(ctx).
+		Select("event_function_signature").
+		Where("tx_hash = ? AND contract_address = ? AND event_type = ?", queueTxHash, contractAddress, "QueueTransaction").
+		First(&tx).Error
 
-		// 转换为统一格式
-		detail = types.TimelockTransactionDetail{
-			TxHash:          tx.TxHash,
-			BlockNumber:     tx.BlockNumber,
-			BlockTimestamp:  tx.BlockTimestamp,
-			ChainID:         tx.ChainID,
-			ChainName:       tx.ChainName,
-			ContractAddress: tx.ContractAddress,
-			FromAddress:     tx.FromAddress,
-			ToAddress:       tx.ToAddress,
-			TxStatus:        tx.TxStatus,
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
 		}
-	} else {
-		return nil, fmt.Errorf("unsupported standard: %s", standard)
+		logger.Error("GetQueueTransactionFunctionSignature Error", err, "tx_hash", queueTxHash, "contract_address", contractAddress)
+		return nil, err
 	}
 
-	return &detail, nil
+	return tx.EventFunctionSignature, nil
 }

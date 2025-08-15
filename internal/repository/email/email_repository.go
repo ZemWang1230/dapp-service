@@ -122,13 +122,13 @@ func (r *emailRepository) GetUserEmails(ctx context.Context, userID int64, offse
 	var userEmails []types.UserEmail
 	var total int64
 
-	// 计算总数
-	if err := r.db.WithContext(ctx).Model(&types.UserEmail{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+	// 计算总数，不包含is_verified为false的记录
+	if err := r.db.WithContext(ctx).Model(&types.UserEmail{}).Where("user_id = ? AND is_verified = ?", userID, true).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count user emails: %w", err)
 	}
 
-	// 查询数据
-	query := r.db.WithContext(ctx).Preload("Email").Where("user_id = ?", userID)
+	// 查询数据，不包含is_verified为false的记录
+	query := r.db.WithContext(ctx).Preload("Email").Where("user_id = ? AND is_verified = ?", userID, true)
 	if limit > 0 {
 		query = query.Offset(offset).Limit(limit)
 	}

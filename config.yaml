@@ -23,7 +23,7 @@ jwt:
 
 # Covalent API配置
 covalent:
-  api_key: "cqt_rQXqqXvWg974FTjvbx6grv7RQHWj"  # 请设置你的Covalent API Key
+  api_key: "cqt_rQjvYf9QCQwKvKJjCqTmhFVJbmWd"  # 请设置你的Covalent API Key
   base_url: "https://api.covalenthq.com/v1"
   request_timeout: "30s"
   cache_prefix: "asset:"

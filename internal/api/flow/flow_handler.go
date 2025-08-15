@@ -50,8 +50,8 @@ func (h *FlowHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body types.GetFlowListRequest false "查询参数"
-// @Success 200 {object} types.APIResponse{data=types.GetFlowListResponse}
+// @Param request body types.GetCompoundFlowListRequest false "查询参数"
+// @Success 200 {object} types.APIResponse{data=types.GetCompoundFlowListResponse}
 // @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
 // @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
 // @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
@@ -71,7 +71,7 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 	}
 
 	// 解析请求参数（支持 body 优先，兼容 query）
-	var req types.GetFlowListRequest
+	var req types.GetCompoundFlowListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		// ignore
 	}
@@ -88,7 +88,7 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 	}
 
 	// 调用服务层
-	response, err := h.flowService.GetFlowList(c.Request.Context(), userAddressStr, &req)
+	response, err := h.flowService.GetCompoundFlowList(c.Request.Context(), userAddressStr, &req)
 	if err != nil {
 		logger.Error("Failed to get flow list", err, "user", userAddressStr)
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
@@ -149,34 +149,40 @@ func (h *FlowHandler) GetTransactionDetail(c *gin.Context) {
 		return
 	}
 
-	// 调用服务层
-	response, err := h.flowService.GetTransactionDetail(c.Request.Context(), &req)
-	if err != nil {
-		if err.Error() == "transaction not found" {
-			c.JSON(http.StatusNotFound, types.APIResponse{
+	if req.Standard == "compound" {
+		// 调用服务层
+		response, err := h.flowService.GetCompoundTransactionDetail(c.Request.Context(), &req)
+		if err != nil {
+			if err.Error() == "transaction not found" {
+				c.JSON(http.StatusNotFound, types.APIResponse{
+					Success: false,
+					Error: &types.APIError{
+						Code:    "TRANSACTION_NOT_FOUND",
+						Message: "Transaction not found",
+					},
+				})
+				return
+			}
+
+			logger.Error("Failed to get transaction detail", err, "standard", req.Standard, "tx_hash", req.TxHash)
+			c.JSON(http.StatusInternalServerError, types.APIResponse{
 				Success: false,
 				Error: &types.APIError{
-					Code:    "TRANSACTION_NOT_FOUND",
-					Message: "Transaction not found",
+					Code:    "INTERNAL_ERROR",
+					Message: "Failed to get transaction detail",
+					Details: err.Error(),
 				},
 			})
 			return
 		}
 
-		logger.Error("Failed to get transaction detail", err, "standard", req.Standard, "tx_hash", req.TxHash)
-		c.JSON(http.StatusInternalServerError, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INTERNAL_ERROR",
-				Message: "Failed to get transaction detail",
-				Details: err.Error(),
-			},
+		c.JSON(http.StatusOK, types.APIResponse{
+			Success: true,
+			Data:    response,
 		})
+	} else if req.Standard == "openzeppelin" {
+		// 后续完善
+		c.JSON(http.StatusBadRequest, types.APIResponse{Success: false, Error: &types.APIError{Code: "NOT_SUPPORTED", Message: "Not supported openzeppelin timelock standard"}})
 		return
 	}
-
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    response,
-	})
 }

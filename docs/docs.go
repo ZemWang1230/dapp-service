@@ -2214,7 +2214,7 @@ const docTemplate = `{
                         "name": "request",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/types.GetFlowListRequest"
+                            "$ref": "#/definitions/types.GetCompoundFlowListRequest"
                         }
                     }
                 ],
@@ -2230,7 +2230,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/types.GetFlowListResponse"
+                                            "$ref": "#/definitions/types.GetCompoundFlowListResponse"
                                         }
                                     }
                                 }
@@ -3428,6 +3428,91 @@ const docTemplate = `{
                 }
             }
         },
+        "types.CompoundFlowResponse": {
+            "type": "object",
+            "properties": {
+                "call_data_hex": {
+                    "description": "调用数据",
+                    "type": "string"
+                },
+                "cancel_tx_hash": {
+                    "description": "取消交易哈希",
+                    "type": "string"
+                },
+                "cancelled_at": {
+                    "description": "取消时间",
+                    "type": "string"
+                },
+                "chain_id": {
+                    "description": "链ID",
+                    "type": "integer"
+                },
+                "contract_address": {
+                    "description": "合约地址",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "eta": {
+                    "description": "执行时间",
+                    "type": "string"
+                },
+                "execute_tx_hash": {
+                    "description": "执行交易哈希",
+                    "type": "string"
+                },
+                "executed_at": {
+                    "description": "执行时间",
+                    "type": "string"
+                },
+                "expired_at": {
+                    "description": "过期时间",
+                    "type": "string"
+                },
+                "flow_id": {
+                    "description": "流程ID",
+                    "type": "string"
+                },
+                "function_signature": {
+                    "description": "函数签名",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID",
+                    "type": "integer"
+                },
+                "initiator_address": {
+                    "description": "发起者地址(FromAddress)",
+                    "type": "string"
+                },
+                "queue_tx_hash": {
+                    "description": "排队交易哈希",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "状态",
+                    "type": "string"
+                },
+                "target_address": {
+                    "description": "目标地址",
+                    "type": "string"
+                },
+                "timelock_standard": {
+                    "description": "Timelock标准",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "更新时间",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "价值",
+                    "type": "string"
+                }
+            }
+        },
         "types.CompoundTimeLockWithPermission": {
             "type": "object",
             "properties": {
@@ -3498,6 +3583,74 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "types.CompoundTimelockTransactionDetail": {
+            "type": "object",
+            "properties": {
+                "block_number": {
+                    "description": "区块高度",
+                    "type": "integer"
+                },
+                "block_timestamp": {
+                    "description": "区块时间",
+                    "type": "string"
+                },
+                "chain_id": {
+                    "description": "链ID",
+                    "type": "integer"
+                },
+                "chain_name": {
+                    "description": "链名称",
+                    "type": "string"
+                },
+                "contract_address": {
+                    "description": "合约地址",
+                    "type": "string"
+                },
+                "event_call_data": {
+                    "description": "事件调用参数数据",
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "event_eta": {
+                    "description": "事件ETA（预计执行时间）",
+                    "type": "integer"
+                },
+                "event_function_signature": {
+                    "description": "事件函数签名",
+                    "type": "string"
+                },
+                "event_target": {
+                    "description": "事件目标地址",
+                    "type": "string"
+                },
+                "event_tx_hash": {
+                    "description": "事件交易哈希",
+                    "type": "string"
+                },
+                "event_value": {
+                    "description": "事件价值",
+                    "type": "string"
+                },
+                "from_address": {
+                    "description": "发起地址",
+                    "type": "string"
+                },
+                "to_address": {
+                    "description": "接收地址",
+                    "type": "string"
+                },
+                "tx_hash": {
+                    "description": "交易哈希",
+                    "type": "string"
+                },
+                "tx_status": {
+                    "description": "交易状态（success, failed）",
+                    "type": "string"
                 }
             }
         },
@@ -3611,87 +3764,6 @@ const docTemplate = `{
                 }
             }
         },
-        "types.FlowResponse": {
-            "type": "object",
-            "properties": {
-                "call_data_hex": {
-                    "description": "调用数据",
-                    "type": "string"
-                },
-                "cancel_tx_hash": {
-                    "description": "取消交易哈希",
-                    "type": "string"
-                },
-                "cancelled_at": {
-                    "description": "取消时间",
-                    "type": "string"
-                },
-                "chain_id": {
-                    "description": "链ID",
-                    "type": "integer"
-                },
-                "contract_address": {
-                    "description": "合约地址",
-                    "type": "string"
-                },
-                "created_at": {
-                    "description": "创建时间",
-                    "type": "string"
-                },
-                "eta": {
-                    "description": "执行时间",
-                    "type": "string"
-                },
-                "execute_tx_hash": {
-                    "description": "执行交易哈希",
-                    "type": "string"
-                },
-                "executed_at": {
-                    "description": "执行时间",
-                    "type": "string"
-                },
-                "expired_at": {
-                    "description": "过期时间",
-                    "type": "string"
-                },
-                "flow_id": {
-                    "description": "流程ID",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID",
-                    "type": "integer"
-                },
-                "initiator_address": {
-                    "description": "发起者地址(FromAddress)",
-                    "type": "string"
-                },
-                "queue_tx_hash": {
-                    "description": "排队交易哈希",
-                    "type": "string"
-                },
-                "status": {
-                    "description": "状态",
-                    "type": "string"
-                },
-                "target_address": {
-                    "description": "目标地址",
-                    "type": "string"
-                },
-                "timelock_standard": {
-                    "description": "Timelock标准",
-                    "type": "string"
-                },
-                "updated_at": {
-                    "description": "更新时间",
-                    "type": "string"
-                },
-                "value": {
-                    "description": "价值",
-                    "type": "string"
-                }
-            }
-        },
         "types.GetABIByIDRequest": {
             "type": "object",
             "required": [
@@ -3714,18 +3786,7 @@ const docTemplate = `{
                 }
             }
         },
-        "types.GetEmailsRequest": {
-            "type": "object",
-            "properties": {
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "types.GetFlowListRequest": {
+        "types.GetCompoundFlowListRequest": {
             "type": "object",
             "properties": {
                 "page": {
@@ -3746,18 +3807,29 @@ const docTemplate = `{
                 }
             }
         },
-        "types.GetFlowListResponse": {
+        "types.GetCompoundFlowListResponse": {
             "type": "object",
             "properties": {
                 "flows": {
                     "description": "流程列表",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/types.FlowResponse"
+                        "$ref": "#/definitions/types.CompoundFlowResponse"
                     }
                 },
                 "total": {
                     "description": "总数",
+                    "type": "integer"
+                }
+            }
+        },
+        "types.GetEmailsRequest": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
                     "type": "integer"
                 }
             }
@@ -3902,7 +3974,7 @@ const docTemplate = `{
                     "description": "交易详情",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/types.TimelockTransactionDetail"
+                            "$ref": "#/definitions/types.CompoundTimelockTransactionDetail"
                         }
                     ]
                 }
@@ -4112,47 +4184,6 @@ const docTemplate = `{
                 },
                 "rpc_enabled": {
                     "type": "boolean"
-                }
-            }
-        },
-        "types.TimelockTransactionDetail": {
-            "type": "object",
-            "properties": {
-                "block_number": {
-                    "description": "区块高度",
-                    "type": "integer"
-                },
-                "block_timestamp": {
-                    "description": "区块时间",
-                    "type": "string"
-                },
-                "chain_id": {
-                    "description": "链ID",
-                    "type": "integer"
-                },
-                "chain_name": {
-                    "description": "链名称",
-                    "type": "string"
-                },
-                "contract_address": {
-                    "description": "合约地址",
-                    "type": "string"
-                },
-                "from_address": {
-                    "description": "发起地址",
-                    "type": "string"
-                },
-                "to_address": {
-                    "description": "接收地址",
-                    "type": "string"
-                },
-                "tx_hash": {
-                    "description": "交易哈希",
-                    "type": "string"
-                },
-                "tx_status": {
-                    "description": "交易状态（success, failed）",
-                    "type": "string"
                 }
             }
         },
