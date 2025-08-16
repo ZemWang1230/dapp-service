@@ -25,7 +25,7 @@ type FlowRepository interface {
 	// 新API查询方法
 	GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error)
 	GetCompoundTransactionDetail(ctx context.Context, standard string, txHash string) (*types.CompoundTimelockTransactionDetail, error)
-	GetQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error)
+	GetCompoundQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error)
 }
 
 type flowRepository struct {
@@ -297,19 +297,19 @@ func (r *flowRepository) GetCompoundTransactionDetail(ctx context.Context, stand
 	return &detail, nil
 }
 
-// GetQueueTransactionFunctionSignature 获取队列交易的函数签名
-func (r *flowRepository) GetQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error) {
+// GetCompoundQueueTransactionFunctionSignature 获取Compound队列交易的函数签名
+func (r *flowRepository) GetCompoundQueueTransactionFunctionSignature(ctx context.Context, flowID string, contractAddress string) (*string, error) {
 	var tx types.CompoundTimelockTransaction
 	err := r.db.WithContext(ctx).
 		Select("event_function_signature").
-		Where("tx_hash = ? AND contract_address = ? AND event_type = ?", queueTxHash, contractAddress, "QueueTransaction").
+		Where("event_tx_hash = ? AND LOWER(contract_address) = LOWER(?) AND event_type = ? AND tx_status = ?", flowID, contractAddress, "QueueTransaction", "success").
 		First(&tx).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
-		logger.Error("GetQueueTransactionFunctionSignature Error", err, "tx_hash", queueTxHash, "contract_address", contractAddress)
+		logger.Error("GetQueueTransactionFunctionSignature Error", err, "flow_id", flowID, "contract_address", contractAddress)
 		return nil, err
 	}
 

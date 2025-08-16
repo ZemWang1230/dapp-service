@@ -32,8 +32,8 @@ covalent:
 # RPC配置 - 用于监听链上事件
 rpc:
   # RPC提供商配置（用户只需要填写API key）
-  alchemy_api_key: "7JGar3dcq0bHQa9vMk9zSS15hdFCmVHa"
-  infura_api_key: "31f7df93b3884e1f884c58c79d142e99"
+  alchemy_api_key: "xxx"
+  infura_api_key: "xxx"
   
   # 当前使用的提供商（alchemy、infura 或 custom）
   # alchemy: 使用Alchemy RPC

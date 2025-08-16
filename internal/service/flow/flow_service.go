@@ -162,10 +162,10 @@ func (s *flowService) convertToCompoundFlowResponse(ctx context.Context, flow ty
 	}
 
 	// 获取队列交易的函数签名
-	if flow.QueueTxHash != "" && flow.TimelockStandard == "compound" {
-		functionSignature, err := s.flowRepo.GetQueueTransactionFunctionSignature(ctx, flow.QueueTxHash, flow.ContractAddress)
+	if flow.FlowID != "" && flow.TimelockStandard == "compound" {
+		functionSignature, err := s.flowRepo.GetCompoundQueueTransactionFunctionSignature(ctx, flow.FlowID, flow.ContractAddress)
 		if err != nil {
-			logger.Error("Failed to get queue transaction function signature", err, "queue_tx_hash", flow.QueueTxHash, "contract_address", flow.ContractAddress)
+			logger.Error("Failed to get queue transaction function signature", err, "flow_id", flow.FlowID, "contract_address", flow.ContractAddress)
 		} else if functionSignature != nil {
 			response.FunctionSignature = functionSignature
 		}
