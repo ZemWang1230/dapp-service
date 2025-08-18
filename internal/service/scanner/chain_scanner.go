@@ -125,7 +125,7 @@ func (cs *ChainScanner) Stop() {
 
 	// 更新本地状态为 paused (等扫链器完全停止后再更新)
 	cs.progress.ScanStatus = "paused"
-	cs.progress.ErrorMessage = nil
+	// cs.progress.ErrorMessage = nil
 	cs.progress.LastUpdateTime = time.Now()
 
 	// 同步更新数据库状态

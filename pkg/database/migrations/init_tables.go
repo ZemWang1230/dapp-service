@@ -200,38 +200,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: support_chains")
 	}
 
-	// 3. 用户资产表
-	if !h.db.Migrator().HasTable("user_assets") {
-		createUserAssetsTable := `
-		CREATE TABLE user_assets (
-			id BIGSERIAL PRIMARY KEY,
-			wallet_address VARCHAR(42) NOT NULL REFERENCES users(wallet_address) ON DELETE CASCADE,
-			chain_name VARCHAR(100) NOT NULL,
-			contract_address VARCHAR(42) NOT NULL DEFAULT '',
-			token_symbol VARCHAR(20) NOT NULL,
-			token_name VARCHAR(100) NOT NULL,
-			token_decimals INTEGER NOT NULL DEFAULT 18,
-			balance VARCHAR(200) NOT NULL DEFAULT '0',
-			balance_wei VARCHAR(200) NOT NULL DEFAULT '0',
-			usd_value DECIMAL(200,10) DEFAULT 0,
-			token_price DECIMAL(200,10) DEFAULT 0,
-			price_change24h DECIMAL(200,10) DEFAULT 0,
-			is_native BOOLEAN NOT NULL DEFAULT false,
-			token_logo_url TEXT,
-			chain_logo_url TEXT,
-			last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(wallet_address, chain_name, contract_address)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createUserAssetsTable).Error; err != nil {
-			return fmt.Errorf("failed to create user_assets table: %w", err)
-		}
-		logger.Info("Created table: user_assets")
-	}
-
-	// 4. ABI库表
+	// 3. ABI库表
 	if !h.db.Migrator().HasTable("abis") {
 		createABIsTable := `
 		CREATE TABLE abis (
@@ -252,7 +221,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: abis")
 	}
 
-	// 5. Compound标准Timelock合约表
+	// 4. Compound标准Timelock合约表
 	if !h.db.Migrator().HasTable("compound_timelocks") {
 		createCompoundTimelocksTable := `
 		CREATE TABLE compound_timelocks (
@@ -281,7 +250,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: compound_timelocks")
 	}
 
-	// 6. OpenZeppelin标准Timelock合约表
+	// 5. OpenZeppelin标准Timelock合约表
 	if !h.db.Migrator().HasTable("openzeppelin_timelocks") {
 		createOpenzeppelinTimelocksTable := `
 		CREATE TABLE openzeppelin_timelocks (
@@ -308,7 +277,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: openzeppelin_timelocks")
 	}
 
-	// 7. 赞助方和生态伙伴表
+	// 6. 赞助方和生态伙伴表
 	if !h.db.Migrator().HasTable("sponsors") {
 		createSponsorsTable := `
 		CREATE TABLE sponsors (
@@ -330,7 +299,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: sponsors")
 	}
 
-	// 8. 区块扫描进度表
+	// 7. 区块扫描进度表
 	if !h.db.Migrator().HasTable("block_scan_progress") {
 		createBlockScanProgressTable := `
 		CREATE TABLE block_scan_progress (
@@ -352,7 +321,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: block_scan_progress")
 	}
 
-	// 9. Compound Timelock 交易记录表
+	// 8. Compound Timelock 交易记录表
 	if !h.db.Migrator().HasTable("compound_timelock_transactions") {
 		createCompoundTimelockTransactionsTable := `
 		CREATE TABLE compound_timelock_transactions (
@@ -385,7 +354,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: compound_timelock_transactions")
 	}
 
-	// 10. OpenZeppelin Timelock 交易记录表
+	// 9. OpenZeppelin Timelock 交易记录表
 	if !h.db.Migrator().HasTable("openzeppelin_timelock_transactions") {
 		createOpenzeppelinTimelockTransactionsTable := `
 		CREATE TABLE openzeppelin_timelock_transactions (
@@ -419,7 +388,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: openzeppelin_timelock_transactions")
 	}
 
-	// 11. Timelock 交易流程关联表
+	// 10. Timelock 交易流程关联表
 	if !h.db.Migrator().HasTable("timelock_transaction_flows") {
 		createTimelockTransactionFlowsTable := `
 		CREATE TABLE timelock_transaction_flows (
@@ -453,7 +422,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: timelock_transaction_flows")
 	}
 
-	// 12. emails 表
+	// 11. emails 表
 	if !h.db.Migrator().HasTable("emails") {
 		sql := `
         CREATE TABLE emails (
@@ -469,7 +438,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: emails")
 	}
 
-	// 13. user_emails 表
+	// 12. user_emails 表
 	if !h.db.Migrator().HasTable("user_emails") {
 		sql := `
         CREATE TABLE user_emails (
@@ -489,7 +458,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: user_emails")
 	}
 
-	// 14. email_verification_codes 表
+	// 13. email_verification_codes 表
 	if !h.db.Migrator().HasTable("email_verification_codes") {
 		sql := `
         CREATE TABLE email_verification_codes (
@@ -507,7 +476,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: email_verification_codes")
 	}
 
-	// 15. email_send_logs 表（按邮箱去重）
+	// 14. email_send_logs 表（按邮箱去重）
 	if !h.db.Migrator().HasTable("email_send_logs") {
 		sql := `
         CREATE TABLE email_send_logs (
@@ -548,10 +517,6 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_support_chains_chain_id ON support_chains(chain_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_support_chains_active_rpc ON support_chains(is_active, rpc_enabled)`,
 		`CREATE INDEX IF NOT EXISTS idx_support_chains_testnet ON support_chains(is_testnet)`,
-
-		// User Assets
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_wallet ON user_assets(wallet_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_user_assets_chain ON user_assets(chain_name)`,
 
 		// ABIs
 		`CREATE INDEX IF NOT EXISTS idx_abis_owner ON abis(owner)`,
@@ -640,7 +605,7 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 	mainnets := []map[string]interface{}{
 		{
 			"chain_name":               "eth-mainnet",
-			"display_name":             "Ethereum Mainnet",
+			"display_name":             "Ethereum",
 			"chain_id":                 1,
 			"native_currency_name":     "Ether",
 			"native_currency_symbol":   "ETH",
@@ -656,7 +621,7 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 		},
 		{
 			"chain_name":               "bsc-mainnet",
-			"display_name":             "BNB Smart Chain",
+			"display_name":             "BNB Chain",
 			"chain_id":                 56,
 			"native_currency_name":     "BNB",
 			"native_currency_symbol":   "BNB",
@@ -671,24 +636,8 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"rpc_enabled":              true,
 		},
 		{
-			"chain_name":               "matic-mainnet",
-			"display_name":             "Polygon Mainnet",
-			"chain_id":                 137,
-			"native_currency_name":     "MATIC",
-			"native_currency_symbol":   "MATIC",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/matic-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://polygon-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://polygon-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://polygon-rpc.com","https://polygon.drpc.org"]`,
-			"block_explorer_urls":      `["https://polygonscan.com"]`,
-			"rpc_enabled":              true,
-		},
-		{
 			"chain_name":               "arbitrum-mainnet",
-			"display_name":             "Arbitrum One",
+			"display_name":             "Arbitrum",
 			"chain_id":                 42161,
 			"native_currency_name":     "Ether",
 			"native_currency_symbol":   "ETH",
@@ -735,86 +684,6 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"rpc_enabled":              true,
 		},
 		{
-			"chain_name":               "avalanche-mainnet",
-			"display_name":             "Avalanche C-Chain",
-			"chain_id":                 43114,
-			"native_currency_name":     "Avalanche",
-			"native_currency_symbol":   "AVAX",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/avalanche-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://avax-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://avalanche-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://avalanche.drpc.org","https://avalanche-c-chain-rpc.publicnode.com"]`,
-			"block_explorer_urls":      `["https://subnets.avax.network/c-chain"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "world-mainnet",
-			"display_name":             "World Chain",
-			"chain_id":                 480,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/world-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://worldchain-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://worldchain-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://worldchain.drpc.org"]`,
-			"block_explorer_urls":      `["https://worldscan.org"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "zksync-mainnet",
-			"display_name":             "ZKSync Era",
-			"chain_id":                 324,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/zksync-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://zksync-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://zksync-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://mainnet.era.zksync.io","https://rpc.ankr.com/zksync_era"]`,
-			"block_explorer_urls":      `["https://explorer.zksync.io"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "berachain-mainnet",
-			"display_name":             "Berachain",
-			"chain_id":                 80094,
-			"native_currency_name":     "BERA",
-			"native_currency_symbol":   "BERA",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/berachain-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://berachain-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://berachain-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://berachain.drpc.org"]`,
-			"block_explorer_urls":      `["https://berascan.com"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "mantle-mainnet",
-			"display_name":             "Mantle",
-			"chain_id":                 5000,
-			"native_currency_name":     "MNT",
-			"native_currency_symbol":   "MNT",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/mantle-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://mantle-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://mantle-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://rpc.mantle.xyz"]`,
-			"block_explorer_urls":      `["https://explorer.mantle.xyz"]`,
-			"rpc_enabled":              true,
-		},
-		{
 			"chain_name":               "linea-mainnet",
 			"display_name":             "Linea",
 			"chain_id":                 59144,
@@ -828,38 +697,6 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"infura_rpc_template":      "https://linea-mainnet.infura.io/v3/{API_KEY}",
 			"official_rpc_urls":        `["https://rpc.linea.build", "https://linea.drpc.org"]`,
 			"block_explorer_urls":      `["https://lineascan.build"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "gnosis-mainnet",
-			"display_name":             "Gnosis",
-			"chain_id":                 100,
-			"native_currency_name":     "xDai",
-			"native_currency_symbol":   "xDai",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/gnosis-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://gnosis-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://gnosis-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://rpc.gnosis.gateway.fm", "https://gnosis.drpc.org"]`,
-			"block_explorer_urls":      `["https://gnosisscan.io"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "ink-mainnet",
-			"display_name":             "Ink",
-			"chain_id":                 57073,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/ink-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://ink-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://ink-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://ink.drpc.org"]`,
-			"block_explorer_urls":      `["https://explorer.inkonchain.com"]`,
 			"rpc_enabled":              true,
 		},
 		{
@@ -879,52 +716,195 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"rpc_enabled":              true,
 		},
 		{
-			"chain_name":               "celo-mainnet",
-			"display_name":             "Celo",
-			"chain_id":                 42220,
-			"native_currency_name":     "CELO",
-			"native_currency_symbol":   "CELO",
+			"chain_name":               "bitlayer-mainnet",
+			"display_name":             "Bitlayer",
+			"chain_id":                 200901,
+			"native_currency_name":     "BTC",
+			"native_currency_symbol":   "BTC",
 			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/celo-mainnet.png",
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bitlayer-mainnet.jpg",
 			"is_testnet":               false,
 			"is_active":                true,
-			"alchemy_rpc_template":     "https://celo-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://celo-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://celo.drpc.org"]`,
-			"block_explorer_urls":      `["https://celoscan.io"]`,
+			"alchemy_rpc_template":     "https://rpc.ankr.com/bitlayer",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://rpc.ankr.com/bitlayer", "https://rpc-bitlayer.rockx.com"]`,
+			"block_explorer_urls":      `["https://www.btrscan.com"]`,
 			"rpc_enabled":              true,
 		},
 		{
-			"chain_name":               "unichain-mainnet",
-			"display_name":             "Unichain",
-			"chain_id":                 130,
+			"chain_name":               "mode-mainnet",
+			"display_name":             "Mode",
+			"chain_id":                 34443,
 			"native_currency_name":     "Ether",
 			"native_currency_symbol":   "ETH",
 			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/unichain-mainnet.png",
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/mode-mainnet.png",
 			"is_testnet":               false,
 			"is_active":                true,
-			"alchemy_rpc_template":     "https://unichain-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://unichain-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://unichain.drpc.org"]`,
-			"block_explorer_urls":      `["https://unichain.blockscout.com"]`,
+			"alchemy_rpc_template":     "https://mode.drpc.org",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://mode.drpc.org", "https://mainnet.mode.network"]`,
+			"block_explorer_urls":      `["https://explorer.mode.network"]`,
 			"rpc_enabled":              true,
 		},
 		{
-			// ronin-mainnet
-			"chain_name":               "axie-mainnet",
-			"display_name":             "Ronin",
-			"chain_id":                 2020,
-			"native_currency_name":     "RON",
-			"native_currency_symbol":   "RON",
+			"chain_name":               "plume-mainnet",
+			"display_name":             "Plume",
+			"chain_id":                 98866,
+			"native_currency_name":     "Plume",
+			"native_currency_symbol":   "PLUME",
 			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/ronin-mainnet.png",
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/plume-mainnet.jpg",
 			"is_testnet":               false,
 			"is_active":                true,
-			"alchemy_rpc_template":     "https://ronin-mainnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://ronin-mainnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://ronin.drpc.org"]`,
-			"block_explorer_urls":      `["https://explorer.roninchain.com"]`,
+			"alchemy_rpc_template":     "https://rpc.plume.org",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://rpc.plume.org"]`,
+			"block_explorer_urls":      `["https://explorer.plumenetwork.xyz"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "core-mainnet",
+			"display_name":             "Core",
+			"chain_id":                 1116,
+			"native_currency_name":     "Core",
+			"native_currency_symbol":   "CORE",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/core-mainnet.png",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://rpc.ankr.com/core",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://rpc.ankr.com/core", "https://core.drpc.org"]`,
+			"block_explorer_urls":      `["https://scan.coredao.org"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "hemi-mainnet",
+			"display_name":             "Hemi",
+			"chain_id":                 43111,
+			"native_currency_name":     "Ether",
+			"native_currency_symbol":   "ETH",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/hemi-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://hemi.drpc.org",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://hemi.drpc.org", "https://rpc.hemi.network/rpc"]`,
+			"block_explorer_urls":      `["https://explorer.hemi.xyz"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "goat-mainnet",
+			"display_name":             "GOAT",
+			"chain_id":                 2345,
+			"native_currency_name":     "BTC",
+			"native_currency_symbol":   "BTC",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/goat-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://rpc.ankr.com/goat_mainnet",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://rpc.ankr.com/goat_mainnet", "https://rpc.goat.network"]`,
+			"block_explorer_urls":      `["https://explorer.goat.network"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "b2-mainnet",
+			"display_name":             "B2",
+			"chain_id":                 223,
+			"native_currency_name":     "BTC",
+			"native_currency_symbol":   "BTC",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/b2-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://rpc.ankr.com/b2",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://rpc.bsquared.network", "https://rpc.ankr.com/b2"]`,
+			"block_explorer_urls":      `["https://explorer.bsquared.network"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "ailayer-mainnet",
+			"display_name":             "AILayer",
+			"chain_id":                 2649,
+			"native_currency_name":     "BTC",
+			"native_currency_symbol":   "BTC",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/ailayer-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://mainnet-rpc.ailayer.xyz",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://mainnet-rpc.ailayer.xyz"]`,
+			"block_explorer_urls":      `["https://mainnet-explorer.ailayer.xyz"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "zklink-mainnet",
+			"display_name":             "zkLink",
+			"chain_id":                 810180,
+			"native_currency_name":     "Ether",
+			"native_currency_symbol":   "ETH",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/zklink-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://rpc.zklink.io",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://rpc.zklink.io"]`,
+			"block_explorer_urls":      `["https://explorer.zklink.io"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "merlin-mainnet",
+			"display_name":             "Merlin",
+			"chain_id":                 4200,
+			"native_currency_name":     "BTC",
+			"native_currency_symbol":   "BTC",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/merlin-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://merlin.drpc.org",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://merlin.drpc.org", "https://rpc.merlinchain.io"]`,
+			"block_explorer_urls":      `["https://scan.merlinchain.io"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "exsat-mainnet",
+			"display_name":             "exSat",
+			"chain_id":                 7200,
+			"native_currency_name":     "BTC",
+			"native_currency_symbol":   "BTC",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/exsat-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://rpc-sg.exsat.network",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://evm.exsat.network", "https://rpc-sg.exsat.network", "https://rpc-us.exsat.network"]`,
+			"block_explorer_urls":      `["https://scan.exsat.network"]`,
+			"rpc_enabled":              true,
+		},
+		{
+			"chain_name":               "hashkey-mainnet",
+			"display_name":             "HashKey",
+			"chain_id":                 177,
+			"native_currency_name":     "HSK",
+			"native_currency_symbol":   "HSK",
+			"native_currency_decimals": 18,
+			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/hashkey-mainnet.jpg",
+			"is_testnet":               false,
+			"is_active":                true,
+			"alchemy_rpc_template":     "https://hashkey.drpc.org",
+			"infura_rpc_template":      "",
+			"official_rpc_urls":        `["https://hashkey.drpc.org", "https://mainnet.hsk.xyz"]`,
+			"block_explorer_urls":      `["https://hashkey.blockscout.com"]`,
 			"rpc_enabled":              true,
 		},
 	}
@@ -933,7 +913,7 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 	testnets := []map[string]interface{}{
 		{
 			"chain_name":               "eth-sepolia",
-			"display_name":             "Ethereum Sepolia",
+			"display_name":             "Sepolia",
 			"chain_id":                 11155111,
 			"native_currency_name":     "Sepolia Ether",
 			"native_currency_symbol":   "ETH",
@@ -948,24 +928,8 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"rpc_enabled":              true,
 		},
 		{
-			"chain_name":               "monad-testnet",
-			"display_name":             "Monad Testnet",
-			"chain_id":                 10143,
-			"native_currency_name":     "MON",
-			"native_currency_symbol":   "MON",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/monad-testnet.png",
-			"is_testnet":               true,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://monad-testnet.g.alchemy.com/v2/{API_KEY}",
-			"infura_rpc_template":      "https://monad-testnet.infura.io/v3/{API_KEY}",
-			"official_rpc_urls":        `["https://monad-testnet.drpc.org", "https://testnet-rpc.monad.xyz"]`,
-			"block_explorer_urls":      `["https://testnet.monadexplorer.com"]`,
-			"rpc_enabled":              true,
-		},
-		{
 			"chain_name":               "bsc-testnet",
-			"display_name":             "BNB Smart Chain Testnet",
+			"display_name":             "BNB Testnet",
 			"chain_id":                 97,
 			"native_currency_name":     "Test BNB",
 			"native_currency_symbol":   "BNB",
@@ -1029,17 +993,10 @@ func (h *MigrationHandler) insertSharedABIs(ctx context.Context) error {
 			"is_shared":   true,
 		},
 		{
-			"name":        "Uniswap V2 Pair",
-			"abi_content": `[{"inputs":[],"name":"DOMAIN_SEPARATOR","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"MINIMUM_LIQUIDITY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"PERMIT_TYPEHASH","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"burn","outputs":[{"internalType":"uint256","name":"amount0","type":"uint256"},{"internalType":"uint256","name":"amount1","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"factory","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getReserves","outputs":[{"internalType":"uint112","name":"_reserve0","type":"uint112"},{"internalType":"uint112","name":"_reserve1","type":"uint112"},{"internalType":"uint32","name":"_blockTimestampLast","type":"uint32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_token0","type":"address"},{"internalType":"address","name":"_token1","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"kLast","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"mint","outputs":[{"internalType":"uint256","name":"liquidity","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"nonces","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"price0CumulativeLast","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"price1CumulativeLast","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"}],"name":"skim","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amount0Out","type":"uint256"},{"internalType":"uint256","name":"amount1Out","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"swap","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"sync","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"token0","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"token1","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`,
+			"name":        "Compound Timelock",
+			"abi_content": `[{"inputs":[{"internalType":"address","name":"admin_","type":"address"},{"internalType":"uint256","name":"delay_","type":"uint256"}],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"txHash","type":"bytes32"},{"indexed":true,"internalType":"address","name":"target","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"},{"indexed":false,"internalType":"string","name":"signature","type":"string"},{"indexed":false,"internalType":"bytes","name":"data","type":"bytes"},{"indexed":false,"internalType":"uint256","name":"eta","type":"uint256"}],"name":"CancelTransaction","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"txHash","type":"bytes32"},{"indexed":true,"internalType":"address","name":"target","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"},{"indexed":false,"internalType":"string","name":"signature","type":"string"},{"indexed":false,"internalType":"bytes","name":"data","type":"bytes"},{"indexed":false,"internalType":"uint256","name":"eta","type":"uint256"}],"name":"ExecuteTransaction","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"newAdmin","type":"address"}],"name":"NewAdmin","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"newDelay","type":"uint256"}],"name":"NewDelay","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"newPendingAdmin","type":"address"}],"name":"NewPendingAdmin","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"txHash","type":"bytes32"},{"indexed":true,"internalType":"address","name":"target","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"},{"indexed":false,"internalType":"string","name":"signature","type":"string"},{"indexed":false,"internalType":"bytes","name":"data","type":"bytes"},{"indexed":false,"internalType":"uint256","name":"eta","type":"uint256"}],"name":"QueueTransaction","type":"event"},{"stateMutability":"payable","type":"fallback"},{"inputs":[],"name":"GRACE_PERIOD","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"MAXIMUM_DELAY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"MINIMUM_DELAY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"acceptAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"string","name":"signature","type":"string"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"uint256","name":"eta","type":"uint256"}],"name":"cancelTransaction","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"delay","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"string","name":"signature","type":"string"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"uint256","name":"eta","type":"uint256"}],"name":"executeTransaction","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"pendingAdmin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"string","name":"signature","type":"string"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"uint256","name":"eta","type":"uint256"}],"name":"queueTransaction","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"name":"queuedTransactions","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"delay_","type":"uint256"}],"name":"setDelay","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"pendingAdmin_","type":"address"}],"name":"setPendingAdmin","outputs":[],"stateMutability":"nonpayable","type":"function"}]`,
 			"owner":       "0x0000000000000000000000000000000000000000",
-			"description": "Uniswap V2 trading pair contract interface for decentralized token swapping.",
-			"is_shared":   true,
-		},
-		{
-			"name":        "OpenZeppelin TimelockController",
-			"abi_content": `[{"inputs":[{"internalType":"uint256","name":"minDelay","type":"uint256"},{"internalType":"address[]","name":"proposers","type":"address[]"},{"internalType":"address[]","name":"executors","type":"address[]"},{"internalType":"address","name":"admin","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"grantRole","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"hasRole","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"id","type":"bytes32"}],"name":"isOperation","outputs":[{"internalType":"bool","name":"pending","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"id","type":"bytes32"}],"name":"isOperationDone","outputs":[{"internalType":"bool","name":"done","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"id","type":"bytes32"}],"name":"isOperationPending","outputs":[{"internalType":"bool","name":"pending","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"id","type":"bytes32"}],"name":"isOperationReady","outputs":[{"internalType":"bool","name":"ready","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"bytes32","name":"predecessor","type":"bytes32"},{"internalType":"bytes32","name":"salt","type":"bytes32"}],"name":"execute","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"address","name":"target","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"},{"internalType":"bytes","name":"data","type":"bytes"},{"internalType":"bytes32","name":"predecessor","type":"bytes32"},{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"uint256","name":"delay","type":"uint256"}],"name":"schedule","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"id","type":"bytes32"}],"name":"cancel","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"getMinDelay","outputs":[{"internalType":"uint256","name":"duration","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"id","type":"bytes32"}],"name":"getTimestamp","outputs":[{"internalType":"uint256","name":"timestamp","type":"uint256"}],"stateMutability":"view","type":"function"}]`,
-			"owner":       "0x0000000000000000000000000000000000000000",
-			"description": "OpenZeppelin TimelockController contract for time-delayed execution of governance proposals.",
+			"description": "Compound Timelock contract interface for managing timelock transactions.",
 			"is_shared":   true,
 		},
 	}
@@ -1070,11 +1027,18 @@ func ResetDangerous(db *gorm.DB) error {
 
 	// 删除所有表（逆序删除以避免外键约束问题）
 	tables := []string{
-		"compound_timelocks",
-		"openzeppelin_timelocks",
-		"user_assets",
-		"abis",
+		"email_send_logs",
+		"email_verification_codes",
+		"user_emails",
+		"emails",
+		"timelock_transaction_flows",
+		"openzeppelin_timelock_transactions",
+		"compound_timelock_transactions",
+		"block_scan_progress",
 		"sponsors",
+		"openzeppelin_timelocks",
+		"compound_timelocks",
+		"abis",
 		"support_chains",
 		"users",
 		"schema_migrations",
