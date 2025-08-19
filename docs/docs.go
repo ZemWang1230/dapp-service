@@ -3242,6 +3242,10 @@ const docTemplate = `{
                     "description": "合约地址",
                     "type": "string"
                 },
+                "contract_remark": {
+                    "description": "合约备注",
+                    "type": "string"
+                },
                 "created_at": {
                     "description": "创建时间",
                     "type": "string"
