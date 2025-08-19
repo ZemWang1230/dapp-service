@@ -17,7 +17,6 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
-	Covalent CovalentConfig `mapstructure:"covalent"`
 	RPC      RPCConfig      `mapstructure:"rpc"`
 	Email    EmailConfig    `mapstructure:"email"`
 	Scanner  ScannerConfig  `mapstructure:"scanner"`
@@ -50,22 +49,12 @@ type JWTConfig struct {
 	RefreshExpiry time.Duration `mapstructure:"refresh_expiry"`
 }
 
-type CovalentConfig struct {
-	APIKey         string        `mapstructure:"api_key"`
-	BaseURL        string        `mapstructure:"base_url"`
-	RequestTimeout time.Duration `mapstructure:"request_timeout"`
-	CachePrefix    string        `mapstructure:"cache_prefix"`
-	CacheExpiry    int           `mapstructure:"cache_expiry"` // seconds
-}
-
 // RPCConfig RPC配置
 type RPCConfig struct {
-	AlchemyAPIKey      string        `mapstructure:"alchemy_api_key"`
-	InfuraAPIKey       string        `mapstructure:"infura_api_key"`
-	Provider           string        `mapstructure:"provider"`
-	PollInterval       time.Duration `mapstructure:"poll_interval"`
-	BlockConfirmations int           `mapstructure:"block_confirmations"`
-	IncludeTestnets    bool          `mapstructure:"include_testnets"`
+	AlchemyAPIKey   string `mapstructure:"alchemy_api_key"`
+	InfuraAPIKey    string `mapstructure:"infura_api_key"`
+	Provider        string `mapstructure:"provider"`
+	IncludeTestnets bool   `mapstructure:"include_testnets"`
 }
 
 // EmailConfig 邮件配置
@@ -120,17 +109,6 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("jwt.secret", "timelocker-jwt-secret-v1")
 	viper.SetDefault("jwt.access_expiry", time.Hour*24)
 	viper.SetDefault("jwt.refresh_expiry", time.Hour*24*7)
-
-	// Covalent defaults
-	viper.SetDefault("covalent.api_key", "")
-	viper.SetDefault("covalent.base_url", "https://api.covalenthq.com/v1")
-	viper.SetDefault("covalent.request_timeout", time.Second*30)
-	viper.SetDefault("covalent.cache_prefix", "asset:")
-	viper.SetDefault("covalent.cache_expiry", 300) // 5 minutes
-
-	// RPC defaults
-	viper.SetDefault("rpc.poll_interval", time.Second*30)
-	viper.SetDefault("rpc.block_confirmations", 12)
 
 	// Email defaults
 	viper.SetDefault("email.smtp_host", "smtp.gmail.com")

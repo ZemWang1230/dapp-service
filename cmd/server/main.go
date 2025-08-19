@@ -122,8 +122,8 @@ func main() {
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
-	emailSvc := emailService.NewEmailService(emailRepository, cfg)
-	flowSvc := flowService.NewFlowService(flowRepository)
+	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, cfg)
+	flowSvc := flowService.NewFlowService(flowRepository, timelockRepository)
 
 	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)

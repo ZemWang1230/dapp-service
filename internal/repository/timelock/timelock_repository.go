@@ -47,6 +47,9 @@ type Repository interface {
 	// 获取所有活跃timelock合约（用于定时刷新）
 	GetAllActiveCompoundTimeLocks(ctx context.Context) ([]types.CompoundTimeLock, error)
 	GetAllActiveOpenzeppelinTimeLocks(ctx context.Context) ([]types.OpenzeppelinTimeLock, error)
+
+	// 通用方法：根据标准、链ID和合约地址获取合约备注
+	GetContractRemarkByStandardAndAddress(ctx context.Context, standard string, chainID int, contractAddress string) (string, error)
 }
 
 type repository struct {
@@ -409,6 +412,53 @@ func (r *repository) GetAllActiveOpenzeppelinTimeLocks(ctx context.Context) ([]t
 
 	logger.Info("GetAllActiveOpenzeppelinTimeLocks success", "count", len(timelocks))
 	return timelocks, nil
+}
+
+// GetContractRemarkByStandardAndAddress 根据标准、链ID和合约地址获取合约备注
+func (r *repository) GetContractRemarkByStandardAndAddress(ctx context.Context, standard string, chainID int, contractAddress string) (string, error) {
+	standard = strings.ToLower(strings.TrimSpace(standard))
+	contractAddress = strings.ToLower(strings.TrimSpace(contractAddress))
+
+	switch standard {
+	case "compound":
+		var timeLock types.CompoundTimeLock
+		err := r.db.WithContext(ctx).
+			Select("remark").
+			Where("chain_id = ? AND LOWER(contract_address) = ? AND status = ?", chainID, contractAddress, "active").
+			First(&timeLock).Error
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.Debug("Compound contract not found", "chainID", chainID, "contractAddress", contractAddress)
+				return "", nil // 返回空字符串而不是错误，因为合约可能不存在
+			}
+			logger.Error("GetContractRemarkByStandardAndAddress error for compound", err, "chainID", chainID, "contractAddress", contractAddress)
+			return "", err
+		}
+
+		return timeLock.Remark, nil
+
+	case "openzeppelin":
+		var timeLock types.OpenzeppelinTimeLock
+		err := r.db.WithContext(ctx).
+			Select("remark").
+			Where("chain_id = ? AND LOWER(contract_address) = ? AND status = ?", chainID, contractAddress, "active").
+			First(&timeLock).Error
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.Debug("OpenZeppelin contract not found", "chainID", chainID, "contractAddress", contractAddress)
+				return "", nil // 返回空字符串而不是错误，因为合约可能不存在
+			}
+			logger.Error("GetContractRemarkByStandardAndAddress error for openzeppelin", err, "chainID", chainID, "contractAddress", contractAddress)
+			return "", err
+		}
+
+		return timeLock.Remark, nil
+
+	default:
+		return "", fmt.Errorf("unsupported timelock standard: %s", standard)
+	}
 }
 
 // getCompoundUserPermissions 获取compound timelock合约的用户权限

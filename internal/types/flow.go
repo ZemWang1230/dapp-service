@@ -23,6 +23,7 @@ type CompoundFlowResponse struct {
 	TimelockStandard  string     `json:"timelock_standard"`            // Timelock标准
 	ChainID           int        `json:"chain_id"`                     // 链ID
 	ContractAddress   string     `json:"contract_address"`             // 合约地址
+	ContractRemark    string     `json:"contract_remark"`              // 合约备注
 	Status            string     `json:"status"`                       // 状态
 	QueueTxHash       *string    `json:"queue_tx_hash,omitempty"`      // 排队交易哈希
 	ExecuteTxHash     *string    `json:"execute_tx_hash,omitempty"`    // 执行交易哈希

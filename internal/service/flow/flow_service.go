@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"timelocker-backend/internal/repository/scanner"
+	"timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
@@ -22,13 +23,15 @@ type FlowService interface {
 
 // flowService 流程服务实现
 type flowService struct {
-	flowRepo scanner.FlowRepository
+	flowRepo     scanner.FlowRepository
+	timelockRepo timelock.Repository
 }
 
 // NewFlowService 创建流程服务实例
-func NewFlowService(flowRepo scanner.FlowRepository) FlowService {
+func NewFlowService(flowRepo scanner.FlowRepository, timelockRepo timelock.Repository) FlowService {
 	return &flowService{
-		flowRepo: flowRepo,
+		flowRepo:     flowRepo,
+		timelockRepo: timelockRepo,
 	}
 }
 
@@ -169,6 +172,15 @@ func (s *flowService) convertToCompoundFlowResponse(ctx context.Context, flow ty
 		} else if functionSignature != nil {
 			response.FunctionSignature = functionSignature
 		}
+	}
+
+	// 获取合约备注
+	contractRemark, err := s.timelockRepo.GetContractRemarkByStandardAndAddress(ctx, flow.TimelockStandard, flow.ChainID, flow.ContractAddress)
+	if err != nil {
+		logger.Error("Failed to get contract remark", err, "standard", flow.TimelockStandard, "chain_id", flow.ChainID, "contract_address", flow.ContractAddress)
+		// 不影响主流程，继续执行，备注为空
+	} else {
+		response.ContractRemark = contractRemark
 	}
 
 	return response
