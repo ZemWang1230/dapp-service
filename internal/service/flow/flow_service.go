@@ -17,6 +17,9 @@ type FlowService interface {
 	// 获取与用户相关的流程列表
 	GetCompoundFlowList(ctx context.Context, userAddress string, req *types.GetCompoundFlowListRequest) (*types.GetCompoundFlowListResponse, error)
 
+	// 获取与用户相关的流程数量统计
+	GetCompoundFlowListCount(ctx context.Context, userAddress string, req *types.GetCompoundFlowListCountRequest) (*types.GetCompoundFlowListCountResponse, error)
+
 	// 获取交易详情
 	GetCompoundTransactionDetail(ctx context.Context, req *types.GetTransactionDetailRequest) (*types.GetTransactionDetailResponse, error)
 }
@@ -96,6 +99,35 @@ func (s *flowService) GetCompoundFlowList(ctx context.Context, userAddress strin
 	return &types.GetCompoundFlowListResponse{
 		Flows: flowResponses,
 		Total: total,
+	}, nil
+}
+
+// GetCompoundFlowListCount 获取与用户相关的流程数量统计
+func (s *flowService) GetCompoundFlowListCount(ctx context.Context, userAddress string, req *types.GetCompoundFlowListCountRequest) (*types.GetCompoundFlowListCountResponse, error) {
+	// 验证标准参数
+	if req.Standard != nil {
+		validStandards := []string{"compound", "openzeppelin"}
+		isValidStandard := false
+		for _, validStandard := range validStandards {
+			if *req.Standard == validStandard {
+				isValidStandard = true
+				break
+			}
+		}
+		if !isValidStandard {
+			return nil, fmt.Errorf("invalid standard: %s", *req.Standard)
+		}
+	}
+
+	// 调用repository层获取数量统计
+	flowCount, err := s.flowRepo.GetUserRelatedCompoundFlowsCount(ctx, userAddress, req.Standard)
+	if err != nil {
+		logger.Error("Failed to get user related compound flows count", err, "user", userAddress)
+		return nil, fmt.Errorf("failed to get user related compound flows count: %w", err)
+	}
+
+	return &types.GetCompoundFlowListCountResponse{
+		FlowCount: *flowCount,
 	}, nil
 }
 

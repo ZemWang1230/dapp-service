@@ -241,7 +241,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			is_imported BOOLEAN NOT NULL DEFAULT false,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(chain_id, contract_address)
+			UNIQUE(creator_address, chain_id, contract_address)
 		)`
 
 		if err := h.db.WithContext(ctx).Exec(createCompoundTimelocksTable).Error; err != nil {
@@ -268,7 +268,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			is_imported BOOLEAN NOT NULL DEFAULT false,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(chain_id, contract_address)
+			UNIQUE(creator_address, chain_id, contract_address)
 		)`
 
 		if err := h.db.WithContext(ctx).Exec(createOpenzeppelinTimelocksTable).Error; err != nil {
@@ -528,12 +528,14 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_pending_admin ON compound_timelocks(pending_admin)`,
 		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_status ON compound_timelocks(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_chain_address ON compound_timelocks(chain_id, contract_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_timelocks_creator_chain_address ON compound_timelocks(creator_address, chain_id, contract_address)`,
 
 		// OpenZeppelin Timelocks
 		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_creator ON openzeppelin_timelocks(creator_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_admin ON openzeppelin_timelocks(admin)`,
 		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_status ON openzeppelin_timelocks(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_chain_address ON openzeppelin_timelocks(chain_id, contract_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_creator_chain_address ON openzeppelin_timelocks(creator_address, chain_id, contract_address)`,
 
 		// Sponsors
 		`CREATE INDEX IF NOT EXISTS idx_sponsors_is_active ON sponsors(is_active)`,

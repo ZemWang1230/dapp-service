@@ -2140,6 +2140,110 @@
                 }
             }
         },
+        "/api/v1/flows/list/count": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "获取与用户相关的timelock流程数量统计，包括发起的和有权限管理的，按状态分组统计",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Flow"
+                ],
+                "summary": "获取与用户相关的流程数量统计",
+                "parameters": [
+                    {
+                        "description": "查询参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/types.GetCompoundFlowListCountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/types.GetCompoundFlowListCountResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证或令牌无效",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/flows/transaction/detail": {
             "post": {
                 "description": "根据交易哈希和标准获取交易详情。standard 仅支持 compound/openzeppelin；tx_hash 必须为 0x 开头的64位十六进制。",
@@ -3557,6 +3661,35 @@
                 }
             }
         },
+        "types.FlowStatusCount": {
+            "type": "object",
+            "properties": {
+                "cancelled": {
+                    "description": "已取消",
+                    "type": "integer"
+                },
+                "count": {
+                    "description": "总数",
+                    "type": "integer"
+                },
+                "executed": {
+                    "description": "已执行",
+                    "type": "integer"
+                },
+                "expired": {
+                    "description": "已过期",
+                    "type": "integer"
+                },
+                "ready": {
+                    "description": "准备中",
+                    "type": "integer"
+                },
+                "waiting": {
+                    "description": "等待中",
+                    "type": "integer"
+                }
+            }
+        },
         "types.GetABIByIDRequest": {
             "type": "object",
             "required": [
@@ -3576,6 +3709,28 @@
             "properties": {
                 "chain_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "types.GetCompoundFlowListCountRequest": {
+            "type": "object",
+            "properties": {
+                "standard": {
+                    "description": "标准compound, openzeppelin",
+                    "type": "string"
+                }
+            }
+        },
+        "types.GetCompoundFlowListCountResponse": {
+            "type": "object",
+            "properties": {
+                "flow_count": {
+                    "description": "流程数量",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.FlowStatusCount"
+                        }
+                    ]
                 }
             }
         },

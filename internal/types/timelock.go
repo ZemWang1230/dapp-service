@@ -7,19 +7,19 @@ import (
 // CompoundTimeLock Compound标准timelock合约模型
 type CompoundTimeLock struct {
 	ID              int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	CreatorAddress  string    `json:"creator_address" gorm:"size:42;not null;index"`         // 创建者/导入者地址
-	ChainID         int       `json:"chain_id" gorm:"not null;index"`                        // 所在链ID
-	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index"`              // 链名称
-	ContractAddress string    `json:"contract_address" gorm:"size:42;not null;index"`        // 合约地址
-	Delay           int64     `json:"delay" gorm:"not null"`                                 // 延迟时间（秒），从链上读取
-	Admin           string    `json:"admin" gorm:"size:42;not null;index"`                   // 管理员地址，从链上读取
-	PendingAdmin    *string   `json:"pending_admin" gorm:"size:42;index"`                    // 待定管理员地址，从链上读取
-	GracePeriod     int64     `json:"grace_period" gorm:"not null"`                          // 宽限期（秒），从链上读取
-	MinimumDelay    int64     `json:"minimum_delay" gorm:"not null"`                         // 最小延迟时间（秒），从链上读取
-	MaximumDelay    int64     `json:"maximum_delay" gorm:"not null"`                         // 最大延迟时间（秒），从链上读取
-	Remark          string    `json:"remark" gorm:"size:500"`                                // 备注
-	Status          string    `json:"status" gorm:"size:20;not null;default:'active';index"` // 状态（active, inactive, deleted）
-	IsImported      bool      `json:"is_imported" gorm:"not null;default:false"`             // 是否导入的合约
+	CreatorAddress  string    `json:"creator_address" gorm:"size:42;not null;index;uniqueIndex:idx_compound_creator_chain_address,priority:1"`  // 创建者/导入者地址
+	ChainID         int       `json:"chain_id" gorm:"not null;index;uniqueIndex:idx_compound_creator_chain_address,priority:2"`                 // 所在链ID
+	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index"`                                                                 // 链名称
+	ContractAddress string    `json:"contract_address" gorm:"size:42;not null;index;uniqueIndex:idx_compound_creator_chain_address,priority:3"` // 合约地址
+	Delay           int64     `json:"delay" gorm:"not null"`                                                                                    // 延迟时间（秒），从链上读取
+	Admin           string    `json:"admin" gorm:"size:42;not null;index"`                                                                      // 管理员地址，从链上读取
+	PendingAdmin    *string   `json:"pending_admin" gorm:"size:42;index"`                                                                       // 待定管理员地址，从链上读取
+	GracePeriod     int64     `json:"grace_period" gorm:"not null"`                                                                             // 宽限期（秒），从链上读取
+	MinimumDelay    int64     `json:"minimum_delay" gorm:"not null"`                                                                            // 最小延迟时间（秒），从链上读取
+	MaximumDelay    int64     `json:"maximum_delay" gorm:"not null"`                                                                            // 最大延迟时间（秒），从链上读取
+	Remark          string    `json:"remark" gorm:"size:500"`                                                                                   // 备注
+	Status          string    `json:"status" gorm:"size:20;not null;default:'active';index"`                                                    // 状态（active, inactive, deleted）
+	IsImported      bool      `json:"is_imported" gorm:"not null;default:false"`                                                                // 是否导入的合约
 	CreatedAt       time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -32,17 +32,17 @@ func (CompoundTimeLock) TableName() string {
 // OpenzeppelinTimeLock OpenZeppelin标准timelock合约模型
 type OpenzeppelinTimeLock struct {
 	ID              int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	CreatorAddress  string    `json:"creator_address" gorm:"size:42;not null;index"`         // 创建者/导入者地址
-	ChainID         int       `json:"chain_id" gorm:"not null;index"`                        // 所在链ID
-	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index"`              // 链名称
-	ContractAddress string    `json:"contract_address" gorm:"size:42;not null;index"`        // 合约地址
-	Delay           int64     `json:"delay" gorm:"not null"`                                 // 延迟时间（秒），从链上读取
-	Admin           string    `json:"admin" gorm:"size:42;not null;index"`                   // 管理员地址，从链上读取
-	Proposers       string    `json:"proposers" gorm:"type:text;not null"`                   // 提议者地址列表（JSON），从链上读取
-	Executors       string    `json:"executors" gorm:"type:text;not null"`                   // 执行者地址列表（JSON），从链上读取
-	Remark          string    `json:"remark" gorm:"size:500"`                                // 备注
-	Status          string    `json:"status" gorm:"size:20;not null;default:'active';index"` // 状态（active, inactive, deleted）
-	IsImported      bool      `json:"is_imported" gorm:"not null;default:false"`             // 是否导入的合约
+	CreatorAddress  string    `json:"creator_address" gorm:"size:42;not null;index;uniqueIndex:idx_oz_creator_chain_address,priority:1"`  // 创建者/导入者地址
+	ChainID         int       `json:"chain_id" gorm:"not null;index;uniqueIndex:idx_oz_creator_chain_address,priority:2"`                 // 所在链ID
+	ChainName       string    `json:"chain_name" gorm:"size:50;not null;index"`                                                           // 链名称
+	ContractAddress string    `json:"contract_address" gorm:"size:42;not null;index;uniqueIndex:idx_oz_creator_chain_address,priority:3"` // 合约地址
+	Delay           int64     `json:"delay" gorm:"not null"`                                                                              // 延迟时间（秒），从链上读取
+	Admin           string    `json:"admin" gorm:"size:42;not null;index"`                                                                // 管理员地址，从链上读取
+	Proposers       string    `json:"proposers" gorm:"type:text;not null"`                                                                // 提议者地址列表（JSON），从链上读取
+	Executors       string    `json:"executors" gorm:"type:text;not null"`                                                                // 执行者地址列表（JSON），从链上读取
+	Remark          string    `json:"remark" gorm:"size:500"`                                                                             // 备注
+	Status          string    `json:"status" gorm:"size:20;not null;default:'active';index"`                                              // 状态（active, inactive, deleted）
+	IsImported      bool      `json:"is_imported" gorm:"not null;default:false"`                                                          // 是否导入的合约
 	CreatedAt       time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

@@ -24,6 +24,7 @@ type FlowRepository interface {
 
 	// 新API查询方法
 	GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error)
+	GetUserRelatedCompoundFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error)
 	GetCompoundTransactionDetail(ctx context.Context, standard string, txHash string) (*types.CompoundTimelockTransactionDetail, error)
 	GetCompoundQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error)
 }
@@ -253,6 +254,87 @@ func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAd
 	}
 
 	return flows, total, nil
+}
+
+// GetUserRelatedCompoundFlowsCount 获取与用户相关的流程数量统计
+func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error) {
+	userAddress = strings.ToLower(userAddress)
+
+	// 构建基础查询条件，复用GetUserRelatedCompoundFlows的逻辑
+	query := r.db.WithContext(ctx).Model(&types.TimelockTransactionFlow{})
+
+	// 构建WHERE条件，包含两种情况：
+	// 1. initiator_address是该地址
+	// 2. 该flow的合约中，该地址是管理员或有权限的用户
+	whereConditions := []string{}
+	args := []interface{}{}
+
+	// 第一种情况：initiator_address是该地址
+	whereConditions = append(whereConditions, "initiator_address = ?")
+	args = append(args, userAddress)
+
+	// 第二种情况：根据合约权限查询
+	// Compound权限查询：admin或pending_admin
+	compoundCondition := `(
+		timelock_standard = 'compound' AND 
+		(chain_id, contract_address) IN (
+			SELECT chain_id, contract_address FROM compound_timelocks 
+			WHERE admin = ? OR pending_admin = ?
+		)
+	)`
+	whereConditions = append(whereConditions, compoundCondition)
+	args = append(args, userAddress, userAddress)
+
+	// OpenZeppelin权限查询：proposers或executors中的一个
+	ozCondition := `(
+		timelock_standard = 'openzeppelin' AND 
+		(chain_id, contract_address) IN (
+			SELECT chain_id, contract_address FROM openzeppelin_timelocks 
+			WHERE proposers LIKE '%' || ? || '%' OR
+				executors LIKE '%' || ? || '%'
+		)
+	)`
+	whereConditions = append(whereConditions, ozCondition)
+	args = append(args, userAddress, userAddress)
+
+	// 组合所有条件
+	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
+
+	// 添加标准过滤
+	if standard != nil {
+		finalWhere += " AND timelock_standard = ?"
+		args = append(args, *standard)
+	}
+
+	// 统计各个状态的数量
+	var result types.FlowStatusCount
+
+	// 总数
+	if err := query.Where(finalWhere, args...).Count(&result.Count).Error; err != nil {
+		logger.Error("GetUserRelatedCompoundFlowsCount Total Error", err, "user", userAddress)
+		return nil, err
+	}
+
+	// 各状态数量统计
+	statusCounts := map[string]*int64{
+		"waiting":   &result.Waiting,
+		"ready":     &result.Ready,
+		"executed":  &result.Executed,
+		"cancelled": &result.Cancelled,
+		"expired":   &result.Expired,
+	}
+
+	for status, count := range statusCounts {
+		statusWhere := finalWhere + " AND status = ?"
+		statusArgs := append(args, status)
+
+		if err := query.Where(statusWhere, statusArgs...).Count(count).Error; err != nil {
+			logger.Error("GetUserRelatedCompoundFlowsCount Status Error", err, "user", userAddress, "status", status)
+			return nil, err
+		}
+	}
+
+	return &result, nil
 }
 
 // GetTransactionDetail 获取交易详情

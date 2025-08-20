@@ -327,6 +327,27 @@ definitions:
       total:
         type: integer
     type: object
+  types.FlowStatusCount:
+    properties:
+      cancelled:
+        description: 已取消
+        type: integer
+      count:
+        description: 总数
+        type: integer
+      executed:
+        description: 已执行
+        type: integer
+      expired:
+        description: 已过期
+        type: integer
+      ready:
+        description: 准备中
+        type: integer
+      waiting:
+        description: 等待中
+        type: integer
+    type: object
   types.GetABIByIDRequest:
     properties:
       id:
@@ -340,6 +361,19 @@ definitions:
         type: integer
     required:
     - chain_id
+    type: object
+  types.GetCompoundFlowListCountRequest:
+    properties:
+      standard:
+        description: 标准compound, openzeppelin
+        type: string
+    type: object
+  types.GetCompoundFlowListCountResponse:
+    properties:
+      flow_count:
+        allOf:
+        - $ref: '#/definitions/types.FlowStatusCount'
+        description: 流程数量
     type: object
   types.GetCompoundFlowListRequest:
     properties:
@@ -1878,6 +1912,61 @@ paths:
       security:
       - BearerAuth: []
       summary: 获取与用户相关的流程列表
+      tags:
+      - Flow
+  /api/v1/flows/list/count:
+    post:
+      consumes:
+      - application/json
+      description: 获取与用户相关的timelock流程数量统计，包括发起的和有权限管理的，按状态分组统计
+      parameters:
+      - description: 查询参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/types.GetCompoundFlowListCountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetCompoundFlowListCountResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "401":
+          description: 未认证或令牌无效
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: 获取与用户相关的流程数量统计
       tags:
       - Flow
   /api/v1/flows/transaction/detail:

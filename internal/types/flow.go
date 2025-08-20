@@ -40,3 +40,20 @@ type CompoundFlowResponse struct {
 	CreatedAt         time.Time  `json:"created_at"`                   // 创建时间
 	UpdatedAt         time.Time  `json:"updated_at"`                   // 更新时间
 }
+
+type FlowStatusCount struct {
+	Count     int64 `json:"count"`     // 总数
+	Waiting   int64 `json:"waiting"`   // 等待中
+	Ready     int64 `json:"ready"`     // 准备中
+	Executed  int64 `json:"executed"`  // 已执行
+	Cancelled int64 `json:"cancelled"` // 已取消
+	Expired   int64 `json:"expired"`   // 已过期
+}
+
+type GetCompoundFlowListCountRequest struct {
+	Standard *string `json:"standard" form:"standard"` // 标准compound, openzeppelin
+}
+
+type GetCompoundFlowListCountResponse struct {
+	FlowCount FlowStatusCount `json:"flow_count"` // 流程数量
+}

@@ -36,6 +36,10 @@ func (h *FlowHandler) RegisterRoutes(router *gin.RouterGroup) {
 		// POST /api/v1/flows/list
 		// http://localhost:8080/api/v1/flows/list
 		flows.POST("/list", middleware.AuthMiddleware(h.authService), h.GetFlowList)
+		// 获取与用户相关的流程数量统计（需要鉴权）
+		// POST /api/v1/flows/list/count
+		// http://localhost:8080/api/v1/flows/list/count
+		flows.POST("/list/count", middleware.AuthMiddleware(h.authService), h.GetFlowListCount)
 		// 获取交易详情
 		// POST /api/v1/flows/transaction/detail
 		// http://localhost:8080/api/v1/flows/transaction/detail
@@ -96,6 +100,71 @@ func (h *FlowHandler) GetFlowList(c *gin.Context) {
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",
 				Message: "Failed to get flow list",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data:    response,
+	})
+}
+
+// GetFlowListCount 获取与用户相关的流程数量统计
+// @Summary 获取与用户相关的流程数量统计
+// @Description 获取与用户相关的timelock流程数量统计，包括发起的和有权限管理的，按状态分组统计
+// @Tags Flow
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body types.GetCompoundFlowListCountRequest false "查询参数"
+// @Success 200 {object} types.APIResponse{data=types.GetCompoundFlowListCountResponse}
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证或令牌无效"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
+// @Router /api/v1/flows/list/count [post]
+func (h *FlowHandler) GetFlowListCount(c *gin.Context) {
+	// 从鉴权中间件获取用户地址
+	_, userAddressStr, ok := middleware.GetUserFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "UNAUTHORIZED",
+				Message: "User address not found in token",
+			},
+		})
+		return
+	}
+
+	// 解析请求参数（支持 body 优先，兼容 query）
+	var req types.GetCompoundFlowListCountRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		// ignore
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_PARAMS",
+				Message: "Invalid query parameters",
+				Details: err.Error(),
+			},
+		})
+		return
+	}
+
+	// 调用服务层
+	response, err := h.flowService.GetCompoundFlowListCount(c.Request.Context(), userAddressStr, &req)
+	if err != nil {
+		logger.Error("Failed to get flow list count", err, "user", userAddressStr)
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INTERNAL_ERROR",
+				Message: "Failed to get flow list count",
 				Details: err.Error(),
 			},
 		})
