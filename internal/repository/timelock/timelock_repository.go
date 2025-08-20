@@ -30,8 +30,8 @@ type Repository interface {
 	UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chainID int, contractAddress string, remark string) error
 
 	// 查询操作
-	CheckCompoundTimeLockExists(ctx context.Context, chainID int, contractAddress string) (bool, error)
-	CheckOpenzeppelinTimeLockExists(ctx context.Context, chainID int, contractAddress string) (bool, error)
+	CheckCompoundTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error)
+	CheckOpenzeppelinTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error)
 
 	// 权限相关查询
 	GetTimeLocksByUserPermissions(ctx context.Context, userAddress string, req *types.GetTimeLockListRequest) ([]types.CompoundTimeLockWithPermission, []types.OpenzeppelinTimeLockWithPermission, int64, error)
@@ -198,11 +198,11 @@ func (r *repository) UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chain
 }
 
 // CheckCompoundTimeLockExists 检查compound timelock合约是否已存在
-func (r *repository) CheckCompoundTimeLockExists(ctx context.Context, chainID int, contractAddress string) (bool, error) {
+func (r *repository) CheckCompoundTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&types.CompoundTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND status != ?", chainID, contractAddress, "deleted").
+		Where("chain_id = ? AND contract_address = ? AND creator_address = ? AND status != ?", chainID, contractAddress, userAddress, "deleted").
 		Count(&count).Error
 
 	if err != nil {
@@ -216,11 +216,11 @@ func (r *repository) CheckCompoundTimeLockExists(ctx context.Context, chainID in
 }
 
 // CheckOpenzeppelinTimeLockExists 检查openzeppelin timelock合约是否已存在
-func (r *repository) CheckOpenzeppelinTimeLockExists(ctx context.Context, chainID int, contractAddress string) (bool, error) {
+func (r *repository) CheckOpenzeppelinTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&types.OpenzeppelinTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND status != ?", chainID, contractAddress, "deleted").
+		Where("chain_id = ? AND contract_address = ? AND creator_address = ? AND status != ?", chainID, contractAddress, userAddress, "deleted").
 		Count(&count).Error
 
 	if err != nil {

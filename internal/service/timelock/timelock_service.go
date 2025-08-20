@@ -94,7 +94,7 @@ func (s *service) CreateOrImportTimeLock(ctx context.Context, userAddress string
 	}
 
 	// 检查合约是否已存在
-	if err := s.checkContractExists(ctx, req.Standard, req.ChainID, normalizedContract); err != nil {
+	if err := s.checkContractExists(ctx, req.Standard, req.ChainID, normalizedContract, userAddress); err != nil {
 		logger.Error("CreateOrImportTimeLock check exists error", err, "user_address", normalizedUser)
 		return nil, err
 	}
@@ -843,10 +843,10 @@ func (s *service) validateCreateOrImportRequest(req *types.CreateOrImportTimeloc
 }
 
 // checkContractExists 检查合约是否存在
-func (s *service) checkContractExists(ctx context.Context, standard string, chainID int, contractAddress string) error {
+func (s *service) checkContractExists(ctx context.Context, standard string, chainID int, contractAddress string, userAddress string) error {
 	switch standard {
 	case "compound":
-		exists, err := s.timeLockRepo.CheckCompoundTimeLockExists(ctx, chainID, contractAddress)
+		exists, err := s.timeLockRepo.CheckCompoundTimeLockExists(ctx, chainID, contractAddress, userAddress)
 		if err != nil {
 			return fmt.Errorf("failed to check compound timelock existence: %w", err)
 		}
@@ -854,7 +854,7 @@ func (s *service) checkContractExists(ctx context.Context, standard string, chai
 			return ErrTimeLockExists
 		}
 	case "openzeppelin":
-		exists, err := s.timeLockRepo.CheckOpenzeppelinTimeLockExists(ctx, chainID, contractAddress)
+		exists, err := s.timeLockRepo.CheckOpenzeppelinTimeLockExists(ctx, chainID, contractAddress, userAddress)
 		if err != nil {
 			return fmt.Errorf("failed to check openzeppelin timelock existence: %w", err)
 		}
