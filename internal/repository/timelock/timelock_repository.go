@@ -19,15 +19,15 @@ type Repository interface {
 	CreateCompoundTimeLock(ctx context.Context, timeLock *types.CompoundTimeLock) error
 	GetCompoundTimeLockByChainAndAddress(ctx context.Context, chainID int, contractAddress string) (*types.CompoundTimeLock, error)
 	UpdateCompoundTimeLock(ctx context.Context, timeLock *types.CompoundTimeLock) error
-	DeleteCompoundTimeLock(ctx context.Context, chainID int, contractAddress string) error
-	UpdateCompoundTimeLockRemark(ctx context.Context, chainID int, contractAddress string, remark string) error
+	DeleteCompoundTimeLock(ctx context.Context, chainID int, contractAddress string, userAddress string) error
+	UpdateCompoundTimeLockRemark(ctx context.Context, chainID int, contractAddress string, userAddress string, remark string) error
 
 	// OpenZeppelin Timelock操作
 	CreateOpenzeppelinTimeLock(ctx context.Context, timeLock *types.OpenzeppelinTimeLock) error
 	GetOpenzeppelinTimeLockByChainAndAddress(ctx context.Context, chainID int, contractAddress string) (*types.OpenzeppelinTimeLock, error)
 	UpdateOpenzeppelinTimeLock(ctx context.Context, timeLock *types.OpenzeppelinTimeLock) error
-	DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int, contractAddress string) error
-	UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chainID int, contractAddress string, remark string) error
+	DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int, contractAddress string, userAddress string) error
+	UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chainID int, contractAddress string, userAddress string, remark string) error
 
 	// 查询操作
 	CheckCompoundTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error)
@@ -105,28 +105,28 @@ func (r *repository) UpdateCompoundTimeLock(ctx context.Context, timeLock *types
 }
 
 // DeleteCompoundTimeLock 硬删除 compound timelock 合约（仅删除合约行，不清理其他表）
-func (r *repository) DeleteCompoundTimeLock(ctx context.Context, chainID int, contractAddress string) error {
+func (r *repository) DeleteCompoundTimeLock(ctx context.Context, chainID int, contractAddress string, userAddress string) error {
 	if err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
+		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
 		Delete(&types.CompoundTimeLock{}).Error; err != nil {
-		logger.Error("DeleteCompoundTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress)
+		logger.Error("DeleteCompoundTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
 	}
-	logger.Info("DeleteCompoundTimeLock success", "chain_id", chainID, "contract_address", contractAddress)
+	logger.Info("DeleteCompoundTimeLock success", "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 	return nil
 }
 
 // UpdateCompoundTimeLockRemark 更新compound timelock备注
-func (r *repository) UpdateCompoundTimeLockRemark(ctx context.Context, chainID int, contractAddress string, remark string) error {
+func (r *repository) UpdateCompoundTimeLockRemark(ctx context.Context, chainID int, contractAddress string, userAddress string, remark string) error {
 	if err := r.db.WithContext(ctx).
 		Model(&types.CompoundTimeLock{}).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
+		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
 		Update("remark", remark).Error; err != nil {
-		logger.Error("UpdateCompoundTimeLockRemark error", err, "chain_id", chainID, "contract_address", contractAddress)
+		logger.Error("UpdateCompoundTimeLockRemark error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
 	}
 
-	logger.Info("UpdateCompoundTimeLockRemark success", "chain_id", chainID, "contract_address", contractAddress, "remark_length", len(remark))
+	logger.Info("UpdateCompoundTimeLockRemark success", "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress, "remark_length", len(remark))
 	return nil
 }
 
@@ -172,28 +172,28 @@ func (r *repository) UpdateOpenzeppelinTimeLock(ctx context.Context, timeLock *t
 }
 
 // DeleteOpenzeppelinTimeLock 硬删除 openzeppelin timelock 合约（仅删除合约行，不清理其他表）
-func (r *repository) DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int, contractAddress string) error {
+func (r *repository) DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int, contractAddress string, userAddress string) error {
 	if err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
+		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
 		Delete(&types.OpenzeppelinTimeLock{}).Error; err != nil {
-		logger.Error("DeleteOpenzeppelinTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress)
+		logger.Error("DeleteOpenzeppelinTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
 	}
-	logger.Info("DeleteOpenzeppelinTimeLock success", "chain_id", chainID, "contract_address", contractAddress)
+	logger.Info("DeleteOpenzeppelinTimeLock success", "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 	return nil
 }
 
 // UpdateOpenzeppelinTimeLockRemark 更新openzeppelin timelock备注
-func (r *repository) UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chainID int, contractAddress string, remark string) error {
+func (r *repository) UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chainID int, contractAddress string, userAddress string, remark string) error {
 	if err := r.db.WithContext(ctx).
 		Model(&types.OpenzeppelinTimeLock{}).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
+		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
 		Update("remark", remark).Error; err != nil {
-		logger.Error("UpdateOpenzeppelinTimeLockRemark error", err, "chain_id", chainID, "contract_address", contractAddress)
+		logger.Error("UpdateOpenzeppelinTimeLockRemark error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
 	}
 
-	logger.Info("UpdateOpenzeppelinTimeLockRemark success", "chain_id", chainID, "contract_address", contractAddress, "remark_length", len(remark))
+	logger.Info("UpdateOpenzeppelinTimeLockRemark success", "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress, "remark_length", len(remark))
 	return nil
 }
 

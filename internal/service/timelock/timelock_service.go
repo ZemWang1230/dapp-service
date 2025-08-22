@@ -190,7 +190,7 @@ func (s *service) UpdateTimeLock(ctx context.Context, userAddress string, req *t
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.UpdateCompoundTimeLockRemark(ctx, req.ChainID, normalizedContract, sanitizedRemark); err != nil {
+		if err := s.timeLockRepo.UpdateCompoundTimeLockRemark(ctx, req.ChainID, normalizedContract, normalizedUser, sanitizedRemark); err != nil {
 			logger.Error("UpdateTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to update timelock: %w", err)
 		}
@@ -207,7 +207,7 @@ func (s *service) UpdateTimeLock(ctx context.Context, userAddress string, req *t
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.UpdateOpenzeppelinTimeLockRemark(ctx, req.ChainID, normalizedContract, sanitizedRemark); err != nil {
+		if err := s.timeLockRepo.UpdateOpenzeppelinTimeLockRemark(ctx, req.ChainID, normalizedContract, normalizedUser, sanitizedRemark); err != nil {
 			logger.Error("UpdateTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to update timelock: %w", err)
 		}
@@ -241,7 +241,7 @@ func (s *service) DeleteTimeLock(ctx context.Context, userAddress string, req *t
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.DeleteCompoundTimeLock(ctx, req.ChainID, normalizedContract); err != nil {
+		if err := s.timeLockRepo.DeleteCompoundTimeLock(ctx, req.ChainID, normalizedContract, normalizedUser); err != nil {
 			logger.Error("DeleteTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to delete timelock: %w", err)
 		}
@@ -258,7 +258,7 @@ func (s *service) DeleteTimeLock(ctx context.Context, userAddress string, req *t
 			return ErrUnauthorized
 		}
 
-		if err := s.timeLockRepo.DeleteOpenzeppelinTimeLock(ctx, req.ChainID, normalizedContract); err != nil {
+		if err := s.timeLockRepo.DeleteOpenzeppelinTimeLock(ctx, req.ChainID, normalizedContract, normalizedUser); err != nil {
 			logger.Error("DeleteTimeLock repository error", err, "user_address", normalizedUser)
 			return fmt.Errorf("failed to delete timelock: %w", err)
 		}
