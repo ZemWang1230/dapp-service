@@ -501,6 +501,92 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: email_send_logs")
 	}
 
+	// 15. telegram_configs 表
+	if !h.db.Migrator().HasTable("telegram_configs") {
+		sql := `
+        CREATE TABLE telegram_configs (
+            id BIGSERIAL PRIMARY KEY,
+            user_address VARCHAR(42) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+            bot_token VARCHAR(500) NOT NULL,
+            chat_id VARCHAR(100) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(user_address, name)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create telegram_configs table: %w", err)
+		}
+		logger.Info("Created table: telegram_configs")
+	}
+
+	// 16. lark_configs 表
+	if !h.db.Migrator().HasTable("lark_configs") {
+		sql := `
+        CREATE TABLE lark_configs (
+            id BIGSERIAL PRIMARY KEY,
+            user_address VARCHAR(42) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+            webhook_url VARCHAR(1000) NOT NULL,
+            secret VARCHAR(500) DEFAULT '',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(user_address, name)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create lark_configs table: %w", err)
+		}
+		logger.Info("Created table: lark_configs")
+	}
+
+	// 17. feishu_configs 表
+	if !h.db.Migrator().HasTable("feishu_configs") {
+		sql := `
+        CREATE TABLE feishu_configs (
+            id BIGSERIAL PRIMARY KEY,
+            user_address VARCHAR(42) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+            webhook_url VARCHAR(1000) NOT NULL,
+            secret VARCHAR(500) DEFAULT '',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(user_address, name)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create feishu_configs table: %w", err)
+		}
+		logger.Info("Created table: feishu_configs")
+	}
+
+	// 18. notification_logs 表
+	if !h.db.Migrator().HasTable("notification_logs") {
+		sql := `
+        CREATE TABLE notification_logs (
+            id BIGSERIAL PRIMARY KEY,
+            user_address VARCHAR(42) NOT NULL,
+			channel VARCHAR(20) NOT NULL,
+            config_id BIGINT NOT NULL,
+            flow_id VARCHAR(128) NOT NULL,
+            timelock_standard VARCHAR(20) NOT NULL,
+            chain_id INTEGER NOT NULL,
+            contract_address VARCHAR(42) NOT NULL,
+            status_from VARCHAR(20),
+            status_to VARCHAR(20) NOT NULL,
+            tx_hash VARCHAR(66),
+			send_status VARCHAR(20) NOT NULL CHECK (send_status IN ('success','failed')),
+            error_message TEXT,
+			sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE(channel, config_id, flow_id, status_to)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create notification_logs table: %w", err)
+		}
+		logger.Info("Created table: notification_logs")
+	}
+
 	logger.Info("All tables created successfully")
 	return nil
 }
@@ -578,6 +664,26 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON email_verification_codes(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_send_logs_flow_status ON email_send_logs(flow_id, status_to)`,
 		`CREATE INDEX IF NOT EXISTS idx_send_logs_contract ON email_send_logs(timelock_standard, chain_id, contract_address)`,
+
+		// Notification Channels
+		`CREATE INDEX IF NOT EXISTS idx_telegram_configs_user ON telegram_configs(user_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_telegram_configs_active ON telegram_configs(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_telegram_configs_user_name ON telegram_configs(user_address, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_lark_configs_user ON lark_configs(user_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_lark_configs_active ON lark_configs(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_lark_configs_user_name ON lark_configs(user_address, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_feishu_configs_user ON feishu_configs(user_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_feishu_configs_active ON feishu_configs(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_feishu_configs_user_name ON feishu_configs(user_address, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_user ON notification_logs(user_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_flow ON notification_logs(flow_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_channel ON notification_logs(channel)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_config ON notification_logs(config_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_send_status ON notification_logs(send_status)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_sent_at ON notification_logs(sent_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_contract ON notification_logs(timelock_standard, chain_id, contract_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_flow_status ON notification_logs(flow_id, status_to)`,
+		`CREATE INDEX IF NOT EXISTS idx_notification_logs_unique_check ON notification_logs(channel, config_id, flow_id, status_to)`,
 	}
 
 	for _, indexSQL := range indexes {

@@ -15,6 +15,16 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// EmailService 邮件服务接口（避免循环依赖）
+type EmailService interface {
+	SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error
+}
+
+// NotificationService 通知服务接口（避免循环依赖）
+type NotificationService interface {
+	SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error
+}
+
 // ChainScanner 单链扫描器
 type ChainScanner struct {
 	config       *config.Config
@@ -59,6 +69,7 @@ func NewChainScanner(
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
 	emailService EmailService,
+	notificationService NotificationService,
 	timelockRepo timelock.Repository,
 ) *ChainScanner {
 	cs := &ChainScanner{
@@ -76,7 +87,7 @@ func NewChainScanner(
 
 	// 创建处理器
 	cs.blockProcessor = NewBlockProcessor(cfg, cs.chainInfo)
-	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo, emailService, timelockRepo)
+	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo, emailService, notificationService, timelockRepo)
 
 	return cs
 }

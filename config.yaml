@@ -24,7 +24,7 @@ jwt:
 # RPC配置 - 用于监听链上事件
 rpc:
   # RPC提供商配置（用户只需要填写API key）
-  alchemy_api_key: "xxx"
+  alchemy_api_key: "lYhVaRoI42v3iIeHh_W3k"
   infura_api_key: "xxx"
   
   # 当前使用的提供商（alchemy、infura 或 custom）

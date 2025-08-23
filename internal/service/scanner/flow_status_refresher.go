@@ -13,11 +13,12 @@ import (
 
 // FlowStatusRefresher 流程状态刷新器
 type FlowStatusRefresher struct {
-	config       *config.Config
-	flowRepo     scanner.FlowRepository
-	timelockRepo timelock.Repository
-	emailService EmailService
-	stopCh       chan struct{}
+	config              *config.Config
+	flowRepo            scanner.FlowRepository
+	timelockRepo        timelock.Repository
+	emailService        EmailService
+	notificationService NotificationService
+	stopCh              chan struct{}
 }
 
 // NewFlowStatusRefresher 创建新的流程状态刷新器
@@ -26,13 +27,15 @@ func NewFlowStatusRefresher(
 	flowRepo scanner.FlowRepository,
 	timelockRepo timelock.Repository,
 	emailService EmailService,
+	notificationService NotificationService,
 ) *FlowStatusRefresher {
 	return &FlowStatusRefresher{
-		config:       cfg,
-		flowRepo:     flowRepo,
-		timelockRepo: timelockRepo,
-		emailService: emailService,
-		stopCh:       make(chan struct{}),
+		config:              cfg,
+		flowRepo:            flowRepo,
+		timelockRepo:        timelockRepo,
+		emailService:        emailService,
+		notificationService: notificationService,
+		stopCh:              make(chan struct{}),
 	}
 }
 
@@ -104,25 +107,48 @@ func (fsr *FlowStatusRefresher) processWaitingToReady(ctx context.Context, now t
 
 	// 发送通知（过滤导入前的历史交易）
 	for _, flow := range flows {
-		if fsr.emailService != nil && flow.InitiatorAddress != nil {
+		if flow.InitiatorAddress != nil {
 			if fsr.shouldSuppressNotification(ctx, &flow) {
-				logger.Debug("Skip email for historical flow (waiting->ready)", "flow_id", flow.FlowID)
+				logger.Debug("Skip notification for historical flow (waiting->ready)", "flow_id", flow.FlowID)
 				continue
 			}
-			if err := fsr.emailService.SendFlowNotification(
-				ctx,
-				flow.TimelockStandard,
-				flow.ChainID,
-				flow.ContractAddress,
-				flow.FlowID,
-				"waiting",
-				"ready",
-				nil, // 无交易hash，因为是定时任务触发的状态变更
-				*flow.InitiatorAddress,
-			); err != nil {
-				logger.Error("Failed to send ready notification", err,
-					"flow_id", flow.FlowID, "standard", flow.TimelockStandard)
-				// 不影响其他流程的处理，继续执行
+
+			// 发送邮件通知
+			if fsr.emailService != nil {
+				if err := fsr.emailService.SendFlowNotification(
+					ctx,
+					flow.TimelockStandard,
+					flow.ChainID,
+					flow.ContractAddress,
+					flow.FlowID,
+					"waiting",
+					"ready",
+					nil, // 无交易hash，因为是定时任务触发的状态变更
+					*flow.InitiatorAddress,
+				); err != nil {
+					logger.Error("Failed to send ready email notification", err,
+						"flow_id", flow.FlowID, "standard", flow.TimelockStandard)
+					// 不影响其他流程的处理，继续执行
+				}
+			}
+
+			// 发送渠道通知
+			if fsr.notificationService != nil {
+				if err := fsr.notificationService.SendFlowNotification(
+					ctx,
+					flow.TimelockStandard,
+					flow.ChainID,
+					flow.ContractAddress,
+					flow.FlowID,
+					"waiting",
+					"ready",
+					nil, // 无交易hash，因为是定时任务触发的状态变更
+					*flow.InitiatorAddress,
+				); err != nil {
+					logger.Error("Failed to send ready channel notification", err,
+						"flow_id", flow.FlowID, "standard", flow.TimelockStandard)
+					// 不影响其他流程的处理，继续执行
+				}
 			}
 		}
 	}
@@ -152,26 +178,49 @@ func (fsr *FlowStatusRefresher) processCompoundExpired(ctx context.Context, now 
 
 	// 发送通知（过滤导入前的历史交易）
 	for _, flow := range flows {
-		if fsr.emailService != nil && flow.InitiatorAddress != nil {
+		if flow.InitiatorAddress != nil {
 			if fsr.shouldSuppressNotification(ctx, &flow) {
-				logger.Debug("Skip email for historical flow (expired)", "flow_id", flow.FlowID)
+				logger.Debug("Skip notification for historical flow (expired)", "flow_id", flow.FlowID)
 				continue
 			}
 			statusFrom := flow.Status // 记录原状态用于通知
-			if err := fsr.emailService.SendFlowNotification(
-				ctx,
-				flow.TimelockStandard,
-				flow.ChainID,
-				flow.ContractAddress,
-				flow.FlowID,
-				statusFrom,
-				"expired",
-				nil, // 无交易hash，因为是定时任务触发的状态变更
-				*flow.InitiatorAddress,
-			); err != nil {
-				logger.Error("Failed to send expired notification", err,
-					"flow_id", flow.FlowID, "standard", flow.TimelockStandard)
-				// 不影响其他流程的处理，继续执行
+
+			// 发送邮件通知
+			if fsr.emailService != nil {
+				if err := fsr.emailService.SendFlowNotification(
+					ctx,
+					flow.TimelockStandard,
+					flow.ChainID,
+					flow.ContractAddress,
+					flow.FlowID,
+					statusFrom,
+					"expired",
+					nil, // 无交易hash，因为是定时任务触发的状态变更
+					*flow.InitiatorAddress,
+				); err != nil {
+					logger.Error("Failed to send expired email notification", err,
+						"flow_id", flow.FlowID, "standard", flow.TimelockStandard)
+					// 不影响其他流程的处理，继续执行
+				}
+			}
+
+			// 发送渠道通知
+			if fsr.notificationService != nil {
+				if err := fsr.notificationService.SendFlowNotification(
+					ctx,
+					flow.TimelockStandard,
+					flow.ChainID,
+					flow.ContractAddress,
+					flow.FlowID,
+					statusFrom,
+					"expired",
+					nil, // 无交易hash，因为是定时任务触发的状态变更
+					*flow.InitiatorAddress,
+				); err != nil {
+					logger.Error("Failed to send expired channel notification", err,
+						"flow_id", flow.FlowID, "standard", flow.TimelockStandard)
+					// 不影响其他流程的处理，继续执行
+				}
 			}
 		}
 	}

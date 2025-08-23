@@ -15,6 +15,7 @@ import (
 	chainHandler "timelocker-backend/internal/api/chain"
 	emailHandler "timelocker-backend/internal/api/email"
 	flowHandler "timelocker-backend/internal/api/flow"
+	notificationHandler "timelocker-backend/internal/api/notification"
 	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 
@@ -23,6 +24,7 @@ import (
 	chainRepo "timelocker-backend/internal/repository/chain"
 	emailRepo "timelocker-backend/internal/repository/email"
 
+	notificationRepo "timelocker-backend/internal/repository/notification"
 	scannerRepo "timelocker-backend/internal/repository/scanner"
 	sponsorRepo "timelocker-backend/internal/repository/sponsor"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
@@ -33,6 +35,7 @@ import (
 	chainService "timelocker-backend/internal/service/chain"
 	emailService "timelocker-backend/internal/service/email"
 	flowService "timelocker-backend/internal/service/flow"
+	notificationService "timelocker-backend/internal/service/notification"
 	scannerService "timelocker-backend/internal/service/scanner"
 	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
@@ -104,6 +107,7 @@ func main() {
 	sponsorRepository := sponsorRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
 	emailRepository := emailRepo.NewEmailRepository(db)
+	notificationRepository := notificationRepo.NewRepository(db)
 
 	// 扫链相关仓库
 	progressRepository := scannerRepo.NewProgressRepository(db)
@@ -124,6 +128,7 @@ func main() {
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
 	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, cfg)
 	flowSvc := flowService.NewFlowService(flowRepository, timelockRepository)
+	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, cfg)
 
 	// 7. 初始化处理器
 	authHandler := authHandler.NewHandler(authSvc)
@@ -132,6 +137,7 @@ func main() {
 	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc)
 	emailHdl := emailHandler.NewEmailHandler(emailSvc, authSvc)
 	flowHdl := flowHandler.NewFlowHandler(flowSvc, authSvc)
+	notificationHdl := notificationHandler.NewNotificationHandler(notificationSvc, authSvc)
 
 	// 8. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)
@@ -160,6 +166,7 @@ func main() {
 		sponsorHdl.RegisterRoutes(v1)
 		emailHdl.RegisterRoutes(v1)
 		flowHdl.RegisterRoutes(v1)
+		notificationHdl.RegisterRoutes(v1)
 	}
 
 	// 11. Swagger API文档端点
@@ -186,6 +193,7 @@ func main() {
 		flowRepository,
 		rpcManager,
 		emailSvc,
+		notificationSvc,
 	)
 	if err := scannerManager.Start(ctx); err != nil {
 		logger.Error("Failed to start scanner manager", err)

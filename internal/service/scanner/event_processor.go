@@ -16,16 +16,12 @@ import (
 
 // EventProcessor 事件处理器
 type EventProcessor struct {
-	config       *config.Config
-	txRepo       scanner.TransactionRepository
-	flowRepo     scanner.FlowRepository
-	emailService EmailService // 邮件服务接口
-	timelockRepo timelock.Repository
-}
-
-// EmailService 邮件服务接口（避免循环依赖）
-type EmailService interface {
-	SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error
+	config              *config.Config
+	txRepo              scanner.TransactionRepository
+	flowRepo            scanner.FlowRepository
+	emailService        EmailService        // 邮件服务接口
+	notificationService NotificationService // 通知服务接口
+	timelockRepo        timelock.Repository
 }
 
 // NewEventProcessor 创建新的事件处理器
@@ -34,14 +30,16 @@ func NewEventProcessor(
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
 	emailService EmailService,
+	notificationService NotificationService,
 	timelockRepo timelock.Repository,
 ) *EventProcessor {
 	return &EventProcessor{
-		config:       cfg,
-		txRepo:       txRepo,
-		flowRepo:     flowRepo,
-		emailService: emailService,
-		timelockRepo: timelockRepo,
+		config:              cfg,
+		txRepo:              txRepo,
+		flowRepo:            flowRepo,
+		emailService:        emailService,
+		notificationService: notificationService,
+		timelockRepo:        timelockRepo,
 	}
 }
 
@@ -66,11 +64,6 @@ func (ep *EventProcessor) ProcessEvents(ctx context.Context, chainID int, chainN
 				logger.Error("Failed to process Compound flow", err, "tx_hash", e.TxHash)
 			}
 
-			// 处理用户关联
-			if err := ep.processUserRelations(ctx, e.ChainID, e.ContractAddress, "compound", e.FromAddress, e.EventType); err != nil {
-				logger.Error("Failed to process user relations", err, "tx_hash", e.TxHash)
-			}
-
 		case *types.OpenZeppelinTimelockEvent:
 			tx := ep.convertOpenZeppelinEvent(e)
 			ozEvents = append(ozEvents, *tx)
@@ -80,10 +73,6 @@ func (ep *EventProcessor) ProcessEvents(ctx context.Context, chainID int, chainN
 				logger.Error("Failed to process OpenZeppelin flow", err, "tx_hash", e.TxHash)
 			}
 
-			// 处理用户关联
-			if err := ep.processUserRelations(ctx, e.ChainID, e.ContractAddress, "openzeppelin", e.FromAddress, e.EventType); err != nil {
-				logger.Error("Failed to process user relations", err, "tx_hash", e.TxHash)
-			}
 		default:
 			logger.Warn("Unknown event type", "event", event)
 		}
@@ -302,11 +291,19 @@ func (ep *EventProcessor) processCompoundFlow(ctx context.Context, event *types.
 		}
 	}
 
-	// 发送通知
+	// 发送邮件通知
 	if statusFrom != statusTo && ep.emailService != nil {
 		if err := ep.emailService.SendFlowNotification(ctx, "compound", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
-			logger.Error("Failed to send flow notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
+			logger.Error("Failed to send email notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
 			// 不返回错误，因为邮件发送失败不应该影响流程状态更新
+		}
+	}
+
+	// 发送渠道通知
+	if statusFrom != statusTo && ep.notificationService != nil {
+		if err := ep.notificationService.SendFlowNotification(ctx, "compound", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
+			logger.Error("Failed to send channel notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
+			// 不返回错误，因为通知发送失败不应该影响流程状态更新
 		}
 	}
 
@@ -424,19 +421,21 @@ func (ep *EventProcessor) processOpenZeppelinFlow(ctx context.Context, event *ty
 		}
 	}
 
-	// 发送通知
+	// 发送邮件通知
 	if statusFrom != statusTo && ep.emailService != nil {
 		if err := ep.emailService.SendFlowNotification(ctx, "openzeppelin", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
-			logger.Error("Failed to send flow notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
+			logger.Error("Failed to send email notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
 			// 不返回错误，因为邮件发送失败不应该影响流程状态更新
 		}
 	}
 
-	return nil
-}
+	// 发送渠道通知
+	if statusFrom != statusTo && ep.notificationService != nil {
+		if err := ep.notificationService.SendFlowNotification(ctx, "openzeppelin", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
+			logger.Error("Failed to send channel notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
+			// 不返回错误，因为通知发送失败不应该影响流程状态更新
+		}
+	}
 
-// processUserRelations 处理用户关联关系
-func (ep *EventProcessor) processUserRelations(ctx context.Context, chainID int, contractAddress, timelockStandard, userAddress, eventType string) error {
-	// 完善用户关联
 	return nil
 }

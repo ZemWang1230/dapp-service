@@ -16,20 +16,21 @@ import (
 
 // Manager 扫链管理器
 type Manager struct {
-	config        *config.Config
-	chainRepo     chain.Repository
-	timelockRepo  timelock.Repository
-	progressRepo  scanner.ProgressRepository
-	txRepo        scanner.TransactionRepository
-	flowRepo      scanner.FlowRepository
-	rpcManager    *RPCManager
-	chainScanners map[int]*ChainScanner
-	flowRefresher *FlowStatusRefresher
-	emailService  EmailService
-	mutex         sync.RWMutex
-	stopCh        chan struct{}
-	wg            sync.WaitGroup
-	isRunning     bool
+	config              *config.Config
+	chainRepo           chain.Repository
+	timelockRepo        timelock.Repository
+	progressRepo        scanner.ProgressRepository
+	txRepo              scanner.TransactionRepository
+	flowRepo            scanner.FlowRepository
+	rpcManager          *RPCManager
+	chainScanners       map[int]*ChainScanner
+	flowRefresher       *FlowStatusRefresher
+	emailService        EmailService
+	notificationService NotificationService
+	mutex               sync.RWMutex
+	stopCh              chan struct{}
+	wg                  sync.WaitGroup
+	isRunning           bool
 }
 
 // NewManager 创建扫链管理器
@@ -42,22 +43,24 @@ func NewManager(
 	flowRepo scanner.FlowRepository,
 	rpcManager *RPCManager,
 	emailService EmailService,
+	notificationService NotificationService,
 ) *Manager {
 	// 创建流程状态刷新器
-	flowRefresher := NewFlowStatusRefresher(cfg, flowRepo, timelockRepo, emailService)
+	flowRefresher := NewFlowStatusRefresher(cfg, flowRepo, timelockRepo, emailService, notificationService)
 
 	return &Manager{
-		config:        cfg,
-		chainRepo:     chainRepo,
-		timelockRepo:  timelockRepo,
-		progressRepo:  progressRepo,
-		txRepo:        txRepo,
-		flowRepo:      flowRepo,
-		rpcManager:    rpcManager,
-		chainScanners: make(map[int]*ChainScanner),
-		flowRefresher: flowRefresher,
-		emailService:  emailService,
-		stopCh:        make(chan struct{}),
+		config:              cfg,
+		chainRepo:           chainRepo,
+		timelockRepo:        timelockRepo,
+		progressRepo:        progressRepo,
+		txRepo:              txRepo,
+		flowRepo:            flowRepo,
+		rpcManager:          rpcManager,
+		chainScanners:       make(map[int]*ChainScanner),
+		flowRefresher:       flowRefresher,
+		emailService:        emailService,
+		notificationService: notificationService,
+		stopCh:              make(chan struct{}),
 	}
 }
 
@@ -191,6 +194,7 @@ func (m *Manager) startChainScanner(ctx context.Context, chainInfo *types.ChainR
 		m.txRepo,
 		m.flowRepo,
 		m.emailService,
+		m.notificationService,
 		m.timelockRepo,
 	)
 
