@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 	"timelocker-backend/internal/types"
@@ -27,6 +28,9 @@ type FlowRepository interface {
 	GetUserRelatedCompoundFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error)
 	GetCompoundTransactionDetail(ctx context.Context, standard string, txHash string) (*types.CompoundTimelockTransactionDetail, error)
 	GetCompoundQueueTransactionFunctionSignature(ctx context.Context, queueTxHash string, contractAddress string) (*string, error)
+
+	// GRACE_PERIOD相关方法
+	RefreshCompoundFlowsExpiredAt(ctx context.Context, chainID int, contractAddress string, gracePeriodSeconds int64) (int64, error)
 }
 
 type flowRepository struct {
@@ -53,9 +57,10 @@ func (r *flowRepository) CreateFlow(ctx context.Context, flow *types.TimelockTra
 // GetFlowByID 根据流程ID获取交易流程
 func (r *flowRepository) GetFlowByID(ctx context.Context, flowID, timelockStandard string, chainID int, contractAddress string) (*types.TimelockTransactionFlow, error) {
 	var flow types.TimelockTransactionFlow
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	err := r.db.WithContext(ctx).
-		Where("flow_id = ? AND timelock_standard = ? AND chain_id = ? AND contract_address = ?",
-			flowID, timelockStandard, chainID, contractAddress).
+		Where("flow_id = ? AND timelock_standard = ? AND chain_id = ? AND LOWER(contract_address) = ?",
+			flowID, timelockStandard, chainID, normalizedContractAddress).
 		First(&flow).Error
 
 	if err != nil {
@@ -122,10 +127,11 @@ func (r *flowRepository) GetCompoundFlowsExpired(ctx context.Context, now time.T
 
 // UpdateFlowStatus 更新单个流程状态
 func (r *flowRepository) UpdateFlowStatus(ctx context.Context, flowID, timelockStandard string, chainID int, contractAddress string, fromStatus, toStatus string) error {
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	result := r.db.WithContext(ctx).
 		Model(&types.TimelockTransactionFlow{}).
-		Where("flow_id = ? AND timelock_standard = ? AND chain_id = ? AND contract_address = ? AND status = ?",
-			flowID, timelockStandard, chainID, contractAddress, fromStatus).
+		Where("flow_id = ? AND timelock_standard = ? AND chain_id = ? AND LOWER(contract_address) = ? AND status = ?",
+			flowID, timelockStandard, chainID, normalizedContractAddress, fromStatus).
 		Update("status", toStatus)
 
 	if result.Error != nil {
@@ -151,8 +157,9 @@ func (r *flowRepository) BatchUpdateFlowStatus(ctx context.Context, flows []type
 	var args []interface{}
 
 	for _, flow := range flows {
-		conditions = append(conditions, "(flow_id = ? AND timelock_standard = ? AND chain_id = ? AND contract_address = ?)")
-		args = append(args, flow.FlowID, flow.TimelockStandard, flow.ChainID, flow.ContractAddress)
+		normalizedContractAddress := strings.ToLower(flow.ContractAddress)
+		conditions = append(conditions, "(flow_id = ? AND timelock_standard = ? AND chain_id = ? AND LOWER(contract_address) = ?)")
+		args = append(args, flow.FlowID, flow.TimelockStandard, flow.ChainID, normalizedContractAddress)
 	}
 
 	whereClause := "(" + strings.Join(conditions, " OR ") + ")"
@@ -173,7 +180,7 @@ func (r *flowRepository) BatchUpdateFlowStatus(ctx context.Context, flows []type
 
 // GetUserRelatedCompoundFlows 获取与用户相关的流程列表
 func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.TimelockTransactionFlow, int64, error) {
-	userAddress = strings.ToLower(userAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 
 	// 构建查询条件
 	query := r.db.WithContext(ctx).Model(&types.TimelockTransactionFlow{})
@@ -185,8 +192,8 @@ func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAd
 	args := []interface{}{}
 
 	// 第一种情况：initiator_address是该地址
-	whereConditions = append(whereConditions, "initiator_address = ?")
-	args = append(args, userAddress)
+	whereConditions = append(whereConditions, "LOWER(initiator_address) = ?")
+	args = append(args, normalizedUserAddress)
 
 	// 第二种情况：根据合约权限查询
 	// 需要联表查询compound_timelocks和openzeppelin_timelocks
@@ -196,23 +203,23 @@ func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAd
 		timelock_standard = 'compound' AND 
 		(chain_id, contract_address) IN (
 			SELECT chain_id, contract_address FROM compound_timelocks 
-			WHERE admin = ? OR pending_admin = ?
+			WHERE LOWER(admin) = ? OR LOWER(pending_admin) = ?
 		)
 	)`
 	whereConditions = append(whereConditions, compoundCondition)
-	args = append(args, userAddress, userAddress)
+	args = append(args, normalizedUserAddress, normalizedUserAddress)
 
 	// OpenZeppelin权限查询：proposers或executors中的一个
 	ozCondition := `(
 		timelock_standard = 'openzeppelin' AND 
 		(chain_id, contract_address) IN (
 			SELECT chain_id, contract_address FROM openzeppelin_timelocks 
-			WHERE proposers LIKE '%' || ? || '%' OR
-				executors LIKE '%' || ? || '%'
+			WHERE LOWER(proposers) LIKE '%' || ? || '%' OR
+				LOWER(executors) LIKE '%' || ? || '%'
 		)
 	)`
 	whereConditions = append(whereConditions, ozCondition)
-	args = append(args, userAddress, userAddress)
+	args = append(args, normalizedUserAddress, normalizedUserAddress)
 
 	// 组合所有条件
 	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
@@ -258,7 +265,7 @@ func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAd
 
 // GetUserRelatedCompoundFlowsCount 获取与用户相关的流程数量统计
 func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error) {
-	userAddress = strings.ToLower(userAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 
 	// 构建基础查询条件，复用GetUserRelatedCompoundFlows的逻辑
 	query := r.db.WithContext(ctx).Model(&types.TimelockTransactionFlow{})
@@ -270,8 +277,8 @@ func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, u
 	args := []interface{}{}
 
 	// 第一种情况：initiator_address是该地址
-	whereConditions = append(whereConditions, "initiator_address = ?")
-	args = append(args, userAddress)
+	whereConditions = append(whereConditions, "LOWER(initiator_address) = ?")
+	args = append(args, normalizedUserAddress)
 
 	// 第二种情况：根据合约权限查询
 	// Compound权限查询：admin或pending_admin
@@ -279,23 +286,23 @@ func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, u
 		timelock_standard = 'compound' AND 
 		(chain_id, contract_address) IN (
 			SELECT chain_id, contract_address FROM compound_timelocks 
-			WHERE admin = ? OR pending_admin = ?
+			WHERE LOWER(admin) = ? OR LOWER(pending_admin) = ?
 		)
 	)`
 	whereConditions = append(whereConditions, compoundCondition)
-	args = append(args, userAddress, userAddress)
+	args = append(args, normalizedUserAddress, normalizedUserAddress)
 
 	// OpenZeppelin权限查询：proposers或executors中的一个
 	ozCondition := `(
 		timelock_standard = 'openzeppelin' AND 
 		(chain_id, contract_address) IN (
 			SELECT chain_id, contract_address FROM openzeppelin_timelocks 
-			WHERE proposers LIKE '%' || ? || '%' OR
-				executors LIKE '%' || ? || '%'
+			WHERE LOWER(proposers) LIKE '%' || ? || '%' OR
+				LOWER(executors) LIKE '%' || ? || '%'
 		)
 	)`
 	whereConditions = append(whereConditions, ozCondition)
-	args = append(args, userAddress, userAddress)
+	args = append(args, normalizedUserAddress, normalizedUserAddress)
 
 	// 组合所有条件
 	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
@@ -396,4 +403,29 @@ func (r *flowRepository) GetCompoundQueueTransactionFunctionSignature(ctx contex
 	}
 
 	return tx.EventFunctionSignature, nil
+}
+
+// RefreshCompoundFlowsExpiredAt 刷新指定Compound合约的所有flows的expired_at字段
+func (r *flowRepository) RefreshCompoundFlowsExpiredAt(ctx context.Context, chainID int, contractAddress string, gracePeriodSeconds int64) (int64, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+
+	// 更新所有该合约的compound flows，重新计算expired_at = eta + grace_period
+	// 使用字符串格式化来构建INTERVAL表达式，避免参数化查询问题
+	intervalExpr := fmt.Sprintf("eta + INTERVAL '%d seconds'", gracePeriodSeconds)
+	result := r.db.WithContext(ctx).
+		Model(&types.TimelockTransactionFlow{}).
+		Where("timelock_standard = ? AND chain_id = ? AND LOWER(contract_address) = ? AND eta IS NOT NULL",
+			"compound", chainID, normalizedContractAddress).
+		Update("expired_at", gorm.Expr(intervalExpr))
+
+	if result.Error != nil {
+		logger.Error("RefreshCompoundFlowsExpiredAt Error", result.Error,
+			"chain_id", chainID, "contract_address", contractAddress, "grace_period", gracePeriodSeconds)
+		return 0, result.Error
+	}
+
+	logger.Info("RefreshCompoundFlowsExpiredAt completed",
+		"updated", result.RowsAffected, "chain_id", chainID, "contract_address", contractAddress, "grace_period", gracePeriodSeconds)
+
+	return result.RowsAffected, nil
 }

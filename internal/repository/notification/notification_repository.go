@@ -68,8 +68,9 @@ func (r *notificationRepository) CreateTelegramConfig(ctx context.Context, confi
 // GetTelegramConfigsByUserAddress 根据用户地址获取Telegram配置
 func (r *notificationRepository) GetTelegramConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.TelegramConfig, error) {
 	var configs []*types.TelegramConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ?", userAddress).
+		Where("LOWER(user_address) = ?", normalizedUserAddress).
 		Order("created_at DESC").
 		Find(&configs).Error; err != nil {
 		logger.Error("GetTelegramConfigsByUserAddress error", err, "user_address", userAddress)
@@ -82,8 +83,9 @@ func (r *notificationRepository) GetTelegramConfigsByUserAddress(ctx context.Con
 // GetTelegramConfigByUserAddressAndName 根据用户地址和名称获取Telegram配置
 func (r *notificationRepository) GetTelegramConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.TelegramConfig, error) {
 	var config types.TelegramConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		First(&config).Error; err != nil {
 		logger.Error("GetTelegramConfigByUserAddressAndName error", err, "user_address", userAddress, "name", name)
 		return nil, err
@@ -94,9 +96,10 @@ func (r *notificationRepository) GetTelegramConfigByUserAddressAndName(ctx conte
 
 // UpdateTelegramConfig 更新Telegram配置
 func (r *notificationRepository) UpdateTelegramConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
 		Model(&types.TelegramConfig{}).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		Updates(updates).Error; err != nil {
 		logger.Error("UpdateTelegramConfig error", err, "user_address", userAddress, "name", name)
 		return err
@@ -107,8 +110,9 @@ func (r *notificationRepository) UpdateTelegramConfig(ctx context.Context, userA
 
 // DeleteTelegramConfig 删除Telegram配置
 func (r *notificationRepository) DeleteTelegramConfig(ctx context.Context, userAddress, name string) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		Delete(&types.TelegramConfig{}).Error; err != nil {
 		logger.Error("DeleteTelegramConfig error", err, "user_address", userAddress, "name", name)
 		return err
@@ -131,8 +135,9 @@ func (r *notificationRepository) CreateLarkConfig(ctx context.Context, config *t
 // GetLarkConfigsByUserAddress 根据用户地址获取Lark配置
 func (r *notificationRepository) GetLarkConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.LarkConfig, error) {
 	var configs []*types.LarkConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ?", userAddress).
+		Where("LOWER(user_address) = ?", normalizedUserAddress).
 		Order("created_at DESC").
 		Find(&configs).Error; err != nil {
 		logger.Error("GetLarkConfigsByUserAddress error", err, "user_address", userAddress)
@@ -145,8 +150,9 @@ func (r *notificationRepository) GetLarkConfigsByUserAddress(ctx context.Context
 // GetLarkConfigByUserAddressAndName 根据用户地址和名称获取Lark配置
 func (r *notificationRepository) GetLarkConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.LarkConfig, error) {
 	var config types.LarkConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		First(&config).Error; err != nil {
 		logger.Error("GetLarkConfigByUserAddressAndName error", err, "user_address", userAddress, "name", name)
 		return nil, err
@@ -157,9 +163,10 @@ func (r *notificationRepository) GetLarkConfigByUserAddressAndName(ctx context.C
 
 // UpdateLarkConfig 更新Lark配置
 func (r *notificationRepository) UpdateLarkConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
 		Model(&types.LarkConfig{}).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		Updates(updates).Error; err != nil {
 		logger.Error("UpdateLarkConfig error", err, "user_address", userAddress, "name", name)
 		return err
@@ -170,8 +177,9 @@ func (r *notificationRepository) UpdateLarkConfig(ctx context.Context, userAddre
 
 // DeleteLarkConfig 删除Lark配置
 func (r *notificationRepository) DeleteLarkConfig(ctx context.Context, userAddress, name string) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		Delete(&types.LarkConfig{}).Error; err != nil {
 		logger.Error("DeleteLarkConfig error", err, "user_address", userAddress, "name", name)
 		return err
@@ -194,8 +202,9 @@ func (r *notificationRepository) CreateFeishuConfig(ctx context.Context, config 
 // GetFeishuConfigsByUserAddress 根据用户地址获取Feishu配置
 func (r *notificationRepository) GetFeishuConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.FeishuConfig, error) {
 	var configs []*types.FeishuConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ?", userAddress).
+		Where("LOWER(user_address) = ?", normalizedUserAddress).
 		Order("created_at DESC").
 		Find(&configs).Error; err != nil {
 		logger.Error("GetFeishuConfigsByUserAddress error", err, "user_address", userAddress)
@@ -208,8 +217,9 @@ func (r *notificationRepository) GetFeishuConfigsByUserAddress(ctx context.Conte
 // GetFeishuConfigByUserAddressAndName 根据用户地址和名称获取Feishu配置
 func (r *notificationRepository) GetFeishuConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.FeishuConfig, error) {
 	var config types.FeishuConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		First(&config).Error; err != nil {
 		logger.Error("GetFeishuConfigByUserAddressAndName error", err, "user_address", userAddress, "name", name)
 		return nil, err
@@ -220,9 +230,10 @@ func (r *notificationRepository) GetFeishuConfigByUserAddressAndName(ctx context
 
 // UpdateFeishuConfig 更新Feishu配置
 func (r *notificationRepository) UpdateFeishuConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
 		Model(&types.FeishuConfig{}).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		Updates(updates).Error; err != nil {
 		logger.Error("UpdateFeishuConfig error", err, "user_address", userAddress, "name", name)
 		return err
@@ -233,8 +244,9 @@ func (r *notificationRepository) UpdateFeishuConfig(ctx context.Context, userAdd
 
 // DeleteFeishuConfig 删除Feishu配置
 func (r *notificationRepository) DeleteFeishuConfig(ctx context.Context, userAddress, name string) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND name = ?", userAddress, name).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
 		Delete(&types.FeishuConfig{}).Error; err != nil {
 		logger.Error("DeleteFeishuConfig error", err, "user_address", userAddress, "name", name)
 		return err
@@ -257,9 +269,10 @@ func (r *notificationRepository) CreateNotificationLog(ctx context.Context, log 
 // CheckNotificationLogExists 检查通知日志是否存在
 func (r *notificationRepository) CheckNotificationLogExists(ctx context.Context, channel types.NotificationChannel, userAddress string, configID uint, flowID, statusTo string) (bool, error) {
 	var count int64
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
 		Model(&types.NotificationLog{}).
-		Where("channel = ? AND user_address = ? AND config_id = ? AND flow_id = ? AND status_to = ? AND send_status = ?", channel, userAddress, configID, flowID, statusTo, "success").
+		Where("channel = ? AND LOWER(user_address) = ? AND config_id = ? AND flow_id = ? AND status_to = ? AND send_status = ?", channel, normalizedUserAddress, configID, flowID, statusTo, "success").
 		Count(&count).Error; err != nil {
 		logger.Error("CheckNotificationLogExists error", err, "channel", channel, "user_address", userAddress, "config_id", configID, "flow_id", flowID, "status_to", statusTo)
 		return false, err
@@ -272,10 +285,10 @@ func (r *notificationRepository) CheckNotificationLogExists(ctx context.Context,
 // GetUserActiveNotificationConfigs 获取用户的所有激活通知配置
 func (r *notificationRepository) GetUserActiveNotificationConfigs(ctx context.Context, userAddress string) (*types.UserNotificationConfigs, error) {
 	configs := &types.UserNotificationConfigs{}
-
+	normalizedUserAddress := strings.ToLower(userAddress)
 	// 获取激活的Telegram配置
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND is_active = ?", userAddress, true).
+		Where("LOWER(user_address) = ? AND is_active = ?", normalizedUserAddress, true).
 		Find(&configs.TelegramConfigs).Error; err != nil {
 		logger.Error("GetUserActiveNotificationConfigs error", err, "user_address", userAddress, "is_active", true)
 		return nil, err
@@ -283,7 +296,7 @@ func (r *notificationRepository) GetUserActiveNotificationConfigs(ctx context.Co
 
 	// 获取激活的Lark配置
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND is_active = ?", userAddress, true).
+		Where("LOWER(user_address) = ? AND is_active = ?", normalizedUserAddress, true).
 		Find(&configs.LarkConfigs).Error; err != nil {
 		logger.Error("GetUserActiveNotificationConfigs error", err, "user_address", userAddress, "is_active", true)
 		return nil, err
@@ -291,7 +304,7 @@ func (r *notificationRepository) GetUserActiveNotificationConfigs(ctx context.Co
 
 	// 获取激活的Feishu配置
 	if err := r.db.WithContext(ctx).
-		Where("user_address = ? AND is_active = ?", userAddress, true).
+		Where("LOWER(user_address) = ? AND is_active = ?", normalizedUserAddress, true).
 		Find(&configs.FeishuConfigs).Error; err != nil {
 		logger.Error("GetUserActiveNotificationConfigs error", err, "user_address", userAddress, "is_active", true)
 		return nil, err
@@ -304,6 +317,7 @@ func (r *notificationRepository) GetUserActiveNotificationConfigs(ctx context.Co
 // GetContractRelatedUserAddresses 获取与指定合约相关的用户地址列表
 func (r *notificationRepository) GetContractRelatedUserAddresses(ctx context.Context, standard string, chainID int, contractAddress string) ([]string, error) {
 	var userAddresses []string
+	normalizedContractAddress := strings.ToLower(contractAddress)
 
 	switch strings.ToLower(standard) {
 	case "compound":
@@ -315,7 +329,7 @@ func (r *notificationRepository) GetContractRelatedUserAddresses(ctx context.Con
             WHERE LOWER(u.wallet_address) = LOWER(t.admin)
                OR (t.pending_admin IS NOT NULL AND LOWER(u.wallet_address) = LOWER(t.pending_admin))
         `
-		if err := r.db.WithContext(ctx).Raw(sql, chainID, contractAddress).Pluck("wallet_address", &userAddresses).Error; err != nil {
+		if err := r.db.WithContext(ctx).Raw(sql, chainID, normalizedContractAddress).Pluck("wallet_address", &userAddresses).Error; err != nil {
 			logger.Error("GetContractRelatedUserAddresses compound error", err, "chainID", chainID, "contract", contractAddress)
 			return nil, fmt.Errorf("failed to query compound related users: %w", err)
 		}
@@ -328,7 +342,7 @@ func (r *notificationRepository) GetContractRelatedUserAddresses(ctx context.Con
             WHERE LOWER(t.proposers) LIKE ('%' || LOWER(u.wallet_address) || '%')
                OR LOWER(t.executors) LIKE ('%' || LOWER(u.wallet_address) || '%')
         `
-		if err := r.db.WithContext(ctx).Raw(sql, chainID, contractAddress).Pluck("wallet_address", &userAddresses).Error; err != nil {
+		if err := r.db.WithContext(ctx).Raw(sql, chainID, normalizedContractAddress).Pluck("wallet_address", &userAddresses).Error; err != nil {
 			logger.Error("GetContractRelatedUserAddresses openzeppelin error", err, "chainID", chainID, "contract", contractAddress)
 			return nil, fmt.Errorf("failed to query openzeppelin related users: %w", err)
 		}

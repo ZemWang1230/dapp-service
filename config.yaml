@@ -1,6 +1,6 @@
 server:
   port: "8080"
-  mode: "debug"  # debug, release, test
+  mode: "release"  # debug, release, test
 
 database:
   host: "localhost"
@@ -19,20 +19,13 @@ redis:
 jwt:
   secret: "timelocker-jwt-secret-v1"
   access_expiry: "24h"   # 24小时
-  refresh_expiry: "168h" # 7天
+  refresh_expiry: "48h" # 2天
 
 # RPC配置 - 用于监听链上事件
 rpc:
-  # RPC提供商配置（用户只需要填写API key）
-  alchemy_api_key: "lYhVaRoI42v3iIeHh_W3k"
-  infura_api_key: "xxx"
-  
-  # 当前使用的提供商（alchemy、infura 或 custom）
-  # alchemy: 使用Alchemy RPC
-  # infura: 使用Infura RPC  
-  # custom: 使用自定义RPC（公共节点）
-  provider: "alchemy"
-  
+  # 当前使用的提供商（official）
+  provider: "official"
+
   # 是否包含测试网
   include_testnets: true
 
@@ -40,29 +33,29 @@ rpc:
 email:
   smtp_host: "smtp.zoho.com"
   smtp_port: 587
-  smtp_username: "zem@timelock.live"  # 发送邮件的邮箱地址
-  smtp_password: "X1p1DdL7aHBd"     # 邮箱应用密码（不是登录密码）
+  smtp_username: "gm@timelock.live"  # 发送邮件的邮箱地址
+  smtp_password: "xxx"     # 邮箱应用密码（不是登录密码）
   from_name: "TimeLocker Notification"   # 发件人名称
-  from_email: "zem@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
+  from_email: "gm@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
   
   # 邮件通知功能配置
-  verification_code_expiry: "10m"        # 验证码过期时间
+  verification_code_expiry: "5m"        # 验证码过期时间
   
   # 邮件模板配置
-  email_url: "http://localhost:8080"      # 前端基础URL，用于生成邮件中的链接
+  email_url: "https://timelock.tech"      # 前端基础URL，用于生成邮件中的链接
 
-# 扫链系统配置（简化版，只使用Alchemy RPC）
+# 扫链系统配置
 scanner:
   # RPC配置（简化）
   rpc_timeout: "20s"                  # RPC请求超时时间
-  rpc_retry_max: 5                    # RPC最大重试次数
-  rpc_retry_delay: "2s"               # RPC重试延迟（出错时等待时间）
+  rpc_retry_max: 10                    # RPC最大重试次数
+  rpc_retry_delay: "10s"               # RPC重试延迟（出错时等待时间）
   
   # 扫块配置
   scan_batch_size: 500                # 每批扫描的区块数量
-  scan_interval: "5s"                 # 快速扫描间隔
-  scan_interval_slow: "15s"           # 慢速扫描间隔（到达最新块后）
-  scan_confirmations: 5              # 区块确认数
+  scan_interval: "30s"                 # 快速扫描间隔
+  scan_interval_slow: "30s"           # 慢速扫描间隔（到达最新块后）
+  scan_confirmations: 3              # 区块确认数
 
   # Flow refresher config
   flow_refresh_interval: "60s"        # 流刷新间隔

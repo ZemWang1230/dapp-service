@@ -1,6 +1,7 @@
 package types
 
 import (
+	"html/template"
 	"time"
 )
 
@@ -83,64 +84,55 @@ func (NotificationLog) TableName() string {
 	return "notification_logs"
 }
 
-// CreateTelegramConfigRequest Telegram配置创建请求
-type CreateTelegramConfigRequest struct {
-	Name     string `json:"name" binding:"required"`      // 名称
-	BotToken string `json:"bot_token" binding:"required"` // 机器人token
-	ChatID   string `json:"chat_id" binding:"required"`   // 聊天ID
+// NotificationConfig 通用通知配置
+type NotificationConfig struct {
+	// 通用
+	ID          uint      `json:"id"`
+	UserAddress string    `json:"user_address"`
+	Name        string    `json:"name"`
+	Channel     string    `json:"channel"` // telegram / lark / feishu
+	IsActive    bool      `json:"is_active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	// 可选字段，不同渠道用不同
+	BotToken   *string `json:"bot_token,omitempty"`
+	ChatID     *string `json:"chat_id,omitempty"`
+	WebhookURL *string `json:"webhook_url,omitempty"`
+	Secret     *string `json:"secret,omitempty"`
 }
 
-// UpdateTelegramConfigRequest Telegram配置更新请求
-type UpdateTelegramConfigRequest struct {
-	Name     *string `json:"name"`      // 名称
+// CreateNotificationRequest 创建通知通用请求
+type CreateNotificationRequest struct {
+	// 通用
+	Name    string `json:"name" binding:"required"`    // 名称
+	Channel string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu
+	// telegram
+	BotToken string `json:"bot_token"` // 机器人token
+	ChatID   string `json:"chat_id"`   // 聊天ID
+	// lark feishu
+	WebhookURL string `json:"webhook_url"` // 网络钩子URL
+	Secret     string `json:"secret"`      // 签名验证时的密钥
+}
+
+// UpdateNotificationRequest 更新通知通用请求
+type UpdateNotificationRequest struct {
+	// 通用
+	Name     *string `json:"name" binding:"required"`    // 名称
+	Channel  *string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu
+	IsActive *bool   `json:"is_active"`                  // 是否激活
+	// telegram
 	BotToken *string `json:"bot_token"` // 机器人token
 	ChatID   *string `json:"chat_id"`   // 聊天ID
-	IsActive *bool   `json:"is_active"` // 是否激活
-}
-
-// DeleteTelegramConfigRequest Telegram配置删除请求
-type DeleteTelegramConfigRequest struct {
-	Name string `json:"name" binding:"required"` // 名称
-}
-
-// CreateLarkConfigRequest Lark配置创建请求
-type CreateLarkConfigRequest struct {
-	Name       string `json:"name" binding:"required"`        // 名称
-	WebhookURL string `json:"webhook_url" binding:"required"` // 网络钩子URL
-	Secret     string `json:"secret"`                         // 签名验证时的密钥
-}
-
-// UpdateLarkConfigRequest Lark配置更新请求
-type UpdateLarkConfigRequest struct {
-	Name       *string `json:"name"`        // 名称
+	// lark feishu
 	WebhookURL *string `json:"webhook_url"` // 网络钩子URL
 	Secret     *string `json:"secret"`      // 签名验证时的密钥
-	IsActive   *bool   `json:"is_active"`   // 是否激活
 }
 
-// DeleteLarkConfigRequest Lark配置删除请求
-type DeleteLarkConfigRequest struct {
-	Name string `json:"name" binding:"required"` // 名称
-}
-
-// CreateFeishuConfigRequest Feishu配置创建请求
-type CreateFeishuConfigRequest struct {
-	Name       string `json:"name" binding:"required"`        // 名称
-	WebhookURL string `json:"webhook_url" binding:"required"` // 网络钩子URL
-	Secret     string `json:"secret"`                         // 签名验证时的密钥
-}
-
-// UpdateFeishuConfigRequest Feishu配置更新请求
-type UpdateFeishuConfigRequest struct {
-	Name       *string `json:"name"`        // 名称
-	WebhookURL *string `json:"webhook_url"` // 网络钩子URL
-	Secret     *string `json:"secret"`      // 签名验证时的密钥
-	IsActive   *bool   `json:"is_active"`   // 是否激活
-}
-
-// DeleteFeishuConfigRequest Feishu配置删除请求
-type DeleteFeishuConfigRequest struct {
-	Name string `json:"name" binding:"required"` // 名称
+// DeleteNotificationRequest 删除通知通用请求
+type DeleteNotificationRequest struct {
+	// 通用
+	Name    string `json:"name" binding:"required"`    // 名称
+	Channel string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu
 }
 
 // UserNotificationConfigs 用户通知配置集合
@@ -155,4 +147,31 @@ type NotificationConfigListResponse struct {
 	TelegramConfigs []*TelegramConfig `json:"telegram_configs"`
 	LarkConfigs     []*LarkConfig     `json:"lark_configs"`
 	FeishuConfigs   []*FeishuConfig   `json:"feishu_configs"`
+}
+
+type CalldataParam struct {
+	Name  string `json:"name"`  // param[0],param[1]...
+	Type  string `json:"type"`  // address,bool,uint256,int256,uint64,int64,uint8,int8,string,bytes...
+	Value string `json:"value"` // 值
+}
+
+type NotificationData struct {
+	BgColorFrom    template.CSS    `json:"bg_color_from"`
+	TextColorFrom  template.CSS    `json:"text_color_from"`
+	StatusFrom     string          `json:"status_from"`
+	BgColorTo      template.CSS    `json:"bg_color_to"`
+	TextColorTo    template.CSS    `json:"text_color_to"`
+	StatusTo       string          `json:"status_to"`
+	Standard       string          `json:"standard"`
+	Network        string          `json:"network"`
+	Contract       string          `json:"contract"`
+	Remark         string          `json:"remark"`
+	Caller         string          `json:"caller"`
+	Target         string          `json:"target"`
+	Value          string          `json:"value"`
+	Function       string          `json:"function"`
+	CalldataParams []CalldataParam `json:"calldata_params"`
+	TxUrl          string          `json:"tx_url"`
+	TxHash         string          `json:"tx_hash"`
+	DashboardUrl   string          `json:"dashboard_url"`
 }

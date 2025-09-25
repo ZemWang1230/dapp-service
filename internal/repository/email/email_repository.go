@@ -301,6 +301,7 @@ func (r *emailRepository) CleanExpiredCodes(ctx context.Context) error {
 func (r *emailRepository) GetContractRelatedVerifiedEmailIDs(ctx context.Context, standard string, chainID int, contractAddress string) ([]int64, error) {
 	var emailIDs []int64
 
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	switch strings.ToLower(standard) {
 	case "compound":
 		// 用户是该合约的 admin 或 pending_admin
@@ -309,11 +310,11 @@ func (r *emailRepository) GetContractRelatedVerifiedEmailIDs(ctx context.Context
             FROM users u
             JOIN user_emails ue ON ue.user_id = u.id AND ue.is_verified = TRUE
             JOIN emails e ON e.id = ue.email_id
-            JOIN compound_timelocks t ON t.chain_id = ? AND t.contract_address = ?
+            JOIN compound_timelocks t ON t.chain_id = ? AND LOWER(t.contract_address) = ?
             WHERE LOWER(u.wallet_address) = LOWER(t.admin)
                OR (t.pending_admin IS NOT NULL AND LOWER(u.wallet_address) = LOWER(t.pending_admin))
         `
-		if err := r.db.WithContext(ctx).Raw(sql, chainID, contractAddress).Pluck("id", &emailIDs).Error; err != nil {
+		if err := r.db.WithContext(ctx).Raw(sql, chainID, normalizedContractAddress).Pluck("id", &emailIDs).Error; err != nil {
 			return nil, fmt.Errorf("failed to query compound related emails: %w", err)
 		}
 	case "openzeppelin":
@@ -323,11 +324,11 @@ func (r *emailRepository) GetContractRelatedVerifiedEmailIDs(ctx context.Context
             FROM users u
             JOIN user_emails ue ON ue.user_id = u.id AND ue.is_verified = TRUE
             JOIN emails e ON e.id = ue.email_id
-            JOIN openzeppelin_timelocks t ON t.chain_id = ? AND t.contract_address = ?
+            JOIN openzeppelin_timelocks t ON t.chain_id = ? AND LOWER(t.contract_address) = ?
             WHERE LOWER(t.proposers) LIKE ('%' || LOWER(u.wallet_address) || '%')
                OR LOWER(t.executors) LIKE ('%' || LOWER(u.wallet_address) || '%')
         `
-		if err := r.db.WithContext(ctx).Raw(sql, chainID, contractAddress).Pluck("id", &emailIDs).Error; err != nil {
+		if err := r.db.WithContext(ctx).Raw(sql, chainID, normalizedContractAddress).Pluck("id", &emailIDs).Error; err != nil {
 			return nil, fmt.Errorf("failed to query openzeppelin related emails: %w", err)
 		}
 	default:

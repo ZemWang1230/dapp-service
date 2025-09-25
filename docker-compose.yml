@@ -1,0 +1,241 @@
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine # 镜像版本
+    container_name: timelocker-postgres # 容器名称
+    restart: unless-stopped # 重启策略：容器退出时重启，除非人为 stop
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-timelocker_db} # 数据库名：使用环境变量 POSTGRES_DB 否则默认 timelocker_db
+      POSTGRES_USER: ${POSTGRES_USER:-timelocker} # 用户名：使用环境变量 POSTGRES_USER 否则默认 timelocker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timelocker} # 密码：使用环境变量 POSTGRES_PASSWORD 否则默认 timelocker
+      PGDATA: /var/lib/postgresql/data/pgdata # PostgreSQL 数据文件位置（在容器内）
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # 将名为 postgres_data 的 volume 挂载到容器的 data 目录，用于持久化 DB 文件
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro # 将本地 init-scripts 目录（初始化 SQL/脚本）以只读方式挂到容器的初始化目录
+    ports:
+      - "5432:5432" # 将容器的 5432 端口映射到主机的 5432 端口
+    networks:
+      - timelocker-network # 使用下方定义的自定义 bridge 网络，服务间可通过服务名互相访问
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timelocker} -d ${POSTGRES_DB:-timelocker_db}"] # 检查命令：用 pg_isready 检测 DB 是否就绪
+      interval: 10s # 检查间隔：10 秒
+      timeout: 5s # 检查超时：5 秒
+      retries: 5 # 重试次数：5 次
+    logging:
+      driver: "json-file" # 使用 json-file 驱动（默认），日志以 JSON 格式保存
+      options:
+        max-size: "50m" # 最大日志大小：50MB
+        max-file: "3" # 最大日志文件数：3 个
+
+  # Redis 缓存
+  redis:
+    image: redis:8-alpine # 镜像版本
+    container_name: timelocker-redis # 容器名称
+    restart: unless-stopped # 重启策略：容器退出时重启，除非人为 stop
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-} # 启动命令：启动 Redis 服务，并设置持久化
+    volumes:
+      - redis_data:/data # 将名为 redis_data 的 volume 挂载到容器的 data 目录，用于持久化 Redis 数据
+    ports:
+      - "6379:6379" # 将容器的 6379 端口映射到主机的 6379 端口
+    networks:
+      - timelocker-network # 使用下方定义的自定义 bridge 网络，服务间可通过服务名互相访问
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"] # 检查命令：用 redis-cli 检测 Redis 是否就绪
+      interval: 10s # 检查间隔：10 秒
+      timeout: 3s # 检查超时：3 秒
+      retries: 5 # 重试次数：5 次
+    logging:
+      driver: "json-file" # 使用 json-file 驱动（默认），日志以 JSON 格式保存
+      options:
+        max-size: "50m" # 最大日志大小：50MB
+        max-file: "3" # 最大日志文件数：3 个
+
+  # TimeLocker 后端应用
+  timelocker-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: timelocker-backend # 容器名称
+    restart: unless-stopped # 重启策略：容器退出时重启，除非人为 stop
+    environment:
+      # 服务器配置
+      SERVER_PORT: ${SERVER_PORT:-8080} # 服务器端口：使用环境变量 SERVER_PORT 否则默认 8080
+      SERVER_MODE: ${SERVER_MODE:-release} # 服务器模式：使用环境变量 SERVER_MODE 否则默认 release
+      
+      # 数据库配置
+      DATABASE_HOST: postgres # 数据库主机：使用环境变量 DATABASE_HOST 否则默认 postgres
+      DATABASE_PORT: 5432 # 数据库端口：使用环境变量 DATABASE_PORT 否则默认 5432
+      DATABASE_USER: ${POSTGRES_USER:-timelocker} # 数据库用户：使用环境变量 DATABASE_USER 否则默认 timelocker
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-timelocker} # 数据库密码：使用环境变量 DATABASE_PASSWORD 否则默认 timelocker
+      DATABASE_DBNAME: ${POSTGRES_DB:-timelocker_db} # 数据库名称：使用环境变量 DATABASE_DBNAME 否则默认 timelocker_db
+      DATABASE_SSLMODE: disable # 数据库 SSL 模式：使用环境变量 DATABASE_SSLMODE 否则默认 disable
+      
+      # Redis配置
+      REDIS_HOST: redis # 缓存主机：使用环境变量 REDIS_HOST 否则默认 redis
+      REDIS_PORT: 6379 # 缓存端口：使用环境变量 REDIS_PORT 否则默认 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-} # 缓存密码：使用环境变量 REDIS_PASSWORD 否则默认
+      REDIS_DB: 0 # 缓存数据库：使用环境变量 REDIS_DB 否则默认 0
+      
+      # JWT配置
+      JWT_SECRET: ${JWT_SECRET:-timelocker-jwt-secret-v1-production} # JWT 密钥：使用环境变量 JWT_SECRET 否则默认 timelocker-jwt-secret-v1-production
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-24h} # JWT 访问过期时间：使用环境变量 JWT_ACCESS_EXPIRY 否则默认 24h
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-48h} # JWT 刷新过期时间：使用环境变量 JWT_REFRESH_EXPIRY 否则默认 48h
+      
+      # RPC配置
+      RPC_PROVIDER: ${RPC_PROVIDER:-official} # RPC 提供商：使用环境变量 RPC_PROVIDER 否则默认 official
+      RPC_INCLUDE_TESTNETS: ${RPC_INCLUDE_TESTNETS:-true} # 是否包含测试网：使用环境变量 RPC_INCLUDE_TESTNETS 否则默认 true
+      
+      # 邮件配置
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-smtp.zoho.com} # 邮件 SMTP 主机：使用环境变量 EMAIL_SMTP_HOST 否则默认 smtp.zoho.com
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587} # 邮件 SMTP 端口：使用环境变量 EMAIL_SMTP_PORT 否则默认 587
+      EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME} # 邮件 SMTP 用户名：使用环境变量 EMAIL_SMTP_USERNAME 否则默认
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD} # 邮件 SMTP 密码：使用环境变量 EMAIL_SMTP_PASSWORD 否则默认
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-TimeLocker Notification} # 邮件发件人名称：使用环境变量 EMAIL_FROM_NAME 否则默认 TimeLocker Notification
+      EMAIL_FROM_EMAIL: ${EMAIL_FROM_EMAIL} # 邮件发件人邮箱：使用环境变量 EMAIL_FROM_EMAIL 否则默认
+      EMAIL_VERIFICATION_CODE_EXPIRY: ${EMAIL_VERIFICATION_CODE_EXPIRY:-5m} # 邮件验证码过期时间：使用环境变量 EMAIL_VERIFICATION_CODE_EXPIRY 否则默认 5m
+      EMAIL_URL: ${EMAIL_URL:-https://timelock.tech} # 邮件 URL：使用环境变量 EMAIL_URL 否则默认 https://timelock.tech
+      
+      # 扫链系统配置
+      SCANNER_RPC_TIMEOUT: ${SCANNER_RPC_TIMEOUT:-20s} # RPC 超时时间：使用环境变量 SCANNER_RPC_TIMEOUT 否则默认 20s
+      SCANNER_RPC_RETRY_MAX: ${SCANNER_RPC_RETRY_MAX:-10} # RPC 最大重试次数：使用环境变量 SCANNER_RPC_RETRY_MAX 否则默认 10
+      SCANNER_RPC_RETRY_DELAY: ${SCANNER_RPC_RETRY_DELAY:-10s} # RPC 重试延迟：使用环境变量 SCANNER_RPC_RETRY_DELAY 否则默认 10s
+      SCANNER_SCAN_BATCH_SIZE: ${SCANNER_SCAN_BATCH_SIZE:-500} # 扫块批量大小：使用环境变量 SCANNER_SCAN_BATCH_SIZE 否则默认 500
+      SCANNER_SCAN_INTERVAL: ${SCANNER_SCAN_INTERVAL:-30s} # 扫块间隔：使用环境变量 SCANNER_SCAN_INTERVAL 否则默认 30s
+      SCANNER_SCAN_INTERVAL_SLOW: ${SCANNER_SCAN_INTERVAL_SLOW:-30s} # 慢速扫块间隔：使用环境变量 SCANNER_SCAN_INTERVAL_SLOW 否则默认 30s
+      SCANNER_SCAN_CONFIRMATIONS: ${SCANNER_SCAN_CONFIRMATIONS:-3} # 扫块确认数：使用环境变量 SCANNER_SCAN_CONFIRMATIONS 否则默认 3
+      SCANNER_FLOW_REFRESH_INTERVAL: ${SCANNER_FLOW_REFRESH_INTERVAL:-60s} # 流刷新间隔：使用环境变量 SCANNER_FLOW_REFRESH_INTERVAL 否则默认 60s
+      SCANNER_FLOW_REFRESH_BATCH_SIZE: ${SCANNER_FLOW_REFRESH_BATCH_SIZE:-100} # 流刷新批量大小：使用环境变量 SCANNER_FLOW_REFRESH_BATCH_SIZE 否则默认 100
+    # ports:
+      # - "8080:8080" # 端口映射已移除，现在通过 Caddy 反向代理访问
+    networks:
+      - timelocker-network # 使用下方定义的自定义 bridge 网络，服务间可通过服务名互相访问
+    depends_on:
+      postgres:
+        condition: service_healthy # 只有当 postgres 的 healthcheck 标记为 healthy 后才认为依赖已准备好（Compose v3 在 docker-compose（非 swarm）中支持）
+      redis:
+        condition: service_healthy # 只有当 redis 的 healthcheck 标记为 healthy 后才认为依赖已准备好（Compose v3 在 docker-compose（非 swarm）中支持）
+    volumes:
+      - ./logs/timelocker-backend:/var/log/timelocker # 将本地日志目录挂载到容器日志目录，便于本地查看日志
+      - ./config.docker.yaml:/app/config.yaml:ro # 将本地配置文件以只读模式挂载到容器的 /app/config.yaml（容器内程序读取该文件）
+      - ./backups:/app/backups # 将本地备份目录挂载到容器，便于备份文件的持久化和访问
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"] # 检查命令：用 wget 检测后端 API 是否就绪
+      interval: 30s # 检查间隔：30 秒
+      timeout: 10s # 检查超时：10 秒
+      retries: 3 # 重试次数：3 次
+      start_period: 40s # 启动延迟：40 秒
+    logging:
+      driver: "json-file" # 使用 json-file 驱动（默认），日志以 JSON 格式保存
+      options:
+        max-size: "100m" # 最大日志大小：100MB
+        max-file: "5" # 最大日志文件数：5 个
+
+  # Caddy 反向代理和 HTTPS 服务
+  caddy:
+    image: caddy:2-alpine
+    container_name: timelocker-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"   # HTTP 端口
+      - "443:443" # HTTPS 端口
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro # Caddy 配置文件
+      - ./logs/caddy:/var/log/caddy # Caddy 日志目录
+      - caddy_data:/data # Caddy 数据目录（证书等）
+      - caddy_config:/config # Caddy 配置目录
+    networks:
+      - timelocker-network
+    depends_on:
+      timelocker-backend:
+        condition: service_healthy # 等待后端服务健康检查通过
+    environment:
+      - CADDY_ADMIN=0.0.0.0:2019 # Caddy 管理接口
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:2019/config/"] # 检查 Caddy 管理接口
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # PostgreSQL 备份调度器（简化版本）
+  backup-scheduler:
+    image: postgres:16-alpine
+    container_name: timelocker-backup-scheduler
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+      - ./logs/backup-scheduler:/var/log
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-timelocker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timelocker}
+      POSTGRES_DB: ${POSTGRES_DB:-timelocker_db}
+      TZ: UTC
+    command: >
+      sh -c "
+        echo 'TimeLocker PostgreSQL Backup Scheduler Starting...';
+        mkdir -p /backups;
+        
+        echo '#!/bin/sh' > /backup.sh;
+        echo 'TIMESTAMP=$$(date +%Y%m%d_%H%M%S)' >> /backup.sh;
+        echo 'BACKUP_FILE=/backups/scheduled_backup_$$TIMESTAMP.sql' >> /backup.sh;
+        echo 'echo \"[$$TIMESTAMP] Starting scheduled backup...\"' >> /backup.sh;
+        echo 'if pg_dump -h $$POSTGRES_HOST -p $$POSTGRES_PORT -U $$POSTGRES_USER -d $$POSTGRES_DB > $$BACKUP_FILE; then' >> /backup.sh;
+        echo '  echo \"[$$TIMESTAMP] Backup successful: $$BACKUP_FILE\"' >> /backup.sh;
+        echo '  ls -lh $$BACKUP_FILE' >> /backup.sh;
+        echo 'else' >> /backup.sh;
+        echo '  echo \"[$$TIMESTAMP] Backup failed\"' >> /backup.sh;
+        echo '  rm -f $$BACKUP_FILE' >> /backup.sh;
+        echo 'fi' >> /backup.sh;
+        
+        echo '#!/bin/sh' > /cleanup.sh;
+        echo 'TIMESTAMP=$$(date +%Y%m%d_%H%M%S)' >> /cleanup.sh;
+        echo 'echo \"[$$TIMESTAMP] Starting backup cleanup...\"' >> /cleanup.sh;
+        echo 'find /backups -name \"*.sql\" -mtime +30 -delete 2>/dev/null || true' >> /cleanup.sh;
+        echo 'find /backups -name \"*.dump\" -mtime +30 -delete 2>/dev/null || true' >> /cleanup.sh;
+        echo 'find /backups -name \"*.tar.gz\" -mtime +30 -delete 2>/dev/null || true' >> /cleanup.sh;
+        echo 'echo \"[$$TIMESTAMP] Cleanup completed\"' >> /cleanup.sh;
+        
+        chmod +x /backup.sh /cleanup.sh;
+        
+        echo '# TimeLocker PostgreSQL Backup Tasks' > /var/spool/cron/crontabs/root;
+        echo '0 2 * * * PGPASSWORD=$$POSTGRES_PASSWORD /backup.sh >> /var/log/backup.log 2>&1' >> /var/spool/cron/crontabs/root;
+        echo '0 3 * * 0 /cleanup.sh >> /var/log/backup.log 2>&1' >> /var/spool/cron/crontabs/root;
+        
+        chmod 600 /var/spool/cron/crontabs/root;
+        
+        echo 'Backup Strategy: Daily at 2AM, Cleanup weekly on Sunday at 3AM';
+        echo 'Starting cron daemon...';
+        
+        crond -f -d 8
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - timelocker-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  timelocker-network:
+    driver: bridge # 使用 bridge 驱动（默认），服务在同一宿主机上通过该网络互联
+
+volumes:
+  postgres_data:
+    driver: local # 使用本地驱动（通常会在宿主机 /var/lib/docker/volumes/ 下保存）
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local # Caddy 数据卷，用于存储 SSL 证书等
+  caddy_config:
+    driver: local # Caddy 配置卷

@@ -77,8 +77,9 @@ func (r *repository) CreateCompoundTimeLock(ctx context.Context, timeLock *types
 // GetCompoundTimeLockByChainAndAddress 根据链ID和合约地址获取compound timelock合约
 func (r *repository) GetCompoundTimeLockByChainAndAddress(ctx context.Context, chainID int, contractAddress string) (*types.CompoundTimeLock, error) {
 	var timeLock types.CompoundTimeLock
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ? AND status != ?", chainID, contractAddress, "deleted").
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND status != ?", chainID, normalizedContractAddress, "deleted").
 		First(&timeLock).Error
 
 	if err != nil {
@@ -106,8 +107,10 @@ func (r *repository) UpdateCompoundTimeLock(ctx context.Context, timeLock *types
 
 // DeleteCompoundTimeLock 硬删除 compound timelock 合约（仅删除合约行，不清理其他表）
 func (r *repository) DeleteCompoundTimeLock(ctx context.Context, chainID int, contractAddress string, userAddress string) error {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ?", chainID, normalizedContractAddress, normalizedUserAddress).
 		Delete(&types.CompoundTimeLock{}).Error; err != nil {
 		logger.Error("DeleteCompoundTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
@@ -118,9 +121,11 @@ func (r *repository) DeleteCompoundTimeLock(ctx context.Context, chainID int, co
 
 // UpdateCompoundTimeLockRemark 更新compound timelock备注
 func (r *repository) UpdateCompoundTimeLockRemark(ctx context.Context, chainID int, contractAddress string, userAddress string, remark string) error {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
 		Model(&types.CompoundTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ?", chainID, normalizedContractAddress, normalizedUserAddress).
 		Update("remark", remark).Error; err != nil {
 		logger.Error("UpdateCompoundTimeLockRemark error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
@@ -144,8 +149,9 @@ func (r *repository) CreateOpenzeppelinTimeLock(ctx context.Context, timeLock *t
 // GetOpenzeppelinTimeLockByChainAndAddress 根据链ID和合约地址获取openzeppelin timelock合约
 func (r *repository) GetOpenzeppelinTimeLockByChainAndAddress(ctx context.Context, chainID int, contractAddress string) (*types.OpenzeppelinTimeLock, error) {
 	var timeLock types.OpenzeppelinTimeLock
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ? AND status != ?", chainID, contractAddress, "deleted").
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND status != ?", chainID, normalizedContractAddress, "deleted").
 		First(&timeLock).Error
 
 	if err != nil {
@@ -173,8 +179,10 @@ func (r *repository) UpdateOpenzeppelinTimeLock(ctx context.Context, timeLock *t
 
 // DeleteOpenzeppelinTimeLock 硬删除 openzeppelin timelock 合约（仅删除合约行，不清理其他表）
 func (r *repository) DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int, contractAddress string, userAddress string) error {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ?", chainID, normalizedContractAddress, normalizedUserAddress).
 		Delete(&types.OpenzeppelinTimeLock{}).Error; err != nil {
 		logger.Error("DeleteOpenzeppelinTimeLock error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
@@ -185,9 +193,11 @@ func (r *repository) DeleteOpenzeppelinTimeLock(ctx context.Context, chainID int
 
 // UpdateOpenzeppelinTimeLockRemark 更新openzeppelin timelock备注
 func (r *repository) UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chainID int, contractAddress string, userAddress string, remark string) error {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	if err := r.db.WithContext(ctx).
 		Model(&types.OpenzeppelinTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ?", chainID, contractAddress, userAddress).
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ?", chainID, normalizedContractAddress, normalizedUserAddress).
 		Update("remark", remark).Error; err != nil {
 		logger.Error("UpdateOpenzeppelinTimeLockRemark error", err, "chain_id", chainID, "contract_address", contractAddress, "user_address", userAddress)
 		return err
@@ -199,10 +209,12 @@ func (r *repository) UpdateOpenzeppelinTimeLockRemark(ctx context.Context, chain
 
 // CheckCompoundTimeLockExists 检查compound timelock合约是否已存在
 func (r *repository) CheckCompoundTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&types.CompoundTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ? AND status != ?", chainID, contractAddress, userAddress, "deleted").
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ? AND status != ?", chainID, normalizedContractAddress, normalizedUserAddress, "deleted").
 		Count(&count).Error
 
 	if err != nil {
@@ -217,10 +229,12 @@ func (r *repository) CheckCompoundTimeLockExists(ctx context.Context, chainID in
 
 // CheckOpenzeppelinTimeLockExists 检查openzeppelin timelock合约是否已存在
 func (r *repository) CheckOpenzeppelinTimeLockExists(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&types.OpenzeppelinTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ? AND status != ?", chainID, contractAddress, userAddress, "deleted").
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ? AND status != ?", chainID, normalizedContractAddress, normalizedUserAddress, "deleted").
 		Count(&count).Error
 
 	if err != nil {
@@ -238,6 +252,7 @@ func (r *repository) GetTimeLocksByUserPermissions(ctx context.Context, userAddr
 	var compoundTimeLocks []types.CompoundTimeLock
 	var openzeppelinTimeLocks []types.OpenzeppelinTimeLock
 	var totalCount int64
+	normalizedUserAddress := strings.ToLower(userAddress)
 
 	// 构建查询基础条件
 	baseQuery := "status != ?"
@@ -252,8 +267,8 @@ func (r *repository) GetTimeLocksByUserPermissions(ctx context.Context, userAddr
 	// 查询Compound timelocks - 用户是创建者、管理员或待定管理员
 	compoundQuery := r.db.WithContext(ctx).
 		Model(&types.CompoundTimeLock{}).
-		Where(baseQuery+" AND (creator_address = ? OR admin = ? OR pending_admin = ?)",
-			append(baseArgs, userAddress, userAddress, userAddress)...)
+		Where(baseQuery+" AND (LOWER(creator_address) = ? OR LOWER(admin) = ? OR LOWER(pending_admin) = ?)",
+			append(baseArgs, normalizedUserAddress, normalizedUserAddress, normalizedUserAddress)...)
 
 	var compoundCount int64
 	if err := compoundQuery.Count(&compoundCount).Error; err != nil {
@@ -270,8 +285,8 @@ func (r *repository) GetTimeLocksByUserPermissions(ctx context.Context, userAddr
 	// 查询OpenZeppelin timelocks - 用户是创建者、提议者或执行者
 	openzeppelinQuery := r.db.WithContext(ctx).
 		Model(&types.OpenzeppelinTimeLock{}).
-		Where(baseQuery+" AND (creator_address = ? OR proposers LIKE ? OR executors LIKE ?)",
-			append(baseArgs, userAddress, "%"+userAddress+"%", "%"+userAddress+"%")...)
+		Where(baseQuery+" AND (LOWER(creator_address) = ? OR LOWER(proposers) LIKE ? OR LOWER(executors) LIKE ?)",
+			append(baseArgs, normalizedUserAddress, "%"+normalizedUserAddress+"%", "%"+normalizedUserAddress+"%")...)
 
 	var openzeppelinCount int64
 	if err := openzeppelinQuery.Count(&openzeppelinCount).Error; err != nil {
@@ -312,10 +327,12 @@ func (r *repository) GetTimeLocksByUserPermissions(ctx context.Context, userAddr
 
 // ValidateCompoundOwnership 验证compound timelock合约的所有权
 func (r *repository) ValidateCompoundOwnership(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&types.CompoundTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ? AND status != ?", chainID, contractAddress, userAddress, "deleted").
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ? AND status != ?", chainID, normalizedContractAddress, normalizedUserAddress, "deleted").
 		Count(&count).Error
 
 	if err != nil {
@@ -330,10 +347,12 @@ func (r *repository) ValidateCompoundOwnership(ctx context.Context, chainID int,
 
 // ValidateOpenzeppelinOwnership 验证openzeppelin timelock合约的所有权
 func (r *repository) ValidateOpenzeppelinOwnership(ctx context.Context, chainID int, contractAddress string, userAddress string) (bool, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	normalizedUserAddress := strings.ToLower(userAddress)
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&types.OpenzeppelinTimeLock{}).
-		Where("chain_id = ? AND contract_address = ? AND creator_address = ? AND status != ?", chainID, contractAddress, userAddress, "deleted").
+		Where("chain_id = ? AND LOWER(contract_address) = ? AND LOWER(creator_address) = ? AND status != ?", chainID, normalizedContractAddress, normalizedUserAddress, "deleted").
 		Count(&count).Error
 
 	if err != nil {
@@ -349,9 +368,9 @@ func (r *repository) ValidateOpenzeppelinOwnership(ctx context.Context, chainID 
 // GetAllCompoundTimeLocksByUser 获取用户相关的所有compound timelock合约
 func (r *repository) GetAllCompoundTimeLocksByUser(ctx context.Context, userAddress string) ([]types.CompoundTimeLock, error) {
 	var timelocks []types.CompoundTimeLock
-
+	normalizedUserAddress := strings.ToLower(userAddress)
 	err := r.db.WithContext(ctx).
-		Where("(creator_address = ? OR admin = ? OR pending_admin = ?) AND status != ?", userAddress, userAddress, userAddress, "deleted").
+		Where("(LOWER(creator_address) = ? OR LOWER(admin) = ? OR LOWER(pending_admin) = ?) AND status != ?", normalizedUserAddress, normalizedUserAddress, normalizedUserAddress, "deleted").
 		Find(&timelocks).Error
 
 	if err != nil {
@@ -366,9 +385,9 @@ func (r *repository) GetAllCompoundTimeLocksByUser(ctx context.Context, userAddr
 // GetAllOpenzeppelinTimeLocksByUser 获取用户相关的所有openzeppelin timelock合约
 func (r *repository) GetAllOpenzeppelinTimeLocksByUser(ctx context.Context, userAddress string) ([]types.OpenzeppelinTimeLock, error) {
 	var timelocks []types.OpenzeppelinTimeLock
-
+	normalizedUserAddress := strings.ToLower(userAddress)
 	err := r.db.WithContext(ctx).
-		Where("(creator_address = ? OR proposers LIKE ? OR executors LIKE ?) AND status != ?", userAddress, "%"+userAddress+"%", "%"+userAddress+"%", "deleted").
+		Where("(LOWER(creator_address) = ? OR LOWER(proposers) LIKE ? OR LOWER(executors) LIKE ?) AND status != ?", normalizedUserAddress, "%"+normalizedUserAddress+"%", "%"+normalizedUserAddress+"%", "deleted").
 		Find(&timelocks).Error
 
 	if err != nil {
@@ -465,13 +484,13 @@ func (r *repository) GetContractRemarkByStandardAndAddress(ctx context.Context, 
 func (r *repository) getCompoundUserPermissions(tl types.CompoundTimeLock, userAddress string) []string {
 	var permissions []string
 
-	if tl.CreatorAddress == userAddress {
+	if strings.EqualFold(tl.CreatorAddress, userAddress) {
 		permissions = append(permissions, "creator")
 	}
-	if tl.Admin == userAddress {
+	if strings.EqualFold(tl.Admin, userAddress) {
 		permissions = append(permissions, "admin")
 	}
-	if tl.PendingAdmin != nil && *tl.PendingAdmin == userAddress {
+	if tl.PendingAdmin != nil && strings.EqualFold(*tl.PendingAdmin, userAddress) {
 		permissions = append(permissions, "pending_admin")
 	}
 
@@ -482,7 +501,7 @@ func (r *repository) getCompoundUserPermissions(tl types.CompoundTimeLock, userA
 func (r *repository) getOpenzeppelinUserPermissions(tl types.OpenzeppelinTimeLock, userAddress string) []string {
 	var permissions []string
 
-	if tl.CreatorAddress == userAddress {
+	if strings.EqualFold(tl.CreatorAddress, userAddress) {
 		permissions = append(permissions, "creator")
 	}
 	if r.containsAddress(tl.Proposers, userAddress) {

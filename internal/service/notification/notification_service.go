@@ -9,33 +9,22 @@ import (
 	"timelocker-backend/internal/config"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	"timelocker-backend/internal/repository/notification"
+	"timelocker-backend/internal/repository/scanner"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 	notificationPkg "timelocker-backend/pkg/notification"
+	"timelocker-backend/pkg/utils"
 
 	"gorm.io/gorm"
 )
 
 // NotificationService 通知服务接口
 type NotificationService interface {
-	// Telegram配置管理
-	CreateTelegramConfig(ctx context.Context, userAddress string, req *types.CreateTelegramConfigRequest) (*types.TelegramConfig, error)
-	GetTelegramConfigs(ctx context.Context, userAddress string) ([]*types.TelegramConfig, error)
-	UpdateTelegramConfig(ctx context.Context, userAddress string, req *types.UpdateTelegramConfigRequest) error
-	DeleteTelegramConfig(ctx context.Context, userAddress string, req *types.DeleteTelegramConfigRequest) error
-
-	// Lark配置管理
-	CreateLarkConfig(ctx context.Context, userAddress string, req *types.CreateLarkConfigRequest) (*types.LarkConfig, error)
-	GetLarkConfigs(ctx context.Context, userAddress string) ([]*types.LarkConfig, error)
-	UpdateLarkConfig(ctx context.Context, userAddress string, req *types.UpdateLarkConfigRequest) error
-	DeleteLarkConfig(ctx context.Context, userAddress string, req *types.DeleteLarkConfigRequest) error
-
-	// Feishu配置管理
-	CreateFeishuConfig(ctx context.Context, userAddress string, req *types.CreateFeishuConfigRequest) (*types.FeishuConfig, error)
-	GetFeishuConfigs(ctx context.Context, userAddress string) ([]*types.FeishuConfig, error)
-	UpdateFeishuConfig(ctx context.Context, userAddress string, req *types.UpdateFeishuConfigRequest) error
-	DeleteFeishuConfig(ctx context.Context, userAddress string, req *types.DeleteFeishuConfigRequest) error
+	// 通用配置管理
+	CreateNotificationConfig(ctx context.Context, userAddress string, req *types.CreateNotificationRequest) error
+	UpdateNotificationConfig(ctx context.Context, userAddress string, req *types.UpdateNotificationRequest) error
+	DeleteNotificationConfig(ctx context.Context, userAddress string, req *types.DeleteNotificationRequest) error
 
 	// 获取所有通知配置
 	GetAllNotificationConfigs(ctx context.Context, userAddress string) (*types.NotificationConfigListResponse, error)
@@ -46,216 +35,247 @@ type NotificationService interface {
 
 // notificationService 通知服务实现
 type notificationService struct {
-	repo           notification.NotificationRepository
-	chainRepo      chainRepo.Repository
-	timelockRepo   timelockRepo.Repository
-	config         *config.Config
-	telegramSender *notificationPkg.TelegramSender
-	larkSender     *notificationPkg.LarkSender
-	feishuSender   *notificationPkg.FeishuSender
+	repo            notification.NotificationRepository
+	chainRepo       chainRepo.Repository
+	timelockRepo    timelockRepo.Repository
+	transactionRepo scanner.TransactionRepository
+	config          *config.Config
+	telegramSender  *notificationPkg.TelegramSender
+	larkSender      *notificationPkg.LarkSender
+	feishuSender    *notificationPkg.FeishuSender
 }
 
 // NewNotificationService 创建通知服务实例
-func NewNotificationService(repo notification.NotificationRepository, chainRepo chainRepo.Repository, timelockRepo timelockRepo.Repository, config *config.Config) NotificationService {
+func NewNotificationService(repo notification.NotificationRepository, chainRepo chainRepo.Repository, timelockRepo timelockRepo.Repository, transactionRepo scanner.TransactionRepository, config *config.Config) NotificationService {
 	return &notificationService{
-		repo:           repo,
-		chainRepo:      chainRepo,
-		timelockRepo:   timelockRepo,
-		config:         config,
-		telegramSender: notificationPkg.NewTelegramSender(),
-		larkSender:     notificationPkg.NewLarkSender(),
-		feishuSender:   notificationPkg.NewFeishuSender(),
+		repo:            repo,
+		chainRepo:       chainRepo,
+		timelockRepo:    timelockRepo,
+		transactionRepo: transactionRepo,
+		config:          config,
+		telegramSender:  notificationPkg.NewTelegramSender(),
+		larkSender:      notificationPkg.NewLarkSender(),
+		feishuSender:    notificationPkg.NewFeishuSender(),
 	}
 }
 
-// ===== Telegram配置管理 =====
-// CreateTelegramConfig 创建Telegram配置
-func (s *notificationService) CreateTelegramConfig(ctx context.Context, userAddress string, req *types.CreateTelegramConfigRequest) (*types.TelegramConfig, error) {
+// ===== 通用配置管理 =====
+// CreateNotificationConfig 创建通知配置
+func (s *notificationService) CreateNotificationConfig(ctx context.Context, userAddress string, req *types.CreateNotificationRequest) error {
+	switch strings.ToLower(req.Channel) {
+	case "telegram":
+		if req.BotToken == "" || req.ChatID == "" {
+			return fmt.Errorf("bot_token and chat_id are required")
+		}
+		err := s.createTelegramConfig(ctx, userAddress, req.Name, req.BotToken, req.ChatID)
+		if err != nil {
+			return err
+		}
+		return nil
+
+	case "lark":
+		if req.WebhookURL == "" {
+			return fmt.Errorf("webhook_url are required")
+		}
+		err := s.createLarkConfig(ctx, userAddress, req.Name, req.WebhookURL, req.Secret)
+		if err != nil {
+			return err
+		}
+		return nil
+
+	case "feishu":
+		if req.WebhookURL == "" {
+			return fmt.Errorf("webhook_url are required")
+		}
+		err := s.createFeishuConfig(ctx, userAddress, req.Name, req.WebhookURL, req.Secret)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid channel: %s", req.Channel)
+}
+
+// UpdateNotificationConfig 更新通知配置
+// 不需要更新的字段可以不填
+func (s *notificationService) UpdateNotificationConfig(ctx context.Context, userAddress string, req *types.UpdateNotificationRequest) error {
+	switch strings.ToLower(*req.Channel) {
+	case "telegram":
+		if req.BotToken == nil && req.ChatID == nil && req.IsActive == nil {
+			return fmt.Errorf("at least one field must be provided")
+		}
+		return s.updateTelegramConfig(ctx, userAddress, req.Name, req.BotToken, req.ChatID, req.IsActive)
+	case "lark":
+		if req.WebhookURL == nil && req.Secret == nil && req.IsActive == nil {
+			return fmt.Errorf("at least one field must be provided")
+		}
+		return s.updateLarkConfig(ctx, userAddress, req.Name, req.WebhookURL, req.Secret, req.IsActive)
+	case "feishu":
+		if req.WebhookURL == nil && req.Secret == nil && req.IsActive == nil {
+			return fmt.Errorf("at least one field must be provided")
+		}
+		return s.updateFeishuConfig(ctx, userAddress, req.Name, req.WebhookURL, req.Secret, req.IsActive)
+	}
+	return fmt.Errorf("invalid channel: %s", *req.Channel)
+}
+
+// DeleteNotificationConfig 删除通知配置
+func (s *notificationService) DeleteNotificationConfig(ctx context.Context, userAddress string, req *types.DeleteNotificationRequest) error {
+	switch strings.ToLower(req.Channel) {
+	case "telegram":
+		return s.deleteTelegramConfig(ctx, userAddress, req.Name)
+	case "lark":
+		return s.deleteLarkConfig(ctx, userAddress, req.Name)
+	case "feishu":
+		return s.deleteFeishuConfig(ctx, userAddress, req.Name)
+	}
+	return fmt.Errorf("invalid channel: %s", req.Channel)
+}
+
+// ===== 创建配置 =====
+// createTelegramConfig 创建Telegram配置
+func (s *notificationService) createTelegramConfig(ctx context.Context, userAddress string, name string, botToken string, chatID string) error {
 	// 检查是否已存在同名配置
-	existing, err := s.repo.GetTelegramConfigByUserAddressAndName(ctx, userAddress, req.Name)
+	existing, err := s.repo.GetTelegramConfigByUserAddressAndName(ctx, userAddress, name)
 	if err != nil && err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("failed to check existing telegram config: %w", err)
+		return fmt.Errorf("failed to check existing telegram config: %w", err)
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("telegram config with name '%s' already exists", req.Name)
+		return fmt.Errorf("telegram config with name '%s' already exists", name)
 	}
 
 	config := &types.TelegramConfig{
 		UserAddress: userAddress,
-		Name:        req.Name,
-		BotToken:    req.BotToken,
-		ChatID:      req.ChatID,
+		Name:        name,
+		BotToken:    botToken,
+		ChatID:      chatID,
 		IsActive:    true,
 	}
 
 	if err := s.repo.CreateTelegramConfig(ctx, config); err != nil {
-		return nil, fmt.Errorf("failed to create telegram config: %w", err)
+		return fmt.Errorf("failed to create telegram config: %w", err)
 	}
 
-	return config, nil
+	return nil
 }
 
-// GetTelegramConfigs 获取Telegram配置
-func (s *notificationService) GetTelegramConfigs(ctx context.Context, userAddress string) ([]*types.TelegramConfig, error) {
-	return s.repo.GetTelegramConfigsByUserAddress(ctx, userAddress)
-}
-
-// UpdateTelegramConfig 更新Telegram配置
-func (s *notificationService) UpdateTelegramConfig(ctx context.Context, userAddress string, req *types.UpdateTelegramConfigRequest) error {
-	// 检查配置是否存在
-	_, err := s.repo.GetTelegramConfigByUserAddressAndName(ctx, userAddress, *req.Name)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("telegram config not found")
-		}
-		return fmt.Errorf("failed to get telegram config: %w", err)
-	}
-
-	// 构建更新字段
-	updates := make(map[string]interface{})
-	if req.BotToken != nil {
-		updates["bot_token"] = *req.BotToken
-	}
-	if req.ChatID != nil {
-		updates["chat_id"] = *req.ChatID
-	}
-	if req.IsActive != nil {
-		updates["is_active"] = *req.IsActive
-	}
-
-	if len(updates) == 0 {
-		return fmt.Errorf("no fields to update")
-	}
-
-	return s.repo.UpdateTelegramConfig(ctx, userAddress, *req.Name, updates)
-}
-
-// DeleteTelegramConfig 删除Telegram配置
-func (s *notificationService) DeleteTelegramConfig(ctx context.Context, userAddress string, req *types.DeleteTelegramConfigRequest) error {
-	// 检查配置是否存在
-	_, err := s.repo.GetTelegramConfigByUserAddressAndName(ctx, userAddress, req.Name)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("telegram config not found")
-		}
-		return fmt.Errorf("failed to get telegram config: %w", err)
-	}
-
-	return s.repo.DeleteTelegramConfig(ctx, userAddress, req.Name)
-}
-
-// ===== Lark配置管理 =====
-// CreateLarkConfig 创建Lark配置
-func (s *notificationService) CreateLarkConfig(ctx context.Context, userAddress string, req *types.CreateLarkConfigRequest) (*types.LarkConfig, error) {
+// createLarkConfig 创建Lark配置
+func (s *notificationService) createLarkConfig(ctx context.Context, userAddress string, name string, webhookURL string, secret string) error {
 	// 检查是否已存在同名配置
-	existing, err := s.repo.GetLarkConfigByUserAddressAndName(ctx, userAddress, req.Name)
+	existing, err := s.repo.GetLarkConfigByUserAddressAndName(ctx, userAddress, name)
 	if err != nil && err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("failed to check existing lark config: %w", err)
+		return fmt.Errorf("failed to check existing lark config: %w", err)
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("lark config with name '%s' already exists", req.Name)
+		return fmt.Errorf("lark config with name '%s' already exists", name)
 	}
 
 	config := &types.LarkConfig{
 		UserAddress: userAddress,
-		Name:        req.Name,
-		WebhookURL:  req.WebhookURL,
-		Secret:      req.Secret,
+		Name:        name,
+		WebhookURL:  webhookURL,
+		Secret:      secret,
 		IsActive:    true,
 	}
 
 	if err := s.repo.CreateLarkConfig(ctx, config); err != nil {
-		return nil, fmt.Errorf("failed to create lark config: %w", err)
+		return fmt.Errorf("failed to create lark config: %w", err)
 	}
 
-	return config, nil
+	return nil
 }
 
-// GetLarkConfigs 获取Lark配置
-func (s *notificationService) GetLarkConfigs(ctx context.Context, userAddress string) ([]*types.LarkConfig, error) {
-	return s.repo.GetLarkConfigsByUserAddress(ctx, userAddress)
-}
-
-// UpdateLarkConfig 更新Lark配置
-func (s *notificationService) UpdateLarkConfig(ctx context.Context, userAddress string, req *types.UpdateLarkConfigRequest) error {
-	// 检查配置是否存在
-	_, err := s.repo.GetLarkConfigByUserAddressAndName(ctx, userAddress, *req.Name)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("lark config not found")
-		}
-		return fmt.Errorf("failed to get lark config: %w", err)
-	}
-
-	// 构建更新字段
-	updates := make(map[string]interface{})
-	if req.WebhookURL != nil {
-		updates["webhook_url"] = *req.WebhookURL
-	}
-	if req.Secret != nil {
-		updates["secret"] = *req.Secret
-	}
-	if req.IsActive != nil {
-		updates["is_active"] = *req.IsActive
-	}
-
-	if len(updates) == 0 {
-		return fmt.Errorf("no fields to update")
-	}
-
-	return s.repo.UpdateLarkConfig(ctx, userAddress, *req.Name, updates)
-}
-
-// DeleteLarkConfig 删除Lark配置
-func (s *notificationService) DeleteLarkConfig(ctx context.Context, userAddress string, req *types.DeleteLarkConfigRequest) error {
-	// 检查配置是否存在
-	_, err := s.repo.GetLarkConfigByUserAddressAndName(ctx, userAddress, req.Name)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("lark config not found")
-		}
-		return fmt.Errorf("failed to get lark config: %w", err)
-	}
-
-	return s.repo.DeleteLarkConfig(ctx, userAddress, req.Name)
-}
-
-// ===== Feishu配置管理 =====
-// CreateFeishuConfig 创建Feishu配置
-func (s *notificationService) CreateFeishuConfig(ctx context.Context, userAddress string, req *types.CreateFeishuConfigRequest) (*types.FeishuConfig, error) {
+// createFeishuConfig 创建Feishu配置
+func (s *notificationService) createFeishuConfig(ctx context.Context, userAddress string, name string, webhookURL string, secret string) error {
 	// 检查是否已存在同名配置
-	existing, err := s.repo.GetFeishuConfigByUserAddressAndName(ctx, userAddress, req.Name)
+	existing, err := s.repo.GetFeishuConfigByUserAddressAndName(ctx, userAddress, name)
 	if err != nil && err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("failed to check existing feishu config: %w", err)
+		return fmt.Errorf("failed to check existing feishu config: %w", err)
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("feishu config with name '%s' already exists", req.Name)
+		return fmt.Errorf("feishu config with name '%s' already exists", name)
 	}
 
 	config := &types.FeishuConfig{
 		UserAddress: userAddress,
-		Name:        req.Name,
-		WebhookURL:  req.WebhookURL,
-		Secret:      req.Secret,
+		Name:        name,
+		WebhookURL:  webhookURL,
+		Secret:      secret,
 		IsActive:    true,
 	}
 
 	if err := s.repo.CreateFeishuConfig(ctx, config); err != nil {
-		return nil, fmt.Errorf("failed to create feishu config: %w", err)
+		return fmt.Errorf("failed to create feishu config: %w", err)
 	}
 
-	return config, nil
+	return nil
 }
 
-// GetFeishuConfigs 获取Feishu配置
-func (s *notificationService) GetFeishuConfigs(ctx context.Context, userAddress string) ([]*types.FeishuConfig, error) {
-	return s.repo.GetFeishuConfigsByUserAddress(ctx, userAddress)
-}
-
-// UpdateFeishuConfig 更新Feishu配置
-func (s *notificationService) UpdateFeishuConfig(ctx context.Context, userAddress string, req *types.UpdateFeishuConfigRequest) error {
+// ===== 更新配置 =====
+// updateTelegramConfig 更新Telegram配置
+func (s *notificationService) updateTelegramConfig(ctx context.Context, userAddress string, name *string, botToken *string, chatID *string, isActive *bool) error {
 	// 检查配置是否存在
-	_, err := s.repo.GetFeishuConfigByUserAddressAndName(ctx, userAddress, *req.Name)
+	_, err := s.repo.GetTelegramConfigByUserAddressAndName(ctx, userAddress, *name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("telegram config not found")
+		}
+		return fmt.Errorf("failed to get telegram config: %w", err)
+	}
+
+	// 构建更新字段
+	updates := make(map[string]interface{})
+	if botToken != nil {
+		updates["bot_token"] = *botToken
+	}
+	if chatID != nil {
+		updates["chat_id"] = *chatID
+	}
+	if isActive != nil {
+		updates["is_active"] = *isActive
+	}
+
+	if len(updates) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	return s.repo.UpdateTelegramConfig(ctx, userAddress, *name, updates)
+}
+
+// updateLarkConfig 更新Lark配置
+func (s *notificationService) updateLarkConfig(ctx context.Context, userAddress string, name *string, webhookURL *string, secret *string, isActive *bool) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetLarkConfigByUserAddressAndName(ctx, userAddress, *name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("lark config not found")
+		}
+		return fmt.Errorf("failed to get lark config: %w", err)
+	}
+
+	// 构建更新字段
+	updates := make(map[string]interface{})
+	if webhookURL != nil {
+		updates["webhook_url"] = *webhookURL
+	}
+	if secret != nil {
+		updates["secret"] = *secret
+	}
+	if isActive != nil {
+		updates["is_active"] = *isActive
+	}
+
+	if len(updates) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	return s.repo.UpdateLarkConfig(ctx, userAddress, *name, updates)
+}
+
+// updateFeishuConfig 更新Feishu配置
+func (s *notificationService) updateFeishuConfig(ctx context.Context, userAddress string, name *string, webhookURL *string, secret *string, isActive *bool) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetFeishuConfigByUserAddressAndName(ctx, userAddress, *name)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return fmt.Errorf("feishu config not found")
@@ -265,27 +285,56 @@ func (s *notificationService) UpdateFeishuConfig(ctx context.Context, userAddres
 
 	// 构建更新字段
 	updates := make(map[string]interface{})
-	if req.WebhookURL != nil {
-		updates["webhook_url"] = *req.WebhookURL
+	if webhookURL != nil {
+		updates["webhook_url"] = *webhookURL
 	}
-	if req.Secret != nil {
-		updates["secret"] = *req.Secret
+	if secret != nil {
+		updates["secret"] = *secret
 	}
-	if req.IsActive != nil {
-		updates["is_active"] = *req.IsActive
+	if isActive != nil {
+		updates["is_active"] = *isActive
 	}
 
 	if len(updates) == 0 {
 		return fmt.Errorf("no fields to update")
 	}
 
-	return s.repo.UpdateFeishuConfig(ctx, userAddress, *req.Name, updates)
+	return s.repo.UpdateFeishuConfig(ctx, userAddress, *name, updates)
 }
 
-// DeleteFeishuConfig 删除Feishu配置
-func (s *notificationService) DeleteFeishuConfig(ctx context.Context, userAddress string, req *types.DeleteFeishuConfigRequest) error {
+// ===== 删除配置 =====
+// deleteTelegramConfig 删除Telegram配置
+func (s *notificationService) deleteTelegramConfig(ctx context.Context, userAddress string, name string) error {
 	// 检查配置是否存在
-	_, err := s.repo.GetFeishuConfigByUserAddressAndName(ctx, userAddress, req.Name)
+	_, err := s.repo.GetTelegramConfigByUserAddressAndName(ctx, userAddress, name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("telegram config not found")
+		}
+		return fmt.Errorf("failed to get telegram config: %w", err)
+	}
+
+	return s.repo.DeleteTelegramConfig(ctx, userAddress, name)
+}
+
+// deleteLarkConfig 删除Lark配置
+func (s *notificationService) deleteLarkConfig(ctx context.Context, userAddress string, name string) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetLarkConfigByUserAddressAndName(ctx, userAddress, name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("lark config not found")
+		}
+		return fmt.Errorf("failed to get lark config: %w", err)
+	}
+
+	return s.repo.DeleteLarkConfig(ctx, userAddress, name)
+}
+
+// deleteFeishuConfig 删除Feishu配置
+func (s *notificationService) deleteFeishuConfig(ctx context.Context, userAddress string, name string) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetFeishuConfigByUserAddressAndName(ctx, userAddress, name)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return fmt.Errorf("feishu config not found")
@@ -293,7 +342,7 @@ func (s *notificationService) DeleteFeishuConfig(ctx context.Context, userAddres
 		return fmt.Errorf("failed to get feishu config: %w", err)
 	}
 
-	return s.repo.DeleteFeishuConfig(ctx, userAddress, req.Name)
+	return s.repo.DeleteFeishuConfig(ctx, userAddress, name)
 }
 
 // ===== 获取所有通知配置 =====
@@ -342,8 +391,111 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 
 	logger.Info("Found related users for notification", "count", len(userAddresses), "standard", standard, "chainID", chainID, "contract", contractAddress)
 
+	var notificationData *types.NotificationData
+	// 获取链信息
+	chainInfo, err := s.chainRepo.GetChainByChainID(ctx, int64(chainID))
+	if err != nil {
+		logger.Error("Failed to get chain info", err, "chainID", chainID)
+		return fmt.Errorf("failed to get chain info: %w", err)
+	}
+
+	// 解析区块浏览器URLs
+	var explorerURLs []string
+	if err := json.Unmarshal([]byte(chainInfo.BlockExplorerUrls), &explorerURLs); err != nil {
+		logger.Error("Failed to parse block explorer URLs", err, "chainID", chainID)
+		explorerURLs = []string{}
+	}
+
+	// 构建交易链接
+	var txLink string
+	var txDisplay string
+	if txHash != nil && len(explorerURLs) > 0 {
+		txLink = fmt.Sprintf("%s/tx/%s", explorerURLs[0], *txHash)
+		// 简化显示的交易哈希（前10位...后6位）
+		if len(*txHash) > 10 {
+			txDisplay = fmt.Sprintf("%s...%s", (*txHash)[:10], (*txHash)[len(*txHash)-6:])
+		} else {
+			txDisplay = *txHash
+		}
+	} else {
+		txDisplay = "Pending"
+		txLink = ""
+	}
+
+	if standard == "compound" {
+		// 通过chainid、contractAddress获得该合约信息，拿到合约备注，GetCompoundTimeLockByChainAndAddress
+		compoundTimeLock, err := s.timelockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
+		if err != nil {
+			logger.Error("Failed to get compound time lock", err, "chainID", chainID, "contractAddress", contractAddress)
+		}
+
+		// 通过flowID去交易表中拿到交易信息
+		transaction, err := s.transactionRepo.GetQueueCompoundTransactionByFlowID(ctx, flowID, contractAddress)
+		if err != nil {
+			logger.Error("Failed to get queue compound transaction", err, "flowID", flowID, "contractAddress", contractAddress)
+		}
+		if transaction == nil {
+			logger.Warn("No queue compound transaction found", "flowID", flowID, "contractAddress", contractAddress)
+			return nil // 返回nil而不是继续执行，避免后续的nil指针解引用
+		}
+
+		var functionName string
+		var calldataParams []types.CalldataParam
+		// 解析calldata
+		if transaction.EventCallData != nil && transaction.EventFunctionSignature != nil {
+			functionName = *transaction.EventFunctionSignature
+			calldataParams, err = utils.ParseCalldataNoSelector(*transaction.EventFunctionSignature, transaction.EventCallData)
+			if err != nil {
+				calldataParams = []types.CalldataParam{
+					{
+						Name:  "param[0]",
+						Type:  "CallData Does Not Match Function Signature",
+						Value: "Please Check Your Call Data",
+					},
+				}
+				logger.Error("Failed to parse calldata", err, "functionSignature", *transaction.EventFunctionSignature, "callData", transaction.EventCallData)
+			}
+		} else {
+			functionName = "No Function Call"
+			calldataParams = []types.CalldataParam{}
+		}
+
+		nativeToken := chainInfo.NativeCurrencySymbol
+		value, err := utils.WeiToEth(transaction.EventValue, nativeToken)
+		if err != nil {
+			logger.Error("Failed to convert wei to eth", err, "eventValue", transaction.EventValue)
+			value = fmt.Sprintf("0 %s", nativeToken)
+		}
+
+		notificationData = &types.NotificationData{
+			Standard:       strings.ToUpper(standard),
+			Contract:       contractAddress,
+			Remark:         compoundTimeLock.Remark,
+			Caller:         transaction.FromAddress,
+			Target:         *transaction.EventTarget,
+			Function:       functionName,
+			Value:          value,
+			CalldataParams: calldataParams,
+		}
+	} else if standard == "openzeppelin" {
+		// 拿合约信息
+		// 通过flowID去交易表中拿到交易信息
+		// 解析calldata(由于OZevent中直接是calldata带函数选择器，需要先识别functionSig，然后解析calldata)
+		// （functionSig可以新建一个functionSig表，用于存储functionSig和functionName的映射，计算用户导入的abi里的函数，然后存储到functionSig表中）
+		// 构建emailData
+	} else {
+		return fmt.Errorf("invalid standard")
+	}
+
+	notificationData.StatusFrom = strings.ToUpper(statusFrom)
+	notificationData.StatusTo = strings.ToUpper(statusTo)
+	notificationData.Network = chainInfo.DisplayName
+	notificationData.TxHash = txDisplay
+	notificationData.TxUrl = txLink
+	notificationData.DashboardUrl = s.config.Email.EmailURL
+
 	// 生成通知消息
-	message, err := s.generateNotificationMessage(ctx, standard, chainID, contractAddress, flowID, statusFrom, statusTo, txHash)
+	message, err := s.generateNotificationMessage(ctx, notificationData)
 	if err != nil {
 		logger.Error("Failed to generate notification message", err, "flowID", flowID)
 		return nil // 不阻塞流程，只记录错误
@@ -392,12 +544,7 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 }
 
 // generateNotificationMessage 生成通知消息
-func (s *notificationService) generateNotificationMessage(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string) (string, error) {
-	// 获取链信息
-	chain, err := s.chainRepo.GetChainByChainID(ctx, int64(chainID))
-	if err != nil {
-		return "", fmt.Errorf("failed to get chain info: %w", err)
-	}
+func (s *notificationService) generateNotificationMessage(ctx context.Context, notificationData *types.NotificationData) (string, error) {
 
 	// 获取状态表情符号
 	getStatusEmoji := func(status string) string {
@@ -421,24 +568,22 @@ func (s *notificationService) generateNotificationMessage(ctx context.Context, s
 	message := fmt.Sprintf("━━━━━━━━━━━━━━━━\n")
 	message += fmt.Sprintf("⚡ TimeLocker Notification\n")
 	message += fmt.Sprintf("━━━━━━━━━━━━━━━━\n")
-	message += fmt.Sprintf("[%s] %s    ➡️    [%s] %s\n", strings.ToUpper(statusFrom), getStatusEmoji(statusFrom), strings.ToUpper(statusTo), getStatusEmoji(statusTo))
-	message += fmt.Sprintf("🔗 Chain    : %s\n", chain.DisplayName)
-	message += fmt.Sprintf("📄 Contract : %s\n", contractAddress)
-	message += fmt.Sprintf("⚙️ Standard : %s\n", strings.ToUpper(standard))
-
-	// 添加交易链接
-	if txHash != nil {
-		if chain.BlockExplorerUrls != "" {
-			var explorerUrls []string
-			if err := json.Unmarshal([]byte(chain.BlockExplorerUrls), &explorerUrls); err == nil && len(explorerUrls) > 0 {
-				message += fmt.Sprintf("🔍 Tx Hash  : %s", fmt.Sprintf("%s/tx/%s", explorerUrls[0], *txHash))
-			}
-		} else {
-			message += fmt.Sprintf("🔍 Tx Hash  : %s", *txHash)
-		}
+	message += fmt.Sprintf("[%s] %s    ➡️    [%s] %s\n", strings.ToUpper(notificationData.StatusFrom), getStatusEmoji(notificationData.StatusFrom), strings.ToUpper(notificationData.StatusTo), getStatusEmoji(notificationData.StatusTo))
+	message += fmt.Sprintf("🔗 Chain    : %s\n", notificationData.Network)
+	message += fmt.Sprintf("📄 Contract : %s\n", notificationData.Contract)
+	message += fmt.Sprintf("⚙️ Standard : %s\n", strings.ToUpper(notificationData.Standard))
+	message += fmt.Sprintf("💬 Remark   : %s\n", notificationData.Remark)
+	message += fmt.Sprintf("👤 Caller   : %s\n", notificationData.Caller)
+	message += fmt.Sprintf("🎯 Target   : %s\n", notificationData.Target)
+	message += fmt.Sprintf("💰 Value    : %s\n", notificationData.Value)
+	message += fmt.Sprintf("🔍 Function : %s\n", notificationData.Function)
+	for _, param := range notificationData.CalldataParams {
+		message += fmt.Sprintf("    🔒 %s(%s) : %s\n", param.Name, param.Type, param.Value)
 	}
+	message += fmt.Sprintf("🔍 Tx Hash  : %s\n", notificationData.TxHash)
+	message += fmt.Sprintf("🔗 Tx URL  : %s\n", notificationData.TxUrl)
 
-	logger.Info("Generated notification message", "flowID", flowID, "statusFrom", statusFrom, "statusTo", statusTo, "txHash", txHash)
+	logger.Info("Generated notification message", "statusFrom", notificationData.StatusFrom, "statusTo", notificationData.StatusTo, "txHash", notificationData.TxHash)
 	return message, nil
 }
 

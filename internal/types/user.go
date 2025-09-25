@@ -4,6 +4,22 @@ import (
 	"time"
 )
 
+// AuthNonce 认证nonce模型
+type AuthNonce struct {
+	ID            int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	WalletAddress string    `json:"wallet_address" gorm:"size:42;not null;index;uniqueIndex:idx_nonce_wallet_nonce,priority:1"`
+	Nonce         string    `json:"nonce" gorm:"size:128;not null;uniqueIndex:idx_nonce_wallet_nonce,priority:2"`
+	Message       string    `json:"message" gorm:"type:text;not null"`
+	ExpiresAt     time.Time `json:"expires_at" gorm:"not null;index"`
+	IsUsed        bool      `json:"is_used" gorm:"default:false;index"`
+	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// TableName 设置表名
+func (AuthNonce) TableName() string {
+	return "auth_nonces"
+}
+
 // User 用户模型 - 支持链切换功能
 type User struct {
 	ID            int64      `json:"id" gorm:"primaryKey;autoIncrement"`
@@ -12,6 +28,9 @@ type User struct {
 	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	LastLogin     *time.Time `json:"last_login"`
 	Status        int        `json:"status" gorm:"default:1"`
+	IsSafeWallet  bool       `json:"is_safe_wallet" gorm:"default:false"`    // 是否为Safe钱包
+	SafeThreshold *int       `json:"safe_threshold,omitempty"`               // Safe钱包阈值
+	SafeOwners    *string    `json:"safe_owners,omitempty" gorm:"type:text"` // Safe钱包所有者列表（JSON）
 }
 
 // TableName 设置表名
@@ -19,11 +38,25 @@ func (User) TableName() string {
 	return "users"
 }
 
+// GetNonceRequest 获取nonce请求
+type GetNonceRequest struct {
+	WalletAddress string `json:"wallet_address" form:"wallet_address" binding:"required,len=42"`
+}
+
+// GetNonceResponse 获取nonce响应
+type GetNonceResponse struct {
+	Message string `json:"message"`
+	Nonce   string `json:"nonce"`
+}
+
 // WalletConnectRequest 钱包连接请求
 type WalletConnectRequest struct {
+	ChainID       int    `json:"chain_id,omitempty"` // Safe需要指定链ID
 	WalletAddress string `json:"wallet_address" binding:"required,len=42"`
-	Signature     string `json:"signature" binding:"required"`
-	Message       string `json:"message" binding:"required"`
+	Signature     string `json:"signature,omitempty"`                                  // EOA钱包需要，Safe钱包可选
+	Message       string `json:"message,omitempty"`                                    // EOA钱包需要，Safe钱包可选
+	WalletType    string `json:"wallet_type,omitempty"`                                // "eoa", "safe"
+	Nonce         string `json:"nonce" binding:"required_if=WalletType eoa,omitempty"` // EOA钱包需要nonce，Safe钱包不需要
 }
 
 // WalletConnectResponse 钱包连接响应

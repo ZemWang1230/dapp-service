@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"timelocker-backend/pkg/logger"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -123,5 +124,7 @@ func NormalizeAddress(address string) string {
 
 // GenerateNonce 生成用于签名的随机nonce
 func GenerateNonce() string {
-	return fmt.Sprintf("TimeLocker Login Nonce: %d", crypto.Keccak256Hash([]byte(fmt.Sprintf("%d", crypto.Keccak256Hash([]byte("random")).Big().Int64()))).Big().Int64())
+	// 基于时间戳给一个随机的字符串
+	random := fmt.Sprintf("%d", time.Now().UnixNano())
+	return fmt.Sprintf("TimeLocker Login Nonce: %d", crypto.Keccak256Hash([]byte(fmt.Sprintf("%d", crypto.Keccak256Hash([]byte(random)).Big().Int64()))).Big().Int64())
 }

@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"strings"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 
@@ -24,6 +25,10 @@ type TransactionRepository interface {
 	// 批量操作
 	BatchCreateCompoundTransactions(ctx context.Context, txs []types.CompoundTimelockTransaction) error
 	BatchCreateOpenZeppelinTransactions(ctx context.Context, txs []types.OpenZeppelinTimelockTransaction) error
+
+	// 通过flowID查询交易记录
+	GetQueueCompoundTransactionByFlowID(ctx context.Context, flowID string, contractAddress string) (*types.CompoundTimelockTransaction, error)
+	GetQueueOpenZeppelinTransactionByFlowID(ctx context.Context, flowID string, contractAddress string) (*types.OpenZeppelinTimelockTransaction, error)
 }
 
 type transactionRepository struct {
@@ -50,9 +55,10 @@ func (r *transactionRepository) CreateCompoundTransaction(ctx context.Context, t
 
 // GetCompoundTransactionsByContract 获取合约的Compound交易记录
 func (r *transactionRepository) GetCompoundTransactionsByContract(ctx context.Context, chainID int, contractAddress string) ([]types.CompoundTimelockTransaction, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	var transactions []types.CompoundTimelockTransaction
 	err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
+		Where("chain_id = ? AND LOWER(contract_address) = ?", chainID, normalizedContractAddress).
 		Order("block_number DESC, created_at DESC").
 		Find(&transactions).Error
 
@@ -66,9 +72,10 @@ func (r *transactionRepository) GetCompoundTransactionsByContract(ctx context.Co
 
 // GetCompoundTransactionByHash 根据交易哈希获取Compound交易记录
 func (r *transactionRepository) GetCompoundTransactionByHash(ctx context.Context, txHash, contractAddress, eventType string) (*types.CompoundTimelockTransaction, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	var transaction types.CompoundTimelockTransaction
 	err := r.db.WithContext(ctx).
-		Where("tx_hash = ? AND contract_address = ? AND event_type = ?", txHash, contractAddress, eventType).
+		Where("tx_hash = ? AND LOWER(contract_address) = ? AND event_type = ?", txHash, normalizedContractAddress, eventType).
 		First(&transaction).Error
 
 	if err != nil {
@@ -96,9 +103,10 @@ func (r *transactionRepository) CreateOpenZeppelinTransaction(ctx context.Contex
 
 // GetOpenZeppelinTransactionsByContract 获取合约的OpenZeppelin交易记录
 func (r *transactionRepository) GetOpenZeppelinTransactionsByContract(ctx context.Context, chainID int, contractAddress string) ([]types.OpenZeppelinTimelockTransaction, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	var transactions []types.OpenZeppelinTimelockTransaction
 	err := r.db.WithContext(ctx).
-		Where("chain_id = ? AND contract_address = ?", chainID, contractAddress).
+		Where("chain_id = ? AND LOWER(contract_address) = ?", chainID, normalizedContractAddress).
 		Order("block_number DESC, created_at DESC").
 		Find(&transactions).Error
 
@@ -112,9 +120,10 @@ func (r *transactionRepository) GetOpenZeppelinTransactionsByContract(ctx contex
 
 // GetOpenZeppelinTransactionByHash 根据交易哈希获取OpenZeppelin交易记录
 func (r *transactionRepository) GetOpenZeppelinTransactionByHash(ctx context.Context, txHash, contractAddress, eventType string) (*types.OpenZeppelinTimelockTransaction, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
 	var transaction types.OpenZeppelinTimelockTransaction
 	err := r.db.WithContext(ctx).
-		Where("tx_hash = ? AND contract_address = ? AND event_type = ?", txHash, contractAddress, eventType).
+		Where("tx_hash = ? AND LOWER(contract_address) = ? AND event_type = ?", txHash, normalizedContractAddress, eventType).
 		First(&transaction).Error
 
 	if err != nil {
@@ -160,4 +169,42 @@ func (r *transactionRepository) BatchCreateOpenZeppelinTransactions(ctx context.
 	}
 
 	return nil
+}
+
+// GetQueueCompoundTransactionByFlowID 根据flowID获取Compound交易记录
+func (r *transactionRepository) GetQueueCompoundTransactionByFlowID(ctx context.Context, flowID string, contractAddress string) (*types.CompoundTimelockTransaction, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	var transaction types.CompoundTimelockTransaction
+	err := r.db.WithContext(ctx).
+		Where("event_tx_hash = ? AND event_type = ? AND tx_status = ? AND LOWER(contract_address) = ?", flowID, "QueueTransaction", "success", normalizedContractAddress).
+		First(&transaction).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logger.Error("GetQueueCompoundTransactionByFlowID Error", err, "flow_id", flowID, "contract_address", contractAddress)
+		return nil, err
+	}
+
+	return &transaction, nil
+}
+
+// GetQueueOpenZeppelinTransactionByFlowID 根据flowID获取OpenZeppelin交易记录
+func (r *transactionRepository) GetQueueOpenZeppelinTransactionByFlowID(ctx context.Context, flowID string, contractAddress string) (*types.OpenZeppelinTimelockTransaction, error) {
+	normalizedContractAddress := strings.ToLower(contractAddress)
+	var transaction types.OpenZeppelinTimelockTransaction
+	err := r.db.WithContext(ctx).
+		Where("event_id = ? AND event_type = ? AND tx_status = ? AND LOWER(contract_address) = ?", flowID, "CallScheduled", "success", normalizedContractAddress).
+		First(&transaction).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logger.Error("GetQueueOpenZeppelinTransactionByFlowID Error", err, "flow_id", flowID, "contract_address", contractAddress)
+		return nil, err
+	}
+
+	return &transaction, nil
 }

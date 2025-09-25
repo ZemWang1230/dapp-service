@@ -16,8 +16,6 @@ type SupportChain struct {
 	LogoURL                string    `json:"logo_url" gorm:"type:text"`                           // 链Logo URL
 	IsTestnet              bool      `json:"is_testnet" gorm:"not null;default:false"`            // 是否是测试网
 	IsActive               bool      `json:"is_active" gorm:"not null;default:true"`              // 是否激活
-	AlchemyRPCTemplate     string    `json:"alchemy_rpc_template" gorm:"type:text"`               // Alchemy RPC URL模板
-	InfuraRPCTemplate      string    `json:"infura_rpc_template" gorm:"type:text"`                // Infura RPC URL模板
 	OfficialRPCUrls        string    `json:"official_rpc_urls" gorm:"type:text;not null"`         // 官方RPC URLs (JSON数组)
 	BlockExplorerUrls      string    `json:"block_explorer_urls" gorm:"type:text;not null"`       // 区块浏览器URLs (JSON数组)
 	RPCEnabled             bool      `json:"rpc_enabled" gorm:"not null;default:true"`            // 是否启用RPC功能
@@ -37,8 +35,6 @@ type SupportChainResponse struct {
 	LogoURL                string   `json:"logo_url"`
 	IsTestnet              bool     `json:"is_testnet"`
 	IsActive               bool     `json:"is_active"`
-	AlchemyRPCTemplate     string   `json:"alchemy_rpc_template"`
-	InfuraRPCTemplate      string   `json:"infura_rpc_template"`
 	OfficialRPCUrls        []string `json:"official_rpc_urls"`
 	// 返回单个区块浏览器URL（取第一个），字段名保持不变以兼容前端
 	BlockExplorerUrls string `json:"block_explorer_urls"`
@@ -98,8 +94,6 @@ type ChainRPCInfo struct {
 	ChainName          string  `json:"chain_name" db:"chain_name"`
 	DisplayName        string  `json:"display_name" db:"display_name"`
 	ChainID            int     `json:"chain_id" db:"chain_id"`
-	AlchemyRPCTemplate *string `json:"alchemy_rpc_template" db:"alchemy_rpc_template"`
-	InfuraRPCTemplate  *string `json:"infura_rpc_template" db:"infura_rpc_template"`
 	OfficialRPCUrls    string  `json:"official_rpc_urls" db:"official_rpc_urls"`
 	RPCEnabled         bool    `json:"rpc_enabled" db:"rpc_enabled"`
 	IsTestnet          bool    `json:"is_testnet" db:"is_testnet"`

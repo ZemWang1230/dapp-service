@@ -1,0 +1,62 @@
+server:
+  port: "8080"
+  mode: "release"
+
+database:
+  host: "postgres"
+  port: 5432
+  user: "timelocker"
+  password: "xxx"
+  dbname: "timelocker_db"
+  sslmode: "disable"
+
+redis:
+  host: "redis"
+  port: 6379
+  password: ""
+  db: 0
+
+jwt:
+  secret: "xxx"
+  access_expiry: "24h"
+  refresh_expiry: "48h"
+
+# RPC配置 - 用于监听链上事件
+rpc:
+  # 当前使用的提供商（official）
+  provider: "official"
+
+  # 是否包含测试网
+  include_testnets: true
+
+# 邮件服务配置
+email:
+  smtp_host: "smtp.zoho.com"
+  smtp_port: 587
+  smtp_username: "notifications@timelock.tech"
+  smtp_password: "xxx"
+  from_name: "TimeLocker Notification"
+  from_email: "notifications@timelock.tech"
+  
+  # 邮件通知功能配置
+  verification_code_expiry: "5m"
+  
+  # 邮件模板配置
+  email_url: "https://timelock.tech"
+
+# 扫链系统配置
+scanner:
+  # RPC配置（简化）
+  rpc_timeout: "20s"
+  rpc_retry_max: 10
+  rpc_retry_delay: "10s"
+  
+  # 扫块配置
+  scan_batch_size: 100
+  scan_interval: "30s"
+  scan_interval_slow: "30s"
+  scan_confirmations: 3
+
+  # Flow refresher config
+  flow_refresh_interval: "90s"
+  flow_refresh_batch_size: 100

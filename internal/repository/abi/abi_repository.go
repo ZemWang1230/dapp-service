@@ -3,6 +3,7 @@ package abi
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
@@ -66,8 +67,9 @@ func (r *repository) GetABIByID(ctx context.Context, id int64) (*types.ABI, erro
 // GetUserABIs 获取用户创建的ABI列表
 func (r *repository) GetUserABIs(ctx context.Context, walletAddress string) ([]types.ABI, error) {
 	var abis []types.ABI
+	normalizedWalletAddress := strings.ToLower(walletAddress)
 	err := r.db.WithContext(ctx).
-		Where("owner = ?", walletAddress).
+		Where("LOWER(owner) = ?", normalizedWalletAddress).
 		Order("created_at DESC").
 		Find(&abis).Error
 
@@ -100,8 +102,9 @@ func (r *repository) GetSharedABIs(ctx context.Context) ([]types.ABI, error) {
 // GetABIsByOwner 获取指定所有者的ABI列表
 func (r *repository) GetABIsByOwner(ctx context.Context, walletAddress string) ([]types.ABI, error) {
 	var abis []types.ABI
+	normalizedWalletAddress := strings.ToLower(walletAddress)
 	err := r.db.WithContext(ctx).
-		Where("owner = ?", walletAddress).
+		Where("LOWER(owner) = ?", normalizedWalletAddress).
 		Order("created_at DESC").
 		Find(&abis).Error
 
@@ -139,10 +142,10 @@ func (r *repository) UpdateABI(ctx context.Context, abi *types.ABI) error {
 // DeleteABI 删除ABI（硬删除）
 func (r *repository) DeleteABI(ctx context.Context, id int64, walletAddress string) error {
 	logger.Info("DeleteABI:", "id", id, "wallet_address", walletAddress)
-
+	normalizedWalletAddress := strings.ToLower(walletAddress)
 	// 确保只能删除自己的ABI
 	result := r.db.WithContext(ctx).
-		Where("id = ? AND owner = ?", id, walletAddress).
+		Where("id = ? AND LOWER(owner) = ?", id, normalizedWalletAddress).
 		Delete(&types.ABI{})
 
 	if result.Error != nil {
@@ -163,9 +166,10 @@ func (r *repository) DeleteABI(ctx context.Context, id int64, walletAddress stri
 // CheckABIOwnership 检查用户是否拥有指定的ABI
 func (r *repository) CheckABIOwnership(ctx context.Context, id int64, walletAddress string) (bool, error) {
 	var count int64
+	normalizedWalletAddress := strings.ToLower(walletAddress)
 	err := r.db.WithContext(ctx).
 		Model(&types.ABI{}).
-		Where("id = ? AND owner = ?", id, walletAddress).
+		Where("id = ? AND LOWER(owner) = ?", id, normalizedWalletAddress).
 		Count(&count).Error
 
 	if err != nil {
@@ -181,8 +185,9 @@ func (r *repository) CheckABIOwnership(ctx context.Context, id int64, walletAddr
 // GetABIByNameAndOwner 根据名称和所有者获取ABI（用于检查重复）
 func (r *repository) GetABIByNameAndOwner(ctx context.Context, name string, owner string) (*types.ABI, error) {
 	var abi types.ABI
+	normalizedOwner := strings.ToLower(owner)
 	err := r.db.WithContext(ctx).
-		Where("name = ? AND owner = ?", name, owner).
+		Where("name = ? AND LOWER(owner) = ?", name, normalizedOwner).
 		First(&abi).Error
 
 	if err != nil {

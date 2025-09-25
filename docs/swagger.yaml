@@ -267,35 +267,29 @@ definitions:
     - abi_content
     - name
     type: object
-  types.CreateFeishuConfigRequest:
+  types.CreateNotificationRequest:
     properties:
+      bot_token:
+        description: telegram
+        type: string
+      channel:
+        description: 渠道,telegram,lark,feishu
+        type: string
+      chat_id:
+        description: 聊天ID
+        type: string
       name:
-        description: 名称
+        description: 通用
         type: string
       secret:
         description: 签名验证时的密钥
         type: string
       webhook_url:
-        description: 网络钩子URL
+        description: lark feishu
         type: string
     required:
+    - channel
     - name
-    - webhook_url
-    type: object
-  types.CreateLarkConfigRequest:
-    properties:
-      name:
-        description: 名称
-        type: string
-      secret:
-        description: 签名验证时的密钥
-        type: string
-      webhook_url:
-        description: 网络钩子URL
-        type: string
-    required:
-    - name
-    - webhook_url
     type: object
   types.CreateOrImportTimelockContractRequest:
     properties:
@@ -318,22 +312,6 @@ definitions:
     - contract_address
     - standard
     type: object
-  types.CreateTelegramConfigRequest:
-    properties:
-      bot_token:
-        description: 机器人token
-        type: string
-      chat_id:
-        description: 聊天ID
-        type: string
-      name:
-        description: 名称
-        type: string
-    required:
-    - bot_token
-    - chat_id
-    - name
-    type: object
   types.DeleteABIRequest:
     properties:
       id:
@@ -348,28 +326,16 @@ definitions:
     required:
     - id
     type: object
-  types.DeleteFeishuConfigRequest:
+  types.DeleteNotificationRequest:
     properties:
+      channel:
+        description: 渠道,telegram,lark,feishu
+        type: string
       name:
-        description: 名称
+        description: 通用
         type: string
     required:
-    - name
-    type: object
-  types.DeleteLarkConfigRequest:
-    properties:
-      name:
-        description: 名称
-        type: string
-    required:
-    - name
-    type: object
-  types.DeleteTelegramConfigRequest:
-    properties:
-      name:
-        description: 名称
-        type: string
-    required:
+    - channel
     - name
     type: object
   types.DeleteTimeLockRequest:
@@ -504,6 +470,20 @@ definitions:
         type: integer
       page_size:
         type: integer
+    type: object
+  types.GetNonceRequest:
+    properties:
+      wallet_address:
+        type: string
+    required:
+    - wallet_address
+    type: object
+  types.GetNonceResponse:
+    properties:
+      message:
+        type: string
+      nonce:
+        type: string
     type: object
   types.GetPublicSponsorsResponse:
     properties:
@@ -838,40 +818,13 @@ definitions:
     required:
     - id
     type: object
-  types.UpdateFeishuConfigRequest:
-    properties:
-      is_active:
-        description: 是否激活
-        type: boolean
-      name:
-        description: 名称
-        type: string
-      secret:
-        description: 签名验证时的密钥
-        type: string
-      webhook_url:
-        description: 网络钩子URL
-        type: string
-    type: object
-  types.UpdateLarkConfigRequest:
-    properties:
-      is_active:
-        description: 是否激活
-        type: boolean
-      name:
-        description: 名称
-        type: string
-      secret:
-        description: 签名验证时的密钥
-        type: string
-      webhook_url:
-        description: 网络钩子URL
-        type: string
-    type: object
-  types.UpdateTelegramConfigRequest:
+  types.UpdateNotificationRequest:
     properties:
       bot_token:
-        description: 机器人token
+        description: telegram
+        type: string
+      channel:
+        description: 渠道,telegram,lark,feishu
         type: string
       chat_id:
         description: 聊天ID
@@ -880,8 +833,17 @@ definitions:
         description: 是否激活
         type: boolean
       name:
-        description: 名称
+        description: 通用
         type: string
+      secret:
+        description: 签名验证时的密钥
+        type: string
+      webhook_url:
+        description: lark feishu
+        type: string
+    required:
+    - channel
+    - name
     type: object
   types.UpdateTimeLockRequest:
     properties:
@@ -908,8 +870,17 @@ definitions:
         type: string
       id:
         type: integer
+      is_safe_wallet:
+        description: 是否为Safe钱包
+        type: boolean
       last_login:
         type: string
+      safe_owners:
+        description: Safe钱包所有者列表（JSON）
+        type: string
+      safe_threshold:
+        description: Safe钱包阈值
+        type: integer
       status:
         type: integer
       updated_at:
@@ -966,15 +937,24 @@ definitions:
     type: object
   types.WalletConnectRequest:
     properties:
+      chain_id:
+        description: Safe需要指定链ID
+        type: integer
       message:
+        description: EOA钱包需要，Safe钱包可选
+        type: string
+      nonce:
+        description: EOA钱包需要nonce，Safe钱包不需要
         type: string
       signature:
+        description: EOA钱包需要，Safe钱包可选
         type: string
       wallet_address:
         type: string
+      wallet_type:
+        description: '"eoa", "safe"'
+        type: string
     required:
-    - message
-    - signature
     - wallet_address
     type: object
   types.WalletConnectResponse:
@@ -1412,6 +1392,51 @@ paths:
       summary: 验证ABI格式
       tags:
       - ABI
+  /api/v1/auth/nonce:
+    post:
+      consumes:
+      - application/json
+      description: 获取用于钱包签名认证的随机nonce。前端需要先调用此接口获取nonce和消息，然后让用户对消息进行签名，最后调用wallet-connect接口完成认证。
+      parameters:
+      - description: 获取nonce请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/types.GetNonceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取nonce和签名消息
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetNonceResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 获取认证nonce
+      tags:
+      - Authentication
   /api/v1/auth/profile:
     post:
       consumes:
@@ -1528,9 +1553,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: 通过钱包签名进行用户认证。前端需要先让用户用钱包对特定消息进行签名，然后将钱包地址、签名和消息发送到此接口进行验证。验证成功后返回JWT访问令牌和刷新令牌。钱包地址必须是有效以太坊地址（长度42，0x前缀）。
+      description: 通过钱包进行用户认证。EOA钱包：1.先调用/auth/nonce获取随机nonce和消息 2.让用户对消息进行签名 3.调用此接口完成认证。Safe钱包：直接提供Safe地址和chain_id即可，系统会验证地址是否为有效的Safe合约。
       parameters:
-      - description: 钱包连接认证请求体
+      - description: 钱包连接认证请求体。EOA钱包需要nonce、message和signature。Safe钱包只需要wallet_address、wallet_type='safe'和chain_id
         in: body
         name: request
         required: true
@@ -1549,7 +1574,9 @@ paths:
                   $ref: '#/definitions/types.WalletConnectResponse'
               type: object
         "400":
-          description: 请求参数错误（INVALID_WALLET_ADDRESS等）
+          description: '请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_WALLET_ADDRESS:
+            钱包地址格式无效; MISSING_REQUIRED_FIELDS: EOA钱包缺少必需字段; INVALID_SAFE_CONTRACT:
+            地址不是有效的Safe合约'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -1558,7 +1585,8 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "401":
-          description: 认证失败，可能是签名无效或地址恢复失败
+          description: '认证失败 - INVALID_SIGNATURE: 签名验证失败; SIGNATURE_RECOVERY_FAILED:
+            无法从签名恢复地址; INVALID_NONCE: nonce无效或已过期; NONCE_ALREADY_USED: nonce已被使用'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -1567,7 +1595,8 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "500":
-          description: 服务器内部错误
+          description: '服务器内部错误 - INTERNAL_ERROR: 服务器内部错误; DATABASE_ERROR: 数据库操作失败;
+            TOKEN_GENERATION_FAILED: JWT令牌生成失败'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -1575,7 +1604,7 @@ paths:
                 error:
                   $ref: '#/definitions/types.APIError'
               type: object
-      summary: 钱包连接认证
+      summary: 钱包连接认证（支持EOA和Safe钱包）
       tags:
       - Authentication
   /api/v1/chain/chainid:
@@ -2239,12 +2268,12 @@ paths:
     post:
       consumes:
       - application/json
-      description: 获取当前用户的所有通知渠道配置
+      description: 获取当前用户的所有通知渠道配置，如果用户没有任何配置则返回空列表
       produces:
       - application/json
       responses:
         "200":
-          description: 获取成功
+          description: 获取成功，返回所有配置或空列表
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2253,7 +2282,7 @@ paths:
                   $ref: '#/definitions/types.NotificationConfigListResponse'
               type: object
         "401":
-          description: 未认证
+          description: '未认证 - UNAUTHORIZED: 用户未认证'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2262,7 +2291,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "500":
-          description: 服务器内部错误
+          description: '服务器内部错误 - INTERNAL_ERROR: 获取配置失败; DATABASE_ERROR: 数据库访问失败'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2273,18 +2302,18 @@ paths:
       summary: 获取所有通知配置
       tags:
       - Notification
-  /api/v1/notifications/feishu/create:
+  /api/v1/notifications/create:
     post:
       consumes:
       - application/json
-      description: 为当前用户创建新的Feishu通知配置
+      description: 为当前用户创建新的通知配置, 名字的空格会被自动去除, 防止攻击者通过空格来绕过名称验证
       parameters:
       - description: 创建请求
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/types.CreateFeishuConfigRequest'
+          $ref: '#/definitions/types.CreateNotificationRequest'
       produces:
       - application/json
       responses:
@@ -2295,10 +2324,12 @@ paths:
             - $ref: '#/definitions/types.APIResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/types.FeishuConfig'
+                  type: object
               type: object
         "400":
-          description: 请求参数错误
+          description: '请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_NAME: 名称不能为空;
+            INVALID_CHANNEL: 无效的通知渠道; MISSING_TELEGRAM_FIELDS: 缺少telegram必填字段; MISSING_WEBHOOK_URL:
+            缺少webhook_url字段; MISSING_REQUIRED_FIELDS: 缺少必填字段'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2307,7 +2338,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "401":
-          description: 未认证
+          description: '未认证 - UNAUTHORIZED: 用户未认证'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2316,7 +2347,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "409":
-          description: 配置名称已存在
+          description: '配置冲突 - CONFIG_ALREADY_EXISTS: 同名配置已存在'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2325,7 +2356,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "500":
-          description: 服务器内部错误
+          description: '服务器内部错误 - INTERNAL_ERROR: 创建配置失败'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2333,30 +2364,36 @@ paths:
                 error:
                   $ref: '#/definitions/types.APIError'
               type: object
-      summary: 创建Feishu配置
+      summary: 创建通知配置
       tags:
       - Notification
-  /api/v1/notifications/feishu/delete:
+  /api/v1/notifications/delete:
     post:
       consumes:
       - application/json
-      description: 删除当前用户的Feishu通知配置
+      description: 删除当前用户的通知配置, 名字的空格会被自动去除, 防止攻击者通过空格来绕过名称验证
       parameters:
       - description: 删除请求
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/types.DeleteFeishuConfigRequest'
+          $ref: '#/definitions/types.DeleteNotificationRequest'
       produces:
       - application/json
       responses:
         "200":
           description: 删除成功
           schema:
-            $ref: '#/definitions/types.APIResponse'
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
         "400":
-          description: 请求参数错误
+          description: '请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_NAME: 名称不能为空;
+            INVALID_CHANNEL: 无效的通知渠道'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2365,7 +2402,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "401":
-          description: 未认证
+          description: '未认证 - UNAUTHORIZED: 用户未认证'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2374,7 +2411,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "404":
-          description: 配置不存在
+          description: '配置不存在 - CONFIG_NOT_FOUND: 指定的通知配置不存在'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2383,7 +2420,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "500":
-          description: 服务器内部错误
+          description: '服务器内部错误 - INTERNAL_ERROR: 删除配置失败'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2391,133 +2428,36 @@ paths:
                 error:
                   $ref: '#/definitions/types.APIError'
               type: object
-      summary: 删除Feishu配置
+      summary: 删除通知配置
       tags:
       - Notification
-  /api/v1/notifications/feishu/list:
+  /api/v1/notifications/update:
     post:
       consumes:
       - application/json
-      description: 获取当前用户的所有Feishu通知配置
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 获取成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/types.FeishuConfig'
-                  type: array
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 获取Feishu配置列表
-      tags:
-      - Notification
-  /api/v1/notifications/feishu/update:
-    post:
-      consumes:
-      - application/json
-      description: 更新当前用户的Feishu通知配置
+      description: 更新当前用户的通知配置, 如果不需要更新某个字段, 可以不传该字段, 但至少传一个字段
       parameters:
       - description: 更新请求
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/types.UpdateFeishuConfigRequest'
+          $ref: '#/definitions/types.UpdateNotificationRequest'
       produces:
       - application/json
       responses:
         "200":
           description: 更新成功
           schema:
-            $ref: '#/definitions/types.APIResponse'
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 配置不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 更新Feishu配置
-      tags:
-      - Notification
-  /api/v1/notifications/lark/create:
-    post:
-      consumes:
-      - application/json
-      description: 为当前用户创建新的Lark通知配置
-      parameters:
-      - description: 创建请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.CreateLarkConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 创建成功
-          schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/types.LarkConfig'
+                  type: object
               type: object
         "400":
-          description: 请求参数错误
+          description: '请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_NAME: 名称不能为空;
+            INVALID_CHANNEL: 无效的通知渠道; NO_FIELDS_TO_UPDATE: 至少需要提供一个字段进行更新'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2526,65 +2466,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "409":
-          description: 配置名称已存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 创建Lark配置
-      tags:
-      - Notification
-  /api/v1/notifications/lark/delete:
-    post:
-      consumes:
-      - application/json
-      description: 删除当前用户的Lark通知配置
-      parameters:
-      - description: 删除请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.DeleteLarkConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 删除成功
-          schema:
-            $ref: '#/definitions/types.APIResponse'
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证
+          description: '未认证 - UNAUTHORIZED: 用户未认证'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2593,7 +2475,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "404":
-          description: 配置不存在
+          description: '配置不存在 - CONFIG_NOT_FOUND: 指定的通知配置不存在'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2602,7 +2484,7 @@ paths:
                   $ref: '#/definitions/types.APIError'
               type: object
         "500":
-          description: 服务器内部错误
+          description: '服务器内部错误 - INTERNAL_ERROR: 更新配置失败'
           schema:
             allOf:
             - $ref: '#/definitions/types.APIResponse'
@@ -2610,324 +2492,7 @@ paths:
                 error:
                   $ref: '#/definitions/types.APIError'
               type: object
-      summary: 删除Lark配置
-      tags:
-      - Notification
-  /api/v1/notifications/lark/list:
-    post:
-      consumes:
-      - application/json
-      description: 获取当前用户的所有Lark通知配置
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 获取成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/types.LarkConfig'
-                  type: array
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 获取Lark配置列表
-      tags:
-      - Notification
-  /api/v1/notifications/lark/update:
-    post:
-      consumes:
-      - application/json
-      description: 更新当前用户的Lark通知配置
-      parameters:
-      - description: 更新请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.UpdateLarkConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 更新成功
-          schema:
-            $ref: '#/definitions/types.APIResponse'
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 配置不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 更新Lark配置
-      tags:
-      - Notification
-  /api/v1/notifications/telegram/create:
-    post:
-      consumes:
-      - application/json
-      description: 为当前用户创建新的Telegram通知配置
-      parameters:
-      - description: 创建请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.CreateTelegramConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 创建成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.TelegramConfig'
-              type: object
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "409":
-          description: 配置名称已存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 创建Telegram配置
-      tags:
-      - Notification
-  /api/v1/notifications/telegram/delete:
-    post:
-      consumes:
-      - application/json
-      description: 删除当前用户的Telegram通知配置
-      parameters:
-      - description: 删除请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.DeleteTelegramConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 删除成功
-          schema:
-            $ref: '#/definitions/types.APIResponse'
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 配置不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 删除Telegram配置
-      tags:
-      - Notification
-  /api/v1/notifications/telegram/list:
-    post:
-      consumes:
-      - application/json
-      description: 获取当前用户的所有Telegram通知配置
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 获取成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/types.TelegramConfig'
-                  type: array
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 获取Telegram配置列表
-      tags:
-      - Notification
-  /api/v1/notifications/telegram/update:
-    post:
-      consumes:
-      - application/json
-      description: 更新当前用户的Telegram通知配置
-      parameters:
-      - description: 更新请求
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/types.UpdateTelegramConfigRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 更新成功
-          schema:
-            $ref: '#/definitions/types.APIResponse'
-        "400":
-          description: 请求参数错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "401":
-          description: 未认证
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "404":
-          description: 配置不存在
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-        "500":
-          description: 服务器内部错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 更新Telegram配置
+      summary: 更新通知配置
       tags:
       - Notification
   /api/v1/sponsors/public:

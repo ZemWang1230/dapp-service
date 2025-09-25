@@ -13,6 +13,7 @@ import (
 
 	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/chain"
+	scannerRepo "timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/service/scanner"
 	"timelocker-backend/internal/types"
@@ -67,15 +68,17 @@ type Service interface {
 type service struct {
 	timeLockRepo timelock.Repository
 	chainRepo    chain.Repository
+	flowRepo     scannerRepo.FlowRepository
 	rpcManager   *scanner.RPCManager
 	config       *config.Config
 }
 
 // NewService 创建timelock服务实例
-func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, rpcManager *scanner.RPCManager, config *config.Config) Service {
+func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, flowRepo scannerRepo.FlowRepository, rpcManager *scanner.RPCManager, config *config.Config) Service {
 	return &service{
 		timeLockRepo: timeLockRepo,
 		chainRepo:    chainRepo,
+		flowRepo:     flowRepo,
 		rpcManager:   rpcManager,
 		config:       config,
 	}
@@ -378,6 +381,19 @@ func (s *service) createOrImportCompoundTimeLock(ctx context.Context, userAddres
 		return nil, fmt.Errorf("failed to create compound timelock: %w", err)
 	}
 
+	// 刷新该合约相关的所有flows的expired_at字段，使用正确的GRACE_PERIOD
+	if s.flowRepo != nil {
+		updatedCount, err := s.flowRepo.RefreshCompoundFlowsExpiredAt(ctx, req.ChainID, contractAddress, contractData.GracePeriod)
+		if err != nil {
+			logger.Error("Failed to refresh compound flows expired_at", err,
+				"contract_address", contractAddress, "grace_period", contractData.GracePeriod)
+			// 不影响主流程，只记录错误
+		} else {
+			logger.Info("Refreshed compound flows expired_at after import",
+				"updated_flows", updatedCount, "contract_address", contractAddress, "grace_period", contractData.GracePeriod)
+		}
+	}
+
 	logger.Info("CreateOrImportCompoundTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
 	return timeLock, nil
 }
@@ -673,46 +689,46 @@ func (s *service) readOpenzeppelinTimeLockFromChain(ctx context.Context, chainID
 	// }
 
 	data.Admin = &[]string{"0x0000000000000000000000000000000000000000"}[0]
-	data.Proposers = []string{"0x7148C25A8C78b841f771b2b2eeaD6A6220718390"}
-	data.Executors = []string{"0x7148C25A8C78b841f771b2b2eeaD6A6220718390"}
+	data.Proposers = []string{"0x0000000000000000000000000000000000000000"}
+	data.Executors = []string{"0x0000000000000000000000000000000000000000"}
 
 	return data, nil
 }
 
 // 私有方法 - 获取角色成员
-func (s *service) getRoleMembers(ctx context.Context, client *ethclient.Client, contractAddr common.Address, parsedABI abi.ABI, role common.Hash) ([]string, error) {
-	// 获取角色成员数量
-	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getRoleMemberCount", role)
-	if err != nil {
-		return nil, err
-	}
+// func (s *service) getRoleMembers(ctx context.Context, client *ethclient.Client, contractAddr common.Address, parsedABI abi.ABI, role common.Hash) ([]string, error) {
+// 	// 获取角色成员数量
+// 	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getRoleMemberCount", role)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	var count *big.Int
-	if len(result) > 0 {
-		if c, ok := result[0].(*big.Int); ok {
-			count = c
-		} else {
-			return nil, fmt.Errorf("invalid count type")
-		}
-	} else {
-		return []string{}, nil
-	}
+// 	var count *big.Int
+// 	if len(result) > 0 {
+// 		if c, ok := result[0].(*big.Int); ok {
+// 			count = c
+// 		} else {
+// 			return nil, fmt.Errorf("invalid count type")
+// 		}
+// 	} else {
+// 		return []string{}, nil
+// 	}
 
-	members := make([]string, 0, count.Int64())
-	for i := int64(0); i < count.Int64(); i++ {
-		result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getRoleMember", role, big.NewInt(i))
-		if err != nil {
-			continue
-		}
-		if len(result) > 0 {
-			if member, ok := result[0].(common.Address); ok {
-				members = append(members, strings.ToLower(member.Hex()))
-			}
-		}
-	}
+// 	members := make([]string, 0, count.Int64())
+// 	for i := int64(0); i < count.Int64(); i++ {
+// 		result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getRoleMember", role, big.NewInt(i))
+// 		if err != nil {
+// 			continue
+// 		}
+// 		if len(result) > 0 {
+// 			if member, ok := result[0].(common.Address); ok {
+// 				members = append(members, strings.ToLower(member.Hex()))
+// 			}
+// 		}
+// 	}
 
-	return members, nil
-}
+// 	return members, nil
+// }
 
 // 私有方法 - 调用合约方法
 func (s *service) callContract(ctx context.Context, client *ethclient.Client, contractAddr common.Address, parsedABI abi.ABI, method string, args ...interface{}) ([]interface{}, error) {

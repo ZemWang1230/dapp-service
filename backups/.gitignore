@@ -1,0 +1,11 @@
+# 忽略所有备份文件
+*.json
+*.json.gz
+*.json.gpg
+
+# 忽略日志文件
+*.log
+
+# 保留 README.md
+!README.md
+!.gitignore

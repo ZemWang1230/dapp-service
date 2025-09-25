@@ -1,6 +1,7 @@
 package notification
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"timelocker-backend/internal/middleware"
@@ -10,6 +11,7 @@ import (
 	"timelocker-backend/pkg/logger"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // NotificationHandler 通知API处理器
@@ -36,68 +38,20 @@ func (h *NotificationHandler) RegisterRoutes(router *gin.RouterGroup) {
 		// http://localhost:8080/api/v1/notifications/configs
 		notificationGroup.POST("/configs", h.GetAllNotificationConfigs)
 
-		// Telegram配置管理
-		telegramGroup := notificationGroup.Group("/telegram")
-		{
-			// 创建Telegram配置
-			// POST /api/v1/notifications/telegram/create
-			// http://localhost:8080/api/v1/notifications/telegram/create
-			telegramGroup.POST("/create", h.CreateTelegramConfig)
-			// 获取Telegram配置列表
-			// POST /api/v1/notifications/telegram/list
-			// http://localhost:8080/api/v1/notifications/telegram/list
-			telegramGroup.POST("/list", h.GetTelegramConfigs)
-			// 更新Telegram配置
-			// POST /api/v1/notifications/telegram/update
-			// http://localhost:8080/api/v1/notifications/telegram/update
-			telegramGroup.POST("/update", h.UpdateTelegramConfig)
-			// 删除Telegram配置
-			// POST /api/v1/notifications/telegram/delete
-			// http://localhost:8080/api/v1/notifications/telegram/delete
-			telegramGroup.POST("/delete", h.DeleteTelegramConfig)
-		}
+		// 创建通知配置
+		// POST /api/v1/notifications/create
+		// http://localhost:8080/api/v1/notifications/create
+		notificationGroup.POST("/create", h.CreateNotificationConfig)
 
-		// Lark配置管理
-		larkGroup := notificationGroup.Group("/lark")
-		{
-			// 创建Lark配置
-			// POST /api/v1/notifications/lark/create
-			// http://localhost:8080/api/v1/notifications/lark/create
-			larkGroup.POST("/create", h.CreateLarkConfig)
-			// 获取Lark配置列表
-			// POST /api/v1/notifications/lark/list
-			// http://localhost:8080/api/v1/notifications/lark/list
-			larkGroup.POST("/list", h.GetLarkConfigs)
-			// 更新Lark配置
-			// POST /api/v1/notifications/lark/update
-			// http://localhost:8080/api/v1/notifications/lark/update
-			larkGroup.POST("/update", h.UpdateLarkConfig)
-			// 删除Lark配置
-			// POST /api/v1/notifications/lark/delete
-			// http://localhost:8080/api/v1/notifications/lark/delete
-			larkGroup.POST("/delete", h.DeleteLarkConfig)
-		}
+		// 更新通知配置
+		// POST /api/v1/notifications/update
+		// http://localhost:8080/api/v1/notifications/update
+		notificationGroup.POST("/update", h.UpdateNotificationConfig)
 
-		// Feishu配置管理
-		feishuGroup := notificationGroup.Group("/feishu")
-		{
-			// 创建Feishu配置
-			// POST /api/v1/notifications/feishu/create
-			// http://localhost:8080/api/v1/notifications/feishu/create
-			feishuGroup.POST("/create", h.CreateFeishuConfig)
-			// 获取Feishu配置列表
-			// POST /api/v1/notifications/feishu/list
-			// http://localhost:8080/api/v1/notifications/feishu/list
-			feishuGroup.POST("/list", h.GetFeishuConfigs)
-			// 更新Feishu配置
-			// POST /api/v1/notifications/feishu/update
-			// http://localhost:8080/api/v1/notifications/feishu/update
-			feishuGroup.POST("/update", h.UpdateFeishuConfig)
-			// 删除Feishu配置
-			// POST /api/v1/notifications/feishu/delete
-			// http://localhost:8080/api/v1/notifications/feishu/delete
-			feishuGroup.POST("/delete", h.DeleteFeishuConfig)
-		}
+		// 删除通知配置
+		// POST /api/v1/notifications/delete
+		// http://localhost:8080/api/v1/notifications/delete
+		notificationGroup.POST("/delete", h.DeleteNotificationConfig)
 	}
 }
 
@@ -105,13 +59,13 @@ func (h *NotificationHandler) RegisterRoutes(router *gin.RouterGroup) {
 
 // GetAllNotificationConfigs 获取所有通知配置
 // @Summary 获取所有通知配置
-// @Description 获取当前用户的所有通知渠道配置
+// @Description 获取当前用户的所有通知渠道配置，如果用户没有任何配置则返回空列表
 // @Tags Notification
 // @Accept json
 // @Produce json
-// @Success 200 {object} types.APIResponse{data=types.NotificationConfigListResponse} "获取成功"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
+// @Success 200 {object} types.APIResponse{data=types.NotificationConfigListResponse} "获取成功，返回所有配置或空列表"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证 - UNAUTHORIZED: 用户未认证"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误 - INTERNAL_ERROR: 获取配置失败; DATABASE_ERROR: 数据库访问失败"
 // @Router /api/v1/notifications/configs [post]
 func (h *NotificationHandler) GetAllNotificationConfigs(c *gin.Context) {
 	// 从上下文获取用户信息
@@ -131,11 +85,42 @@ func (h *NotificationHandler) GetAllNotificationConfigs(c *gin.Context) {
 	// 调用service层
 	response, err := h.notificationService.GetAllNotificationConfigs(c.Request.Context(), userAddress)
 	if err != nil {
+		// 处理特定错误类型
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 没有找到任何配置，返回空列表
+			emptyResponse := &types.NotificationConfigListResponse{
+				TelegramConfigs: []*types.TelegramConfig{},
+				LarkConfigs:     []*types.LarkConfig{},
+				FeishuConfigs:   []*types.FeishuConfig{},
+			}
+			c.JSON(http.StatusOK, types.APIResponse{
+				Success: true,
+				Data:    emptyResponse,
+			})
+			return
+		}
+
+		// 数据库连接错误或其他内部错误
+		if strings.Contains(err.Error(), "failed to get") {
+			c.JSON(http.StatusInternalServerError, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "DATABASE_ERROR",
+					Message: "Failed to retrieve notification configs from database",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("GetAllNotificationConfigs error", err, "user_address", userAddress)
+			return
+		}
+
+		// 通用内部错误
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",
-				Message: err.Error(),
+				Message: "Failed to get notification configs",
+				Details: err.Error(),
 			},
 		})
 		logger.Error("GetAllNotificationConfigs error", err, "user_address", userAddress)
@@ -149,22 +134,20 @@ func (h *NotificationHandler) GetAllNotificationConfigs(c *gin.Context) {
 	})
 }
 
-// ===== Telegram配置管理 =====
-
-// CreateTelegramConfig 创建Telegram配置
-// @Summary 创建Telegram配置
-// @Description 为当前用户创建新的Telegram通知配置
+// CreateNotificationConfig 创建通知配置
+// @Summary 创建通知配置
+// @Description 为当前用户创建新的通知配置, 名字的空格会被自动去除, 防止攻击者通过空格来绕过名称验证
 // @Tags Notification
 // @Accept json
 // @Produce json
-// @Param request body types.CreateTelegramConfigRequest true "创建请求"
-// @Success 200 {object} types.APIResponse{data=types.TelegramConfig} "创建成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 409 {object} types.APIResponse{error=types.APIError} "配置名称已存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/telegram/create [post]
-func (h *NotificationHandler) CreateTelegramConfig(c *gin.Context) {
+// @Param request body types.CreateNotificationRequest true "创建请求"
+// @Success 200 {object} types.APIResponse{data=object} "创建成功"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_NAME: 名称不能为空; INVALID_CHANNEL: 无效的通知渠道; MISSING_TELEGRAM_FIELDS: 缺少telegram必填字段; MISSING_WEBHOOK_URL: 缺少webhook_url字段; MISSING_REQUIRED_FIELDS: 缺少必填字段"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证 - UNAUTHORIZED: 用户未认证"
+// @Failure 409 {object} types.APIResponse{error=types.APIError} "配置冲突 - CONFIG_ALREADY_EXISTS: 同名配置已存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误 - INTERNAL_ERROR: 创建配置失败"
+// @Router /api/v1/notifications/create [post]
+func (h *NotificationHandler) CreateNotificationConfig(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
@@ -175,11 +158,11 @@ func (h *NotificationHandler) CreateTelegramConfig(c *gin.Context) {
 				Message: "User not authenticated",
 			},
 		})
-		logger.Error("CreateTelegramConfig error", nil, "message", "user not authenticated")
+		logger.Error("CreateNotificationConfig error", nil, "message", "user not authenticated")
 		return
 	}
 
-	var req types.CreateTelegramConfigRequest
+	var req types.CreateNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
@@ -189,7 +172,7 @@ func (h *NotificationHandler) CreateTelegramConfig(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("CreateTelegramConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
+		logger.Error("CreateNotificationConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
 		return
 	}
 
@@ -206,110 +189,142 @@ func (h *NotificationHandler) CreateTelegramConfig(c *gin.Context) {
 		return
 	}
 
-	// 调用service层
-	result, err := h.notificationService.CreateTelegramConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
+	// 验证渠道类型
+	req.Channel = strings.ToLower(req.Channel)
+	if req.Channel != "telegram" && req.Channel != "lark" && req.Channel != "feishu" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_CHANNEL",
+				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu",
+				Details: "channel must be one of: telegram, lark, feishu",
+			},
+		})
+		return
+	}
 
+	// 验证渠道特定的必填字段
+	if req.Channel == "telegram" {
+		if req.BotToken == "" || req.ChatID == "" {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "MISSING_TELEGRAM_FIELDS",
+					Message: "bot_token and chat_id are required for telegram channel",
+					Details: "Please provide both bot_token and chat_id",
+				},
+			})
+			return
+		}
+	} else if req.Channel == "lark" || req.Channel == "feishu" {
+		if req.WebhookURL == "" {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "MISSING_WEBHOOK_URL",
+					Message: "webhook_url is required for " + req.Channel + " channel",
+					Details: "Please provide webhook_url",
+				},
+			})
+			return
+		}
+	}
+
+	// 调用service层
+	err := h.notificationService.CreateNotificationConfig(c.Request.Context(), userAddress, &req)
+	if err != nil {
+		// 处理特定错误类型
 		if strings.Contains(err.Error(), "already exists") {
-			statusCode = http.StatusConflict
-			errorCode = "CONFIG_EXISTS"
+			c.JSON(http.StatusConflict, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "CONFIG_ALREADY_EXISTS",
+					Message: "A notification config with this name already exists for the specified channel",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("CreateNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
+			return
 		}
 
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("CreateTelegramConfig error", err, "user_address", userAddress, "name", req.Name)
-		return
-	}
+		if strings.Contains(err.Error(), "bot_token and chat_id are required") ||
+			strings.Contains(err.Error(), "webhook_url are required") {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "MISSING_REQUIRED_FIELDS",
+					Message: "Required fields are missing",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("CreateNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
+			return
+		}
 
-	logger.Info("CreateTelegramConfig success", "user_address", userAddress, "name", req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    result,
-	})
-}
+		if strings.Contains(err.Error(), "invalid channel") {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "INVALID_CHANNEL",
+					Message: "Invalid notification channel",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("CreateNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
+			return
+		}
 
-// GetTelegramConfigs 获取Telegram配置列表
-// @Summary 获取Telegram配置列表
-// @Description 获取当前用户的所有Telegram通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Success 200 {object} types.APIResponse{data=[]types.TelegramConfig} "获取成功"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/telegram/list [post]
-func (h *NotificationHandler) GetTelegramConfigs(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("GetTelegramConfigs error", nil, "message", "user not authenticated")
-		return
-	}
-
-	// 调用service层
-	configs, err := h.notificationService.GetTelegramConfigs(c.Request.Context(), userAddress)
-	if err != nil {
+		// 通用内部错误
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",
-				Message: err.Error(),
+				Message: "Failed to create notification config",
+				Details: err.Error(),
 			},
 		})
-		logger.Error("GetTelegramConfigs error", err, "user_address", userAddress)
+		logger.Error("CreateNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
 		return
 	}
 
-	logger.Info("GetTelegramConfigs success", "user_address", userAddress, "count", len(configs))
+	logger.Info("CreateNotificationConfig success", "user_address", userAddress, "name", req.Name)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
-		Data:    configs,
+		Data:    gin.H{"message": "Notification config created successfully"},
 	})
 }
 
-// UpdateTelegramConfig 更新Telegram配置
-// @Summary 更新Telegram配置
-// @Description 更新当前用户的Telegram通知配置
+// UpdateNotificationConfig 更新通知配置
+// @Summary 更新通知配置
+// @Description 更新当前用户的通知配置, 如果不需要更新某个字段, 可以不传该字段, 但至少传一个字段
 // @Tags Notification
 // @Accept json
 // @Produce json
-// @Param request body types.UpdateTelegramConfigRequest true "更新请求"
-// @Success 200 {object} types.APIResponse "更新成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/telegram/update [post]
-func (h *NotificationHandler) UpdateTelegramConfig(c *gin.Context) {
+// @Param request body types.UpdateNotificationRequest true "更新请求"
+// @Success 200 {object} types.APIResponse{data=object} "更新成功"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_NAME: 名称不能为空; INVALID_CHANNEL: 无效的通知渠道; NO_FIELDS_TO_UPDATE: 至少需要提供一个字段进行更新"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证 - UNAUTHORIZED: 用户未认证"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在 - CONFIG_NOT_FOUND: 指定的通知配置不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误 - INTERNAL_ERROR: 更新配置失败"
+// @Router /api/v1/notifications/update [post]
+func (h *NotificationHandler) UpdateNotificationConfig(c *gin.Context) {
+
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
+
 				Code:    "UNAUTHORIZED",
 				Message: "User not authenticated",
 			},
 		})
-		logger.Error("UpdateTelegramConfig error", nil, "message", "user not authenticated")
+		logger.Error("UpdateNotificationConfig error", nil, "message", "user not authenticated")
 		return
 	}
 
-	var req types.UpdateTelegramConfigRequest
+	var req types.UpdateNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
@@ -319,7 +334,7 @@ func (h *NotificationHandler) UpdateTelegramConfig(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("UpdateTelegramConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
+		logger.Error("UpdateNotificationConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
 		return
 	}
 
@@ -330,270 +345,136 @@ func (h *NotificationHandler) UpdateTelegramConfig(c *gin.Context) {
 			Error: &types.APIError{
 				Code:    "INVALID_NAME",
 				Message: "Name is required",
+				Details: "Name cannot be empty or null",
+			},
+		})
+		return
+	}
+
+	// 验证渠道类型
+	if req.Channel == nil || strings.TrimSpace(*req.Channel) == "" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_CHANNEL",
+				Message: "Channel is required",
+				Details: "Channel cannot be empty or null",
+			},
+		})
+		return
+	}
+
+	*req.Channel = strings.ToLower(*req.Channel)
+	if *req.Channel != "telegram" && *req.Channel != "lark" && *req.Channel != "feishu" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_CHANNEL",
+				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu",
+				Details: "channel must be one of: telegram, lark, feishu",
+			},
+		})
+		return
+	}
+
+	// 验证至少有一个字段要更新
+	hasUpdate := false
+	if *req.Channel == "telegram" {
+		hasUpdate = req.BotToken != nil || req.ChatID != nil || req.IsActive != nil
+	} else if *req.Channel == "lark" || *req.Channel == "feishu" {
+		hasUpdate = req.WebhookURL != nil || req.Secret != nil || req.IsActive != nil
+	}
+
+	if !hasUpdate {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "NO_FIELDS_TO_UPDATE",
+				Message: "At least one field must be provided for update",
+				Details: "Please provide at least one field to update",
 			},
 		})
 		return
 	}
 
 	// 调用service层
-	err := h.notificationService.UpdateTelegramConfig(c.Request.Context(), userAddress, &req)
+	err := h.notificationService.UpdateNotificationConfig(c.Request.Context(), userAddress, &req)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
+		// 处理特定错误类型
 		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-			errorCode = "CONFIG_NOT_FOUND"
+			c.JSON(http.StatusNotFound, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "CONFIG_NOT_FOUND",
+					Message: "Notification config not found",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("UpdateNotificationConfig error", err, "user_address", userAddress, "name", *req.Name, "channel", *req.Channel)
+			return
 		}
 
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("UpdateTelegramConfig error", err, "user_address", userAddress, "name", *req.Name)
-		return
-	}
-
-	logger.Info("UpdateTelegramConfig success", "user_address", userAddress, "name", *req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    gin.H{"message": "Telegram config updated successfully"},
-	})
-}
-
-// DeleteTelegramConfig 删除Telegram配置
-// @Summary 删除Telegram配置
-// @Description 删除当前用户的Telegram通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Param request body types.DeleteTelegramConfigRequest true "删除请求"
-// @Success 200 {object} types.APIResponse "删除成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/telegram/delete [post]
-func (h *NotificationHandler) DeleteTelegramConfig(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("DeleteTelegramConfig error", nil, "message", "user not authenticated")
-		return
-	}
-
-	var req types.DeleteTelegramConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("DeleteTelegramConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
-		return
-	}
-
-	// 标准化名称
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_NAME",
-				Message: "Name cannot be empty",
-			},
-		})
-		return
-	}
-
-	// 调用service层
-	err := h.notificationService.DeleteTelegramConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
-		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-			errorCode = "CONFIG_NOT_FOUND"
+		if strings.Contains(err.Error(), "at least one field must be provided") ||
+			strings.Contains(err.Error(), "no fields to update") {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "NO_FIELDS_TO_UPDATE",
+					Message: "At least one field must be provided for update",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("UpdateNotificationConfig error", err, "user_address", userAddress, "name", *req.Name, "channel", *req.Channel)
+			return
 		}
 
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("DeleteTelegramConfig error", err, "user_address", userAddress, "name", req.Name)
-		return
-	}
-
-	logger.Info("DeleteTelegramConfig success", "user_address", userAddress, "name", req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    gin.H{"message": "Telegram config deleted successfully"},
-	})
-}
-
-// ===== Lark配置管理 =====
-
-// CreateLarkConfig 创建Lark配置
-// @Summary 创建Lark配置
-// @Description 为当前用户创建新的Lark通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Param request body types.CreateLarkConfigRequest true "创建请求"
-// @Success 200 {object} types.APIResponse{data=types.LarkConfig} "创建成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 409 {object} types.APIResponse{error=types.APIError} "配置名称已存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/lark/create [post]
-func (h *NotificationHandler) CreateLarkConfig(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("CreateLarkConfig error", nil, "message", "user not authenticated")
-		return
-	}
-
-	var req types.CreateLarkConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("CreateLarkConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
-		return
-	}
-
-	// 标准化名称
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_NAME",
-				Message: "Name cannot be empty",
-			},
-		})
-		return
-	}
-
-	// 调用service层
-	result, err := h.notificationService.CreateLarkConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
-		if strings.Contains(err.Error(), "already exists") {
-			statusCode = http.StatusConflict
-			errorCode = "CONFIG_EXISTS"
+		if strings.Contains(err.Error(), "invalid channel") {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "INVALID_CHANNEL",
+					Message: "Invalid notification channel",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("UpdateNotificationConfig error", err, "user_address", userAddress, "name", *req.Name, "channel", *req.Channel)
+			return
 		}
 
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("CreateLarkConfig error", err, "user_address", userAddress, "name", req.Name)
-		return
-	}
-
-	logger.Info("CreateLarkConfig success", "user_address", userAddress, "name", req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    result,
-	})
-}
-
-// GetLarkConfigs 获取Lark配置列表
-// @Summary 获取Lark配置列表
-// @Description 获取当前用户的所有Lark通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Success 200 {object} types.APIResponse{data=[]types.LarkConfig} "获取成功"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/lark/list [post]
-func (h *NotificationHandler) GetLarkConfigs(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("GetLarkConfigs error", nil, "message", "user not authenticated")
-		return
-	}
-
-	// 调用service层
-	configs, err := h.notificationService.GetLarkConfigs(c.Request.Context(), userAddress)
-	if err != nil {
+		// 通用内部错误
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",
-				Message: err.Error(),
+				Message: "Failed to update notification config",
+				Details: err.Error(),
 			},
 		})
-		logger.Error("GetLarkConfigs error", err, "user_address", userAddress)
+		logger.Error("UpdateNotificationConfig error", err, "user_address", userAddress, "name", *req.Name, "channel", *req.Channel)
 		return
 	}
 
-	logger.Info("GetLarkConfigs success", "user_address", userAddress, "count", len(configs))
+	logger.Info("UpdateNotificationConfig success", "user_address", userAddress, "name", *req.Name)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
-		Data:    configs,
+		Data:    gin.H{"message": "Notification config updated successfully"},
 	})
 }
 
-// UpdateLarkConfig 更新Lark配置
-// @Summary 更新Lark配置
-// @Description 更新当前用户的Lark通知配置
+// DeleteNotificationConfig 删除通知配置
+// @Summary 删除通知配置
+// @Description 删除当前用户的通知配置, 名字的空格会被自动去除, 防止攻击者通过空格来绕过名称验证
 // @Tags Notification
 // @Accept json
 // @Produce json
-// @Param request body types.UpdateLarkConfigRequest true "更新请求"
-// @Success 200 {object} types.APIResponse "更新成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/lark/update [post]
-func (h *NotificationHandler) UpdateLarkConfig(c *gin.Context) {
+// @Param request body types.DeleteNotificationRequest true "删除请求"
+// @Success 200 {object} types.APIResponse{data=object} "删除成功"
+// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误 - INVALID_REQUEST: 请求参数格式错误; INVALID_NAME: 名称不能为空; INVALID_CHANNEL: 无效的通知渠道"
+// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证 - UNAUTHORIZED: 用户未认证"
+// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在 - CONFIG_NOT_FOUND: 指定的通知配置不存在"
+// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误 - INTERNAL_ERROR: 删除配置失败"
+// @Router /api/v1/notifications/delete [post]
+func (h *NotificationHandler) DeleteNotificationConfig(c *gin.Context) {
 	// 从上下文获取用户信息
 	_, userAddress, ok := middleware.GetUserFromContext(c)
 	if !ok {
@@ -604,11 +485,11 @@ func (h *NotificationHandler) UpdateLarkConfig(c *gin.Context) {
 				Message: "User not authenticated",
 			},
 		})
-		logger.Error("UpdateLarkConfig error", nil, "message", "user not authenticated")
+		logger.Error("DeleteNotificationConfig error", nil, "message", "user not authenticated")
 		return
 	}
 
-	var req types.UpdateLarkConfigRequest
+	var req types.DeleteNotificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
@@ -618,90 +499,7 @@ func (h *NotificationHandler) UpdateLarkConfig(c *gin.Context) {
 				Details: err.Error(),
 			},
 		})
-		logger.Error("UpdateLarkConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
-		return
-	}
-
-	// 验证名称
-	if req.Name == nil || strings.TrimSpace(*req.Name) == "" {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_NAME",
-				Message: "Name is required",
-			},
-		})
-		return
-	}
-
-	// 调用service层
-	err := h.notificationService.UpdateLarkConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
-		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-			errorCode = "CONFIG_NOT_FOUND"
-		}
-
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("UpdateLarkConfig error", err, "user_address", userAddress, "name", *req.Name)
-		return
-	}
-
-	logger.Info("UpdateLarkConfig success", "user_address", userAddress, "name", *req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    gin.H{"message": "Lark config updated successfully"},
-	})
-}
-
-// DeleteLarkConfig 删除Lark配置
-// @Summary 删除Lark配置
-// @Description 删除当前用户的Lark通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Param request body types.DeleteLarkConfigRequest true "删除请求"
-// @Success 200 {object} types.APIResponse "删除成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/lark/delete [post]
-func (h *NotificationHandler) DeleteLarkConfig(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("DeleteLarkConfig error", nil, "message", "user not authenticated")
-		return
-	}
-
-	var req types.DeleteLarkConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("DeleteLarkConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
+		logger.Error("DeleteNotificationConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
 		return
 	}
 
@@ -713,335 +511,72 @@ func (h *NotificationHandler) DeleteLarkConfig(c *gin.Context) {
 			Error: &types.APIError{
 				Code:    "INVALID_NAME",
 				Message: "Name cannot be empty",
+				Details: "Name field is required and cannot be empty",
+			},
+		})
+		return
+	}
+
+	// 验证渠道类型
+	req.Channel = strings.ToLower(req.Channel)
+	if req.Channel != "telegram" && req.Channel != "lark" && req.Channel != "feishu" {
+		c.JSON(http.StatusBadRequest, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "INVALID_CHANNEL",
+				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu",
+				Details: "channel must be one of: telegram, lark, feishu",
 			},
 		})
 		return
 	}
 
 	// 调用service层
-	err := h.notificationService.DeleteLarkConfig(c.Request.Context(), userAddress, &req)
+	err := h.notificationService.DeleteNotificationConfig(c.Request.Context(), userAddress, &req)
 	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
+		// 处理特定错误类型
 		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-			errorCode = "CONFIG_NOT_FOUND"
+			c.JSON(http.StatusNotFound, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "CONFIG_NOT_FOUND",
+					Message: "Notification config not found",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("DeleteNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
+			return
 		}
 
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("DeleteLarkConfig error", err, "user_address", userAddress, "name", req.Name)
-		return
-	}
-
-	logger.Info("DeleteLarkConfig success", "user_address", userAddress, "name", req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    gin.H{"message": "Lark config deleted successfully"},
-	})
-}
-
-// ===== Feishu配置管理 =====
-
-// CreateFeishuConfig 创建Feishu配置
-// @Summary 创建Feishu配置
-// @Description 为当前用户创建新的Feishu通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Param request body types.CreateFeishuConfigRequest true "创建请求"
-// @Success 200 {object} types.APIResponse{data=types.FeishuConfig} "创建成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 409 {object} types.APIResponse{error=types.APIError} "配置名称已存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/feishu/create [post]
-func (h *NotificationHandler) CreateFeishuConfig(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("CreateFeishuConfig error", nil, "message", "user not authenticated")
-		return
-	}
-
-	var req types.CreateFeishuConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("CreateFeishuConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
-		return
-	}
-
-	// 标准化名称
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_NAME",
-				Message: "Name cannot be empty",
-			},
-		})
-		return
-	}
-
-	// 调用service层
-	result, err := h.notificationService.CreateFeishuConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
-		if strings.Contains(err.Error(), "already exists") {
-			statusCode = http.StatusConflict
-			errorCode = "CONFIG_EXISTS"
+		if strings.Contains(err.Error(), "invalid channel") {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "INVALID_CHANNEL",
+					Message: "Invalid notification channel",
+					Details: err.Error(),
+				},
+			})
+			logger.Error("DeleteNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
+			return
 		}
 
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("CreateFeishuConfig error", err, "user_address", userAddress, "name", req.Name)
-		return
-	}
-
-	logger.Info("CreateFeishuConfig success", "user_address", userAddress, "name", req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    result,
-	})
-}
-
-// GetFeishuConfigs 获取Feishu配置列表
-// @Summary 获取Feishu配置列表
-// @Description 获取当前用户的所有Feishu通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Success 200 {object} types.APIResponse{data=[]types.FeishuConfig} "获取成功"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/feishu/list [post]
-func (h *NotificationHandler) GetFeishuConfigs(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("GetFeishuConfigs error", nil, "message", "user not authenticated")
-		return
-	}
-
-	// 调用service层
-	configs, err := h.notificationService.GetFeishuConfigs(c.Request.Context(), userAddress)
-	if err != nil {
+		// 通用内部错误
 		c.JSON(http.StatusInternalServerError, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INTERNAL_ERROR",
-				Message: err.Error(),
-			},
-		})
-		logger.Error("GetFeishuConfigs error", err, "user_address", userAddress)
-		return
-	}
-
-	logger.Info("GetFeishuConfigs success", "user_address", userAddress, "count", len(configs))
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    configs,
-	})
-}
-
-// UpdateFeishuConfig 更新Feishu配置
-// @Summary 更新Feishu配置
-// @Description 更新当前用户的Feishu通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Param request body types.UpdateFeishuConfigRequest true "更新请求"
-// @Success 200 {object} types.APIResponse "更新成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/feishu/update [post]
-func (h *NotificationHandler) UpdateFeishuConfig(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("UpdateFeishuConfig error", nil, "message", "user not authenticated")
-		return
-	}
-
-	var req types.UpdateFeishuConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
+				Message: "Failed to delete notification config",
 				Details: err.Error(),
 			},
 		})
-		logger.Error("UpdateFeishuConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
+		logger.Error("DeleteNotificationConfig error", err, "user_address", userAddress, "name", req.Name, "channel", req.Channel)
 		return
 	}
 
-	// 验证名称
-	if req.Name == nil || strings.TrimSpace(*req.Name) == "" {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_NAME",
-				Message: "Name is required",
-			},
-		})
-		return
-	}
-
-	// 调用service层
-	err := h.notificationService.UpdateFeishuConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
-		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-			errorCode = "CONFIG_NOT_FOUND"
-		}
-
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("UpdateFeishuConfig error", err, "user_address", userAddress, "name", *req.Name)
-		return
-	}
-
-	logger.Info("UpdateFeishuConfig success", "user_address", userAddress, "name", *req.Name)
+	logger.Info("DeleteNotificationConfig success", "user_address", userAddress, "name", req.Name, "channel", req.Channel)
 	c.JSON(http.StatusOK, types.APIResponse{
 		Success: true,
-		Data:    gin.H{"message": "Feishu config updated successfully"},
-	})
-}
-
-// DeleteFeishuConfig 删除Feishu配置
-// @Summary 删除Feishu配置
-// @Description 删除当前用户的Feishu通知配置
-// @Tags Notification
-// @Accept json
-// @Produce json
-// @Param request body types.DeleteFeishuConfigRequest true "删除请求"
-// @Success 200 {object} types.APIResponse "删除成功"
-// @Failure 400 {object} types.APIResponse{error=types.APIError} "请求参数错误"
-// @Failure 401 {object} types.APIResponse{error=types.APIError} "未认证"
-// @Failure 404 {object} types.APIResponse{error=types.APIError} "配置不存在"
-// @Failure 500 {object} types.APIResponse{error=types.APIError} "服务器内部错误"
-// @Router /api/v1/notifications/feishu/delete [post]
-func (h *NotificationHandler) DeleteFeishuConfig(c *gin.Context) {
-	// 从上下文获取用户信息
-	_, userAddress, ok := middleware.GetUserFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "UNAUTHORIZED",
-				Message: "User not authenticated",
-			},
-		})
-		logger.Error("DeleteFeishuConfig error", nil, "message", "user not authenticated")
-		return
-	}
-
-	var req types.DeleteFeishuConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_REQUEST",
-				Message: "Invalid request parameters",
-				Details: err.Error(),
-			},
-		})
-		logger.Error("DeleteFeishuConfig error", err, "message", "invalid request parameters", "user_address", userAddress)
-		return
-	}
-
-	// 标准化名称
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_NAME",
-				Message: "Name cannot be empty",
-			},
-		})
-		return
-	}
-
-	// 调用service层
-	err := h.notificationService.DeleteFeishuConfig(c.Request.Context(), userAddress, &req)
-	if err != nil {
-		statusCode := http.StatusInternalServerError
-		errorCode := "INTERNAL_ERROR"
-
-		if strings.Contains(err.Error(), "not found") {
-			statusCode = http.StatusNotFound
-			errorCode = "CONFIG_NOT_FOUND"
-		}
-
-		c.JSON(statusCode, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    errorCode,
-				Message: err.Error(),
-			},
-		})
-		logger.Error("DeleteFeishuConfig error", err, "user_address", userAddress, "name", req.Name)
-		return
-	}
-
-	logger.Info("DeleteFeishuConfig success", "user_address", userAddress, "name", req.Name)
-	c.JSON(http.StatusOK, types.APIResponse{
-		Success: true,
-		Data:    gin.H{"message": "Feishu config deleted successfully"},
+		Data:    gin.H{"message": "Notification config deleted successfully"},
 	})
 }

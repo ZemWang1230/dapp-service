@@ -1,21 +1,28 @@
 package email
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 	"timelocker-backend/internal/config"
 	chainRepo "timelocker-backend/internal/repository/chain"
-	"timelocker-backend/internal/repository/email"
+	emailRepo "timelocker-backend/internal/repository/email"
+	"timelocker-backend/internal/repository/scanner"
+	timeLockRepo "timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	emailPkg "timelocker-backend/pkg/email"
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gorm.io/gorm"
 )
 
@@ -44,19 +51,23 @@ type EmailService interface {
 
 // emailService 邮箱服务实现
 type emailService struct {
-	repo      email.EmailRepository
-	chainRepo chainRepo.Repository
-	config    *config.Config
-	sender    *emailPkg.SMTPSender
+	repo            emailRepo.EmailRepository
+	chainRepo       chainRepo.Repository
+	timeLockRepo    timeLockRepo.Repository
+	transactionRepo scanner.TransactionRepository
+	config          *config.Config
+	sender          *emailPkg.SMTPSender
 }
 
 // NewEmailService 创建邮箱服务实例
-func NewEmailService(repo email.EmailRepository, chainRepo chainRepo.Repository, cfg *config.Config) EmailService {
+func NewEmailService(repo emailRepo.EmailRepository, chainRepo chainRepo.Repository, timeLockRepo timeLockRepo.Repository, transactionRepo scanner.TransactionRepository, cfg *config.Config) EmailService {
 	return &emailService{
-		repo:      repo,
-		chainRepo: chainRepo,
-		config:    cfg,
-		sender:    emailPkg.NewSMTPSender(&cfg.Email),
+		repo:            repo,
+		chainRepo:       chainRepo,
+		timeLockRepo:    timeLockRepo,
+		transactionRepo: transactionRepo,
+		config:          cfg,
+		sender:          emailPkg.NewSMTPSender(&cfg.Email),
 	}
 }
 
@@ -328,8 +339,139 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 			continue
 		}
 
+		var emailData *types.NotificationData
+
+		// 获取链信息
+		chainInfo, err := s.chainRepo.GetChainByChainID(ctx, int64(chainID))
+		if err != nil {
+			logger.Error("Failed to get chain info", err, "chainID", chainID)
+			return fmt.Errorf("failed to get chain info: %w", err)
+		}
+
+		// 解析区块浏览器URLs
+		var explorerURLs []string
+		if err := json.Unmarshal([]byte(chainInfo.BlockExplorerUrls), &explorerURLs); err != nil {
+			logger.Error("Failed to parse block explorer URLs", err, "chainID", chainID)
+			explorerURLs = []string{}
+		}
+
+		// 构建交易链接
+		var txLink string
+		var txDisplay string
+		if txHash != nil && len(explorerURLs) > 0 {
+			txLink = fmt.Sprintf("%s/tx/%s", explorerURLs[0], *txHash)
+			// 简化显示的交易哈希（前10位...后6位）
+			if len(*txHash) > 10 {
+				txDisplay = fmt.Sprintf("%s...%s", (*txHash)[:10], (*txHash)[len(*txHash)-6:])
+			} else {
+				txDisplay = *txHash
+			}
+		} else {
+			txDisplay = "Pending"
+			txLink = ""
+		}
+
+		// 根据状态获取颜色
+		getStatusColor := func(status string) (bgColor, textColor string) {
+			switch strings.ToLower(status) {
+			case "waiting":
+				return "rgba(251, 146, 60, 0.15)", "#fb923c"
+			case "ready":
+				return "rgba(34, 197, 94, 0.15)", "#22c55e"
+			case "executed":
+				return "rgba(99, 102, 241, 0.15)", "#6366f1"
+			case "cancelled":
+				return "rgba(239, 68, 68, 0.15)", "#ef4444"
+			case "expired":
+				return "rgba(107, 114, 128, 0.15)", "#6b7280"
+			default:
+				return "rgba(148, 163, 184, 0.15)", "#94a3b8"
+			}
+		}
+
+		fromBg, fromText := getStatusColor(statusFrom)
+		toBg, toText := getStatusColor(statusTo)
+
+		if standard == "compound" {
+			// 通过chainid、contractAddress获得该合约信息，拿到合约备注，GetCompoundTimeLockByChainAndAddress
+			compoundTimeLock, err := s.timeLockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
+			if err != nil {
+				logger.Error("Failed to get compound time lock", err, "chainID", chainID, "contractAddress", contractAddress)
+				continue
+			}
+
+			// 通过flowID去交易表中拿到交易信息
+			transaction, err := s.transactionRepo.GetQueueCompoundTransactionByFlowID(ctx, flowID, contractAddress)
+			if err != nil {
+				logger.Error("Failed to get queue compound transaction", err, "flowID", flowID, "contractAddress", contractAddress)
+				continue
+			}
+			if transaction == nil {
+				logger.Warn("No queue compound transaction found", "flowID", flowID, "contractAddress", contractAddress)
+				continue
+			}
+
+			var functionName string
+			var calldataParams []types.CalldataParam
+			// 解析calldata
+			if transaction.EventCallData != nil && transaction.EventFunctionSignature != nil {
+				functionName = *transaction.EventFunctionSignature
+				calldataParams, err = utils.ParseCalldataNoSelector(*transaction.EventFunctionSignature, transaction.EventCallData)
+				if err != nil {
+					calldataParams = []types.CalldataParam{
+						{
+							Name:  "param[0]",
+							Type:  "CallData Does Not Match Function Signature",
+							Value: "Please Check Your Call Data",
+						},
+					}
+					logger.Error("Failed to parse calldata", err, "functionSignature", *transaction.EventFunctionSignature, "callData", transaction.EventCallData)
+				}
+			} else {
+				functionName = "No Function Call"
+				calldataParams = []types.CalldataParam{}
+			}
+
+			nativeToken := chainInfo.NativeCurrencySymbol
+			value, err := utils.WeiToEth(transaction.EventValue, nativeToken)
+			if err != nil {
+				logger.Error("Failed to convert wei to eth", err, "eventValue", transaction.EventValue)
+				value = fmt.Sprintf("0 %s", nativeToken)
+			}
+
+			emailData = &types.NotificationData{
+				Standard:       strings.ToUpper(standard),
+				Contract:       contractAddress,
+				Remark:         compoundTimeLock.Remark,
+				Caller:         transaction.FromAddress,
+				Target:         *transaction.EventTarget,
+				Function:       functionName,
+				Value:          value,
+				CalldataParams: calldataParams,
+			}
+		} else if standard == "openzeppelin" {
+			// 拿合约信息
+			// 通过flowID去交易表中拿到交易信息
+			// 解析calldata(由于OZevent中直接是calldata带函数选择器，需要先识别functionSig，然后解析calldata)
+			// （functionSig可以新建一个functionSig表，用于存储functionSig和functionName的映射，计算用户导入的abi里的函数，然后存储到functionSig表中）
+			// 构建emailData
+		} else {
+			return fmt.Errorf("invalid standard")
+		}
+
+		emailData.BgColorFrom = template.CSS(fromBg)
+		emailData.TextColorFrom = template.CSS(fromText)
+		emailData.BgColorTo = template.CSS(toBg)
+		emailData.TextColorTo = template.CSS(toText)
+		emailData.StatusFrom = strings.ToUpper(statusFrom)
+		emailData.StatusTo = strings.ToUpper(statusTo)
+		emailData.Network = chainInfo.DisplayName
+		emailData.TxHash = txDisplay
+		emailData.TxUrl = txLink
+		emailData.DashboardUrl = s.config.Email.EmailURL
+
 		// 发送通知邮件
-		if err := s.sendFlowNotificationEmail(ctx, emailID, standard, chainID, contractAddress, flowID, statusFrom, statusTo, txHash); err != nil {
+		if err := s.sendFlowNotificationEmail(ctx, emailID, emailData); err != nil {
 			logger.Error("Failed to send notification email", err, "emailID", emailID, "flowID", flowID)
 
 			// 记录发送失败日志
@@ -397,251 +539,40 @@ func (s *emailService) generateVerificationCode() (string, error) {
 // sendVerificationEmail 发送验证码邮件
 func (s *emailService) sendVerificationEmail(toEmail, code string) error {
 	subject := "TimeLocker - Verify Your Email Address"
-	body := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>TimeLocker Email Verification</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #0f0f23 0%%, #1a1a2e 100%%); color: #ffffff; min-height: 100vh;">
-	<div style="max-width: 800px; margin: 0 auto; padding: 40px 20px;">
-		<!-- Header -->
-		<div style="text-align: center; margin-bottom: 60px;">
-			<div style="background: linear-gradient(135deg, #6366f1 0%%, #8b5cf6 50%%, #ec4899 100%%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-size: 48px; font-weight: 800; margin-bottom: 16px; letter-spacing: -1px;">
-				TimeLocker
-			</div>
-			<div style="height: 2px; width: 60px; background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899); margin: 0 auto; border-radius: 1px;"></div>
-		</div>
+	// 用VerificationEmail.html 模板生成邮件内容
+	body, err := os.ReadFile("email_templates/VerificationEmail.html")
+	if err != nil {
+		return fmt.Errorf("failed to read verification email template: %w", err)
+	}
 
-		<!-- Main Card -->
-		<div style="background: rgba(255, 255, 255, 0.05); border-radius: 24px; padding: 60px; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px);">
-			<div style="text-align: center; margin-bottom: 50px;">
-				<h1 style="color: #ffffff; font-size: 36px; font-weight: 700; margin: 0 0 16px 0; letter-spacing: -0.5px;">
-					Verify Your Email
-				</h1>
-				<p style="color: #cbd5e1; font-size: 18px; line-height: 1.6; margin: 0; font-weight: 400;">
-					Welcome to TimeLocker! Please use the verification code below to complete your email verification.
-				</p>
-			</div>
+	bodyStr := strings.ReplaceAll(string(body), "{{CODE}}", code)
+	bodyStr = strings.ReplaceAll(bodyStr, "{{EXPIRE}}", s.config.Email.VerificationCodeExpiry.String())
 
-			<!-- Verification Code -->
-			<div style="background: linear-gradient(135deg, #6366f1 0%%, #8b5cf6 50%%, #ec4899 100%%); border-radius: 20px; padding: 4px; margin: 50px 0;">
-				<div style="background: rgba(15, 15, 35, 0.95); border-radius: 16px; padding: 50px; text-align: center;">
-					<p style="color: #94a3b8; font-size: 16px; font-weight: 600; margin: 0 0 30px 0; text-transform: uppercase; letter-spacing: 2px;">
-						Verification Code
-					</p>
-					<div style="color: #ffffff; font-size: 56px; font-weight: 800; font-family: 'Courier New', monospace; letter-spacing: 12px; margin: 0;">
-						%s
-					</div>
-				</div>
-			</div>
-
-			<!-- Expiry Notice -->
-			<div style="background: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.2); border-radius: 16px; padding: 30px; margin: 50px 0; text-align: center;">
-				<p style="color: #fed7aa; font-size: 16px; margin: 0; font-weight: 600;">
-					This code will expire in <span style="color: #fb923c; font-weight: 700;">%s</span>
-				</p>
-			</div>
-
-			<!-- Security Notice -->
-			<div style="text-align: center; padding: 30px; background: rgba(71, 85, 105, 0.1); border-radius: 16px; border-left: 4px solid #6366f1;">
-				<p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0; font-weight: 400;">
-					If you didn't request this verification, you can safely ignore this email. Your account remains secure.
-				</p>
-			</div>
-		</div>
-
-		<!-- Footer -->
-		<div style="text-align: center; margin-top: 60px; padding-top: 40px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-			<div style="color: #6366f1; font-size: 24px; font-weight: 700; margin-bottom: 12px;">TimeLocker</div>
-			<p style="color: #64748b; font-size: 14px; margin: 0 0 8px 0; font-weight: 500;">
-				This is an automated message from TimeLocker
-			</p>
-			<p style="color: #475569; font-size: 12px; margin: 0; font-weight: 400;">
-				© 2025 TimeLocker Labs. All rights reserved.
-			</p>
-		</div>
-	</div>
-</body>
-</html>
-	`, code, s.config.Email.VerificationCodeExpiry.String())
-
-	return s.sender.SendHTMLEmail(toEmail, subject, body)
+	return s.sender.SendHTMLEmail(toEmail, subject, bodyStr)
 }
 
 // sendFlowNotificationEmail 发送流程通知邮件
-func (s *emailService) sendFlowNotificationEmail(ctx context.Context, emailID int64, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string) error {
+func (s *emailService) sendFlowNotificationEmail(ctx context.Context, emailID int64, emailData *types.NotificationData) error {
 	// 获取邮箱地址
 	emailRecord, err := s.getEmailByID(ctx, emailID)
 	if err != nil {
 		return fmt.Errorf("failed to get email: %w", err)
 	}
+	subject := fmt.Sprintf("TimeLocker Status Update: %s → %s",
+		cases.Title(language.English).String(emailData.StatusFrom),
+		cases.Title(language.English).String(emailData.StatusTo))
 
-	// 获取链信息
-	chainInfo, err := s.chainRepo.GetChainByChainID(ctx, int64(chainID))
+	tmpl, err := template.ParseFiles("email_templates/FlowNotificationEmail.html")
 	if err != nil {
-		logger.Error("Failed to get chain info", err, "chainID", chainID)
-		return fmt.Errorf("failed to get chain info: %w", err)
+		return fmt.Errorf("parse template: %w", err)
 	}
 
-	// 解析区块浏览器URLs
-	var explorerURLs []string
-	if err := json.Unmarshal([]byte(chainInfo.BlockExplorerUrls), &explorerURLs); err != nil {
-		logger.Error("Failed to parse block explorer URLs", err, "chainID", chainID)
-		explorerURLs = []string{}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, emailData); err != nil {
+		return fmt.Errorf("execute template: %w", err)
 	}
 
-	// 构建交易链接
-	var txLink string
-	var txDisplay string
-	if txHash != nil && len(explorerURLs) > 0 {
-		txLink = fmt.Sprintf("%s/tx/%s", explorerURLs[0], *txHash)
-		// 简化显示的交易哈希（前6位...后4位）
-		if len(*txHash) > 10 {
-			txDisplay = fmt.Sprintf("%s...%s", (*txHash)[:6], (*txHash)[len(*txHash)-4:])
-		} else {
-			txDisplay = *txHash
-		}
-	} else {
-		txDisplay = "Pending"
-		txLink = ""
-	}
-
-	// 根据状态获取颜色
-	getStatusColor := func(status string) (bgColor, textColor string) {
-		switch strings.ToLower(status) {
-		case "waiting":
-			return "rgba(251, 146, 60, 0.15)", "#fb923c"
-		case "ready":
-			return "rgba(34, 197, 94, 0.15)", "#22c55e"
-		case "executed":
-			return "rgba(99, 102, 241, 0.15)", "#6366f1"
-		case "cancelled":
-			return "rgba(239, 68, 68, 0.15)", "#ef4444"
-		case "expired":
-			return "rgba(107, 114, 128, 0.15)", "#6b7280"
-		default:
-			return "rgba(148, 163, 184, 0.15)", "#94a3b8"
-		}
-	}
-
-	fromBg, fromText := getStatusColor(statusFrom)
-	toBg, toText := getStatusColor(statusTo)
-
-	// 格式化状态变更
-	statusChangeHTML := fmt.Sprintf(`
-<div style="background: linear-gradient(135deg, #6366f1 0%%, #8b5cf6 50%%, #ec4899 100%%); border-radius: 20px; padding: 4px; margin: 40px 0;">
-	<div style="background: rgba(15, 15, 35, 0.95); border-radius: 16px; padding: 40px; text-align: center;">
-		<p style="color: #94a3b8; font-size: 14px; font-weight: 600; margin: 0 0 20px 0; text-transform: uppercase; letter-spacing: 2px;">Status Update</p>
-		<div style="display: flex; align-items: center; justify-content: center; margin: 0; max-width: 400px; margin-left: auto; margin-right: auto;">
-			<div style="background: %s; color: %s; padding: 16px 24px; border-radius: 12px; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; min-width: 120px; text-align: center; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);">%s</div>
-			<div style="padding:0 20px; display:flex; align-items:center; justify-content:center; color:#ffffff; font-size:24px; font-weight:800; transform:translateY(6px);">→</div>
-			<div style="background: %s; color: %s; padding: 16px 24px; border-radius: 12px; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; min-width: 120px; text-align: center; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);">%s</div>
-		</div>
-	</div>
-</div>
-`, fromBg, fromText, strings.Title(statusFrom), toBg, toText, strings.Title(statusTo))
-
-	subject := fmt.Sprintf("TimeLocker Status Update: %s → %s", strings.Title(statusFrom), strings.Title(statusTo))
-
-	body := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>TimeLocker Flow Notification</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #0f0f23 0%%, #1a1a2e 100%%); color: #ffffff; min-height: 100vh;">
-	<div style="max-width: 800px; margin: 0 auto; padding: 40px 20px;">
-		<!-- Header -->
-		<div style="text-align: center; margin-bottom: 60px;">
-			<div style="background: linear-gradient(135deg, #6366f1 0%%, #8b5cf6 50%%, #ec4899 100%%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-size: 48px; font-weight: 800; margin-bottom: 16px; letter-spacing: -1px;">
-				TimeLocker
-			</div>
-			<div style="height: 2px; width: 60px; background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899); margin: 0 auto; border-radius: 1px;"></div>
-		</div>
-
-		<!-- Main Card -->
-		<div style="background: rgba(255, 255, 255, 0.05); border-radius: 24px; padding: 60px; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px);">
-			<div style="text-align: center; margin-bottom: 50px;">
-				<h1 style="color: #ffffff; font-size: 36px; font-weight: 700; margin: 0 0 16px 0; letter-spacing: -0.5px;">
-					Flow Status Update
-				</h1>
-				<p style="color: #cbd5e1; font-size: 18px; line-height: 1.6; margin: 0; font-weight: 400;">
-					Your subscribed timelock flow has a status update
-				</p>
-			</div>
-
-			<!-- Status Change -->
-			%s
-
-			<!-- Details Section -->
-			<div style="background: rgba(255, 255, 255, 0.08); border-radius: 20px; padding: 40px; margin: 50px 0;">
-				<!-- Standard -->
-				<div style="display: flex; align-items: center; padding: 20px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-					<div style="color: #94a3b8; font-size: 18px; font-weight: 600;">Standard</div>
-					<div style="margin-left: auto; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; padding: 10px 20px; border-radius: 12px; font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">%s</div>
-				</div>
-				<!-- Network -->
-				<div style="display: flex; align-items: center; padding: 20px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-					<div style="color: #94a3b8; font-size: 18px; font-weight: 600;">Network</div>
-					<div style="margin-left: auto; color: #ffffff; font-weight: 700; font-size: 18px;">%s</div>
-				</div>
-				<!-- Contract -->
-				<div style="display: flex; align-items: flex-start; padding: 20px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-					<div style="color: #94a3b8; font-size: 18px; font-weight: 600; margin-top: 2px;">Contract</div>
-					<div style="margin-left: auto; color: #e2e8f0; font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; text-align: right; word-break: break-all; overflow-wrap: break-word; line-height: 1.4; max-width: 500px;">%s</div>
-				</div>
-				<!-- Transaction -->
-				<div style="display: flex; align-items: center; padding: 20px 0 0 0;">
-					<div style="color: #94a3b8; font-size: 18px; font-weight: 600;">Transaction</div>
-					<div style="margin-left: auto; text-align: right;">%s</div>
-				</div>
-			</div>
-
-			<!-- Dashboard Button -->
-			<div style="text-align: center; margin: 50px 0;">
-				<a href="%s" style="display: inline-block; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; padding: 18px 40px; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 18px; box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);">
-					View Dashboard
-				</a>
-			</div>
-
-			<!-- Notice -->
-			<div style="text-align: center; padding: 30px; background: rgba(71, 85, 105, 0.1); border-radius: 16px; border-left: 4px solid #6366f1;">
-				<p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0; font-weight: 400;">
-					You can manage your email subscriptions in the dashboard settings.
-				</p>
-			</div>
-		</div>
-
-		<!-- Footer -->
-		<div style="text-align: center; margin-top: 60px; padding-top: 40px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-			<div style="color: #6366f1; font-size: 24px; font-weight: 700; margin-bottom: 12px;">TimeLocker</div>
-			<p style="color: #64748b; font-size: 14px; margin: 0 0 8px 0; font-weight: 500;">
-				This is an automated notification from TimeLocker
-			</p>
-			<p style="color: #475569; font-size: 12px; margin: 0; font-weight: 400;">
-				© 2025 TimeLocker Labs. All rights reserved.
-			</p>
-		</div>
-	</div>
-</body>
-</html>
-	`,
-		statusChangeHTML,        // statusChangeHTML (1个参数)
-		strings.Title(standard), // standard (1个参数)
-		chainInfo.DisplayName,   // network (1个参数)
-		contractAddress,         // contract (1个参数)
-		func() string { // transaction (1个参数)
-			if txLink != "" {
-				return fmt.Sprintf(`<a href="%s" style="color: #6366f1; text-decoration: none; font-family: 'Courier New', monospace; font-size: 14px; font-weight: 600; background: rgba(99, 102, 241, 0.1); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.3);" target="_blank">%s ↗</a>`, txLink, txDisplay)
-			}
-			return fmt.Sprintf(`<span style="color: #94a3b8; font-size: 14px; font-style: italic; font-weight: 500;">%s</span>`, txDisplay)
-		}(),
-		s.config.Email.EmailURL) // dashboard URL (1个参数)
+	body := buf.String()
 
 	return s.sender.SendHTMLEmail(emailRecord.Email, subject, body)
 }

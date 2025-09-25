@@ -25,6 +25,7 @@ import (
 	emailRepo "timelocker-backend/internal/repository/email"
 
 	notificationRepo "timelocker-backend/internal/repository/notification"
+	safeRepo "timelocker-backend/internal/repository/safe"
 	scannerRepo "timelocker-backend/internal/repository/scanner"
 	sponsorRepo "timelocker-backend/internal/repository/sponsor"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
@@ -46,8 +47,8 @@ import (
 	"timelocker-backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
+	// swaggerFiles "github.com/swaggo/files"
+	// ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // @title TimeLocker Backend API
@@ -108,6 +109,7 @@ func main() {
 	timelockRepository := timelockRepo.NewRepository(db)
 	emailRepository := emailRepo.NewEmailRepository(db)
 	notificationRepository := notificationRepo.NewRepository(db)
+	safeRepository := safeRepo.NewRepository(db)
 
 	// 扫链相关仓库
 	progressRepository := scannerRepo.NewProgressRepository(db)
@@ -121,29 +123,19 @@ func main() {
 		cfg.JWT.RefreshExpiry,
 	)
 
-	// 6. 初始化服务层
-	authSvc := authService.NewService(userRepository, jwtManager)
+	// 6. 初始化服务层（注意：authSvc需要在RPC管理器启动后初始化）
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
-	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, cfg)
+	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, timelockRepository, transactionRepository, cfg)
 	flowSvc := flowService.NewFlowService(flowRepository, timelockRepository)
-	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, cfg)
+	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, transactionRepository, cfg)
 
-	// 7. 初始化处理器
-	authHandler := authHandler.NewHandler(authSvc)
-	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
-	chainHandler := chainHandler.NewHandler(chainSvc)
-	sponsorHdl := sponsorHandler.NewHandler(sponsorSvc)
-	emailHdl := emailHandler.NewEmailHandler(emailSvc, authSvc)
-	flowHdl := flowHandler.NewFlowHandler(flowSvc, authSvc)
-	notificationHdl := notificationHandler.NewNotificationHandler(notificationSvc, authSvc)
-
-	// 8. 设置Gin和路由
+	// 7. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
 
-	// 9. 添加CORS中间件
+	// 8. 添加CORS中间件
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -157,25 +149,27 @@ func main() {
 		c.Next()
 	})
 
-	// 10. 注册API路由
+	// 9. 创建API路由组
 	v1 := router.Group("/api/v1")
 	{
-		authHandler.RegisterRoutes(v1)
-		abiHandler.RegisterRoutes(v1)
+		chainHandler := chainHandler.NewHandler(chainSvc)
 		chainHandler.RegisterRoutes(v1)
+
+		sponsorHdl := sponsorHandler.NewHandler(sponsorSvc)
 		sponsorHdl.RegisterRoutes(v1)
-		emailHdl.RegisterRoutes(v1)
-		flowHdl.RegisterRoutes(v1)
-		notificationHdl.RegisterRoutes(v1)
 	}
 
-	// 11. Swagger API文档端点
+	// 10. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
 	docs.SwaggerInfo.Title = "TimeLocker Backend API v1.0"
 	docs.SwaggerInfo.Description = "TimeLocker Backend API"
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// 健康检查端点
+	router.GET("/api/v1/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 
-	// 12. 启动RPC管理器
+	// 11. 启动RPC管理器
 	rpcManager := scannerService.NewRPCManager(cfg, chainRepository)
 	if err := rpcManager.Start(ctx); err != nil {
 		logger.Error("Failed to start RPC manager", err)
@@ -183,7 +177,7 @@ func main() {
 		logger.Info("RPC Manager started successfully")
 	}
 
-	// 13. 启动扫链管理器
+	// 12. 启动扫链管理器
 	scannerManager := scannerService.NewManager(
 		cfg,
 		chainRepository,
@@ -201,10 +195,28 @@ func main() {
 		logger.Info("Scanner Manager started successfully")
 	}
 
-	// 14. 初始化timelock服务（依赖RPC管理器）
-	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, rpcManager, cfg)
+	// 13. 初始化需要RPC管理器的服务和处理器
+	authSvc := authService.NewService(userRepository, safeRepository, rpcManager, jwtManager)
+	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, flowRepository, rpcManager, cfg)
+
+	// 14. 初始化处理器并注册路由
+	authHandler := authHandler.NewHandler(authSvc)
+	authHandler.RegisterRoutes(v1)
+
+	abiHandler := abiHandler.NewHandler(abiSvc, authSvc)
+	abiHandler.RegisterRoutes(v1)
+
 	timelockHandler := timelockHandler.NewHandler(timelockSvc, authSvc)
 	timelockHandler.RegisterRoutes(v1)
+
+	emailHdl := emailHandler.NewEmailHandler(emailSvc, authSvc)
+	emailHdl.RegisterRoutes(v1)
+
+	flowHdl := flowHandler.NewFlowHandler(flowSvc, authSvc)
+	flowHdl.RegisterRoutes(v1)
+
+	notificationHdl := notificationHandler.NewNotificationHandler(notificationSvc, authSvc)
+	notificationHdl.RegisterRoutes(v1)
 
 	// 15. 启动定时任务
 	wg.Add(1)

@@ -13,7 +13,7 @@ type GetTransactionDetailResponse struct {
 	Detail CompoundTimelockTransactionDetail `json:"detail"` // 交易详情
 }
 
-// TimelockTransactionDetail 交易详情
+// CompoundTimelockTransactionDetail 交易详情
 type CompoundTimelockTransactionDetail struct {
 	TxHash                 string    `json:"tx_hash"`                  // 交易哈希
 	BlockNumber            int64     `json:"block_number"`             // 区块高度
@@ -30,4 +30,26 @@ type CompoundTimelockTransactionDetail struct {
 	EventTarget            *string   `json:"event_target"`             // 事件目标地址
 	EventValue             string    `json:"event_value"`              // 事件价值
 	EventTxHash            *string   `json:"event_tx_hash"`            // 事件交易哈希
+}
+
+// OpenzeppelinTimelockTransactionDetail 交易详情
+type OpenzeppelinTimelockTransactionDetail struct {
+	TxHash           string    `json:"tx_hash"`           // 交易哈希
+	BlockNumber      int64     `json:"block_number"`      // 区块高度
+	BlockTimestamp   time.Time `json:"block_timestamp"`   // 区块时间
+	ChainID          int       `json:"chain_id"`          // 链ID
+	ChainName        string    `json:"chain_name"`        // 链名称
+	ContractAddress  string    `json:"contract_address"`  // 合约地址
+	FromAddress      string    `json:"from_address"`      // 发起地址
+	ToAddress        string    `json:"to_address"`        // 接收地址
+	TxStatus         string    `json:"tx_status"`         // 交易状态（success, failed）
+	EventType        string    `json:"event_type"`        // 事件类型（CallScheduled, CallExecuted, Cancelled）
+	EventData        string    `json:"event_data"`        // 事件数据
+	EventID          *string   `json:"event_id"`          // 事件ID
+	EventIndex       int       `json:"event_index"`       // 事件索引
+	EventTarget      *string   `json:"event_target"`      // 事件目标地址
+	EventValue       string    `json:"event_value"`       // 事件价值
+	EventCallData    []byte    `json:"event_call_data"`   // 事件调用数据
+	EventPredecessor *string   `json:"event_predecessor"` // 事件前驱（包含前驱交易哈希）
+	EventDelay       *int64    `json:"event_delay"`       // 事件延迟
 }

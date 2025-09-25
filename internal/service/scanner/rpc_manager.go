@@ -2,8 +2,8 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// RPCManager RPC管理器，只使用Alchemy RPC
+// RPCManager RPC管理器，使用官方RPC URLs
 type RPCManager struct {
 	config    *config.ScannerConfig
 	rpcConfig *config.RPCConfig
@@ -36,7 +36,7 @@ func NewRPCManager(cfg *config.Config, chainRepo chain.Repository) *RPCManager {
 
 // Start 启动RPC管理器
 func (rm *RPCManager) Start(ctx context.Context) error {
-	logger.Info("Starting simplified RPC Manager")
+	logger.Info("Starting RPC Manager with official RPC URLs")
 
 	// 获取启用RPC的链
 	chains, err := rm.chainRepo.GetRPCEnabledChains(ctx, rm.rpcConfig.IncludeTestnets)
@@ -45,15 +45,10 @@ func (rm *RPCManager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get RPC enabled chains: %w", err)
 	}
 
-	// 检查Alchemy API Key
-	if rm.rpcConfig.AlchemyAPIKey == "" {
-		return fmt.Errorf("alchemy API key is required")
-	}
-
-	// 初始化每条链的Alchemy RPC连接
+	// 初始化每条链的官方RPC连接
 	for _, chainInfo := range chains {
-		if err := rm.initChainAlchemyRPC(ctx, &chainInfo); err != nil {
-			logger.Error("Failed to init Alchemy RPC for chain", err, "chain_name", chainInfo.ChainName)
+		if err := rm.initChainOfficialRPC(ctx, &chainInfo); err != nil {
+			logger.Error("Failed to init official RPC for chain", err, "chain_name", chainInfo.ChainName)
 			continue
 		}
 	}
@@ -113,27 +108,40 @@ func (rm *RPCManager) GetOrCreateClient(ctx context.Context, chainID int) (*ethc
 	// 查找对应的链配置
 	for _, chainInfo := range chains {
 		if chainInfo.ChainID == chainID {
-			if chainInfo.AlchemyRPCTemplate == nil {
-				return nil, fmt.Errorf("no alchemy RPC template for chain %d", chainID)
+			// 解析官方RPC URLs
+			var officialRPCs []string
+			if err := json.Unmarshal([]byte(chainInfo.OfficialRPCUrls), &officialRPCs); err != nil {
+				return nil, fmt.Errorf("failed to parse official RPC URLs for chain %d: %w", chainID, err)
 			}
 
-			rpcURL := strings.Replace(*chainInfo.AlchemyRPCTemplate, "{API_KEY}", rm.rpcConfig.AlchemyAPIKey, 1)
-			return rm.createClient(ctx, chainID, rpcURL)
+			if len(officialRPCs) == 0 {
+				return nil, fmt.Errorf("no official RPC URLs available for chain %d", chainID)
+			}
+
+			// 使用第一个官方RPC URL
+			return rm.createClient(ctx, chainID, officialRPCs[0])
 		}
 	}
 
 	return nil, fmt.Errorf("chain %d not found in RPC enabled chains", chainID)
 }
 
-// initChainAlchemyRPC 初始化单链的Alchemy RPC连接
-func (rm *RPCManager) initChainAlchemyRPC(ctx context.Context, chainInfo *types.ChainRPCInfo) error {
-	if chainInfo.AlchemyRPCTemplate == nil {
-		logger.Warn("No Alchemy RPC template for chain", "chain_name", chainInfo.ChainName)
+// initChainOfficialRPC 初始化单链的官方RPC连接
+func (rm *RPCManager) initChainOfficialRPC(ctx context.Context, chainInfo *types.ChainRPCInfo) error {
+	// 解析官方RPC URLs
+	var officialRPCs []string
+	if err := json.Unmarshal([]byte(chainInfo.OfficialRPCUrls), &officialRPCs); err != nil {
+		logger.Error("Failed to parse official RPC URLs", err, "chain_name", chainInfo.ChainName)
+		return fmt.Errorf("failed to parse official RPC URLs for chain %s: %w", chainInfo.ChainName, err)
+	}
+
+	if len(officialRPCs) == 0 {
+		logger.Warn("No official RPC URLs for chain", "chain_name", chainInfo.ChainName)
 		return nil
 	}
 
-	rpcURL := strings.Replace(*chainInfo.AlchemyRPCTemplate, "{API_KEY}", rm.rpcConfig.AlchemyAPIKey, 1)
-	_, err := rm.createClient(ctx, chainInfo.ChainID, rpcURL)
+	// 使用第一个官方RPC URL
+	_, err := rm.createClient(ctx, chainInfo.ChainID, officialRPCs[0])
 	return err
 }
 
@@ -146,7 +154,7 @@ func (rm *RPCManager) createClient(ctx context.Context, chainID int, rpcURL stri
 	// 创建RPC客户端
 	client, err := ethclient.DialContext(dialCtx, rpcURL)
 	if err != nil {
-		logger.Error("Failed to dial Alchemy RPC", err, "chain_id", chainID, "url", rpcURL)
+		logger.Error("Failed to dial official RPC", err, "chain_id", chainID, "url", rpcURL)
 		return nil, fmt.Errorf("failed to dial RPC %s: %w", rpcURL, err)
 	}
 

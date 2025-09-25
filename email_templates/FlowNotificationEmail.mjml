@@ -1,0 +1,98 @@
+<mjml>
+  <mj-head>
+    <mj-title>TimeLocker Flow Notification</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Inter, Helvetica, Arial, sans-serif" />
+      <mj-text color="#1f2937" font-size="16px" line-height="1.6" />
+    </mj-attributes>
+    <mj-style inline="inline"> .shadow-card { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); } </mj-style>
+  </mj-head>
+  <mj-body background-color="#f8fafc">
+    <!-- Header Section -->
+    <mj-section padding="30px 20px">
+      <mj-column background-color="#ffffff" border-radius="12px" padding="30px" css-class="shadow-card">
+        <mj-text align="center" font-size="28px" font-weight="700" color="#1f2937" padding="0 0 8px 0"> TimeLocker </mj-text>
+        <mj-text align="center" font-size="20px" font-weight="600" color="#4b5563" padding="0 0 10px 0"> Flow Status Update </mj-text>
+        <mj-text align="center" color="#6b7280" font-size="14px"> Your subscribed timelock flow has a status update </mj-text>
+      </mj-column>
+    </mj-section> <!-- Main Content Section -->
+    <mj-section padding="0 20px 30px 20px">
+      <mj-column background-color="#ffffff" border-radius="12px" padding="30px" css-class="shadow-card">
+        <!-- Status Transition -->
+        <mj-text align="center" font-size="18px" font-weight="700" color="#1f2937" padding="0 0 20px 0"> 🔄 Status Transition </mj-text>
+        <mj-table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td align="center" width="40%" style="background:{{ .BgColorFrom }}; color:{{ .TextColorFrom }}; font-weight:700; padding:16px; border-radius:8px;"> {{ .StatusFrom }} </td>
+            <td align="center" width="20%" style="color:#3b82f6; font-size:24px; font-weight:700; padding:16px;"> → </td>
+            <td align="center" width="40%" style="background:{{ .BgColorTo }}; color:{{ .TextColorTo }}; font-weight:700; padding:16px; border-radius:8px;"> {{ .StatusTo }} </td>
+          </tr>
+        </mj-table>
+        <mj-spacer height="30px" /> <!-- Flow Details -->
+        <mj-text font-size="18px" font-weight="700" color="#1f2937" padding="0 0 15px 0"> 📋 Flow Details </mj-text>
+        <mj-table font-size="14px" cellpadding="12" width="100%">
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; border-radius:8px 0 0 0; padding:12px;">Standard</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; border-radius:0 8px 0 0; padding:12px;">{{ .Standard }}</td>
+          </tr>
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; padding:12px;">Network</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; padding:12px;">{{ .Network }}</td>
+          </tr>
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; padding:12px;">Contract</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; font-family: monospace; font-size: 12px; padding:12px;">{{ .Contract }}</td>
+          </tr>
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; border-radius:0 0 0 8px; padding:12px;">Remark</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; border-radius:0 0 8px 0; padding:12px;">{{ .Remark }}</td>
+          </tr>
+        </mj-table>
+        <mj-spacer height="30px" /> <!-- Calldata Parsed Result --> {{ if .CalldataParams }}
+        <mj-text font-size="18px" font-weight="700" color="#1f2937" padding="0 0 15px 0"> 🔧 Calldata Parsed Result </mj-text>
+        <mj-table font-size="14px" cellpadding="12" width="100%">
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; border-radius:8px 0 0 0; padding:12px;">Caller</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; font-family: monospace; font-size: 12px; border-radius:0 8px 0 0; padding:12px;">{{ .Caller }}</td>
+          </tr>
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; padding:12px;">Target</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; font-family: monospace; font-size: 12px; padding:12px;">{{ .Target }}</td>
+          </tr>
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; padding:12px;">Value</td>
+            <td align="right" style="font-weight:500; color:#16a34a; background-color:#f8fafc; padding:12px;">{{ .Value }}</td>
+          </tr>
+          <tr>
+            <td align="left" style="font-weight:600; color:#4b5563; background-color:#f8fafc; padding:12px;">Function</td>
+            <td align="right" style="font-weight:500; color:#dc2626; background-color:#f8fafc; font-family: monospace; padding:12px;">{{ .Function }}</td>
+          </tr>
+          <tr>
+            <th align="left" style="font-weight:700; color:#ffffff; background-color:#3b82f6; padding: 12px;">Parameter</th>
+            <th align="right" style="font-weight:700; color:#ffffff; background-color:#3b82f6; padding: 12px;">Value</th>
+          </tr> {{ range .CalldataParams }}
+          <tr>
+            <td align="left" style="font-weight:500; color:#4b5563; background-color:#f8fafc; font-family: monospace; font-size: 12px; padding:12px;">{{ .Name }} ({{ .Type }})</td>
+            <td align="right" style="font-weight:500; color:#1f2937; background-color:#f8fafc; font-family: monospace; font-size: 12px; padding:12px;">{{ .Value }}</td>
+          </tr> {{ end }}
+        </mj-table>
+        <mj-spacer height="30px" /> {{ end }} <!-- Transaction Info -->
+        <mj-text font-size="18px" font-weight="700" color="#1f2937" padding="0 0 15px 0"> 🔗 Transaction Info </mj-text>
+        <mj-table font-size="14px" cellpadding="12" width="100%">
+          <tr>
+            <td align="left" style="font-weight:600; color:#166534; background-color:#ecfdf5; border-radius:8px 0 0 8px; padding:12px;">Transaction</td>
+            <td align="right" style="font-weight:500; color:#15803d; background-color:#ecfdf5; border-radius:0 8px 8px 0; padding:12px;"> <a href="{{ .TxUrl }}" style="color:#3b82f6; text-decoration:none; font-family: monospace; font-size: 12px;">{{ .TxHash }}</a> </td>
+          </tr>
+        </mj-table>
+        <mj-spacer height="30px" /> <!-- View Dashboard Button -->
+        <mj-button href="{{ .DashboardUrl }}" background-color="#3b82f6" color="#ffffff" border-radius="8px" font-weight="600" font-size="16px" inner-padding="16px 32px"> 🚀 View Dashboard </mj-button>
+      </mj-column>
+    </mj-section> <!-- Footer Section -->
+    <mj-section padding="30px 20px">
+      <mj-column background-color="#ffffff" border-radius="12px" padding="25px" css-class="shadow-card">
+        <mj-text align="center" color="#1f2937" font-size="16px" font-weight="700" padding="0 0 8px 0"> TimeLocker </mj-text>
+        <mj-text align="center" color="#6b7280" font-size="13px" padding="5px 0"> Automated notification from TimeLocker Protocol </mj-text>
+        <mj-text align="center" color="#9ca3af" font-size="11px" padding="8px 0 0 0"> © 2025 TimeLocker Labs. All rights reserved. </mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>
