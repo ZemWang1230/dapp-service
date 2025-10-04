@@ -10,8 +10,10 @@ import (
 	"timelocker-backend/internal/repository/chain"
 	"timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/repository/timelock"
+	"timelocker-backend/internal/service/rpc"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
+	"timelocker-backend/pkg/redis"
 )
 
 // Manager 扫链管理器
@@ -22,7 +24,9 @@ type Manager struct {
 	progressRepo        scanner.ProgressRepository
 	txRepo              scanner.TransactionRepository
 	flowRepo            scanner.FlowRepository
-	rpcManager          *RPCManager
+	rpcManager          *rpc.Manager
+	redisClient         *redis.Client
+	queueManager        *redis.QueueManager
 	chainScanners       map[int]*ChainScanner
 	flowRefresher       *FlowStatusRefresher
 	emailService        EmailService
@@ -41,12 +45,16 @@ func NewManager(
 	progressRepo scanner.ProgressRepository,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
-	rpcManager *RPCManager,
+	rpcManager *rpc.Manager,
+	redisClient *redis.Client,
 	emailService EmailService,
 	notificationService NotificationService,
 ) *Manager {
 	// 创建流程状态刷新器
 	flowRefresher := NewFlowStatusRefresher(cfg, flowRepo, timelockRepo, emailService, notificationService)
+
+	// 创建队列管理器
+	queueManager := redis.NewQueueManager(redisClient)
 
 	return &Manager{
 		config:              cfg,
@@ -56,6 +64,8 @@ func NewManager(
 		txRepo:              txRepo,
 		flowRepo:            flowRepo,
 		rpcManager:          rpcManager,
+		redisClient:         redisClient,
+		queueManager:        queueManager,
 		chainScanners:       make(map[int]*ChainScanner),
 		flowRefresher:       flowRefresher,
 		emailService:        emailService,
@@ -190,6 +200,7 @@ func (m *Manager) startChainScanner(ctx context.Context, chainInfo *types.ChainR
 		chainInfo,
 		progress,
 		m.rpcManager,
+		m.queueManager,
 		m.progressRepo,
 		m.txRepo,
 		m.flowRepo,

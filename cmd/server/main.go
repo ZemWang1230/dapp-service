@@ -37,11 +37,13 @@ import (
 	emailService "timelocker-backend/internal/service/email"
 	flowService "timelocker-backend/internal/service/flow"
 	notificationService "timelocker-backend/internal/service/notification"
+	rpcService "timelocker-backend/internal/service/rpc"
 	scannerService "timelocker-backend/internal/service/scanner"
 	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
 
 	"timelocker-backend/pkg/database"
+	"timelocker-backend/pkg/redis"
 
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
@@ -94,14 +96,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. 连接Redis
-	// redisClient, err := database.NewRedisConnection(&cfg.Redis)
-	// if err != nil {
-	// 	logger.Error("Failed to connect to Redis: ", err)
-	// 	os.Exit(1)
-	// }
+	// 3. 初始化数据库错误记录功能
+	logger.InitDB(db)
+	logger.Info("Database error logging initialized")
 
-	// 4. 初始化仓库层
+	// 4. 连接Redis
+	redisClient, err := redis.NewClient(&cfg.Redis)
+	if err != nil {
+		logger.Error("Failed to connect to Redis: ", err)
+		os.Exit(1)
+	}
+
+	// 5. 初始化仓库层
 	userRepository := userRepo.NewRepository(db)
 	chainRepository := chainRepo.NewRepository(db)
 	abiRepository := abiRepo.NewRepository(db)
@@ -116,14 +122,14 @@ func main() {
 	transactionRepository := scannerRepo.NewTransactionRepository(db)
 	flowRepository := scannerRepo.NewFlowRepository(db)
 
-	// 5. 初始化JWT管理器
+	// 6. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
 		cfg.JWT.Secret,
 		cfg.JWT.AccessExpiry,
 		cfg.JWT.RefreshExpiry,
 	)
 
-	// 6. 初始化服务层（注意：authSvc需要在RPC管理器启动后初始化）
+	// 7. 初始化服务层（注意：authSvc需要在RPC管理器启动后初始化）
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
@@ -131,11 +137,11 @@ func main() {
 	flowSvc := flowService.NewFlowService(flowRepository, timelockRepository)
 	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, transactionRepository, cfg)
 
-	// 7. 设置Gin和路由
+	// 8. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)
 	router := gin.Default()
 
-	// 8. 添加CORS中间件
+	// 9. 添加CORS中间件
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -149,7 +155,7 @@ func main() {
 		c.Next()
 	})
 
-	// 9. 创建API路由组
+	// 10. 创建API路由组
 	v1 := router.Group("/api/v1")
 	{
 		chainHandler := chainHandler.NewHandler(chainSvc)
@@ -159,25 +165,25 @@ func main() {
 		sponsorHdl.RegisterRoutes(v1)
 	}
 
-	// 10. Swagger API文档端点
+	// Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
 	docs.SwaggerInfo.Title = "TimeLocker Backend API v1.0"
 	docs.SwaggerInfo.Description = "TimeLocker Backend API"
 	// router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	// 健康检查端点
+	// 11. 健康检查端点
 	router.GET("/api/v1/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// 11. 启动RPC管理器
-	rpcManager := scannerService.NewRPCManager(cfg, chainRepository)
+	// 12. 启动RPC管理器
+	rpcManager := rpcService.NewManager(cfg, chainRepository, redisClient)
 	if err := rpcManager.Start(ctx); err != nil {
 		logger.Error("Failed to start RPC manager", err)
 	} else {
 		logger.Info("RPC Manager started successfully")
 	}
 
-	// 12. 启动扫链管理器
+	// 13. 启动扫链管理器
 	scannerManager := scannerService.NewManager(
 		cfg,
 		chainRepository,
@@ -186,6 +192,7 @@ func main() {
 		transactionRepository,
 		flowRepository,
 		rpcManager,
+		redisClient,
 		emailSvc,
 		notificationSvc,
 	)
@@ -195,11 +202,11 @@ func main() {
 		logger.Info("Scanner Manager started successfully")
 	}
 
-	// 13. 初始化需要RPC管理器的服务和处理器
+	// 14. 初始化需要RPC管理器的服务和处理器
 	authSvc := authService.NewService(userRepository, safeRepository, rpcManager, jwtManager)
 	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, flowRepository, rpcManager, cfg)
 
-	// 14. 初始化处理器并注册路由
+	// 15. 初始化处理器并注册路由
 	authHandler := authHandler.NewHandler(authSvc)
 	authHandler.RegisterRoutes(v1)
 
@@ -218,7 +225,7 @@ func main() {
 	notificationHdl := notificationHandler.NewNotificationHandler(notificationSvc, authSvc)
 	notificationHdl.RegisterRoutes(v1)
 
-	// 15. 启动定时任务
+	// 16. 启动定时任务
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -242,7 +249,7 @@ func main() {
 		}
 	}()
 
-	// 16. 启动邮箱验证码清理定时任务
+	// 17. 启动邮箱验证码清理定时任务
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -266,7 +273,7 @@ func main() {
 		}
 	}()
 
-	// 17. 启动HTTP服务器
+	// 18. 启动HTTP服务器
 	addr := ":" + cfg.Server.Port
 	srv := &http.Server{
 		Addr:    addr,
@@ -285,11 +292,11 @@ func main() {
 		}
 	}()
 
-	// 18. 等待关闭信号
+	// 19. 等待关闭信号
 	<-sigCh
 	logger.Info("Received shutdown signal, starting graceful shutdown...")
 
-	// 19. 开始优雅关闭（逆序关闭）
+	// 20. 开始优雅关闭（逆序关闭）
 
 	// Step 1: 停止HTTP服务器（最后启动的最先关闭）
 	logger.Info("Stopping HTTP server...")
@@ -313,7 +320,11 @@ func main() {
 	logger.Info("Stopping RPC manager...")
 	rpcManager.Stop()
 
-	// Step 5: 确保所有扫链器状态已更新为paused（兜底保护）
+	// Step 5: 关闭Redis连接
+	logger.Info("Closing Redis connection...")
+	redisClient.Close()
+
+	// Step 6: 确保所有扫链器状态已更新为paused（兜底保护）
 	logger.Info("Ensuring all scanner status updated to paused...")
 	shutdownCtx, shutdownCancel = context.WithTimeout(context.Background(), 3*time.Second)
 	if err := updateAllScannersStatusToPaused(shutdownCtx, progressRepository); err != nil {
@@ -321,7 +332,7 @@ func main() {
 	}
 	shutdownCancel()
 
-	// Step 6: 等待所有goroutine结束
+	// Step 7: 等待所有goroutine结束
 	logger.Info("Waiting for all goroutines to finish...")
 	done := make(chan struct{})
 	go func() {

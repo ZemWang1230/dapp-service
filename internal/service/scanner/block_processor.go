@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"timelocker-backend/internal/config"
+	"timelocker-backend/internal/service/processor"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 
@@ -20,16 +21,22 @@ import (
 
 // BlockProcessor 区块处理器
 type BlockProcessor struct {
-	config    *config.Config
-	chainInfo *types.ChainRPCInfo
+	config           *config.Config
+	chainInfo        *types.ChainRPCInfo
+	processorManager *processor.ProcessorManager
+	rpcManager       RPCManager
 
-	// Compound Timelock 事件签名和ABI
+	// 保留原有的ABI用于扫描（获取topics）
 	compoundEventSignatures map[string]common.Hash
 	compoundABI             abi.ABI
+	ozEventSignatures       map[string]common.Hash
+	ozABI                   abi.ABI
+}
 
-	// OpenZeppelin Timelock 事件签名和ABI
-	ozEventSignatures map[string]common.Hash
-	ozABI             abi.ABI
+// RPCManager 接口定义（与processor包中的接口保持一致）
+type RPCManager interface {
+	ExecuteWithRPCInfoDo(ctx context.Context, chainID int, fn func(*ethclient.Client, int) error) (string, int, error)
+	ExecuteWithRPCInfoDoInfiniteRetry(ctx context.Context, chainID int, fn func(*ethclient.Client, int) error) (string, int, error)
 }
 
 // TimelockEvent Timelock事件接口
@@ -40,16 +47,18 @@ type TimelockEvent interface {
 	GetBlockNumber() uint64
 }
 
-// NewBlockProcessor 创建新的区块处理器
-func NewBlockProcessor(cfg *config.Config, chainInfo *types.ChainRPCInfo) *BlockProcessor {
+// NewBlockProcessorWithRPCManager 创建带RPC管理器的区块处理器
+func NewBlockProcessorWithRPCManager(cfg *config.Config, chainInfo *types.ChainRPCInfo, rpcManager RPCManager) *BlockProcessor {
 	bp := &BlockProcessor{
 		config:                  cfg,
 		chainInfo:               chainInfo,
+		processorManager:        processor.NewProcessorManagerWithRPCManager(rpcManager),
+		rpcManager:              rpcManager,
 		compoundEventSignatures: make(map[string]common.Hash),
 		ozEventSignatures:       make(map[string]common.Hash),
 	}
 
-	// 初始化事件签名和ABI
+	// 初始化事件签名和ABI（用于扫描）
 	if err := bp.initEventSignaturesAndABI(); err != nil {
 		logger.Error("Failed to initialize event signatures and ABI", err)
 	}
@@ -100,10 +109,8 @@ func (bp *BlockProcessor) initEventSignaturesAndABI() error {
 	return nil
 }
 
-// ScanBlockRange 扫描区块范围获取timelock事件
-func (bp *BlockProcessor) ScanBlockRange(ctx context.Context, client *ethclient.Client, fromBlock, toBlock int64) ([]TimelockEvent, error) {
-	var allEvents []TimelockEvent
-
+// ScanBlockRangeRaw 扫描区块范围获取原始日志数据
+func (bp *BlockProcessor) ScanBlockRangeRaw(ctx context.Context, client *ethclient.Client, fromBlock, toBlock int64) ([]ethtypes.Log, error) {
 	// 获取所有相关事件的topics
 	topics := bp.getAllEventTopics()
 
@@ -116,22 +123,24 @@ func (bp *BlockProcessor) ScanBlockRange(ctx context.Context, client *ethclient.
 
 	logs, err := client.FilterLogs(ctx, query)
 	if err != nil {
+		logger.Error("Failed to filter logs", err, "chain_id", bp.chainInfo.ChainID, "from_block", fromBlock, "to_block", toBlock)
 		return nil, fmt.Errorf("failed to filter logs from block %d to %d: %w", fromBlock, toBlock, err)
 	}
 
-	// 处理每个日志
-	for _, log := range logs {
-		event, err := bp.processLog(ctx, client, &log)
-		if err != nil {
-			logger.Error("Failed to process log", err, "tx_hash", log.TxHash.Hex(), "block", log.BlockNumber)
-			continue
-		}
-		if event != nil {
-			allEvents = append(allEvents, event)
-		}
+	return logs, nil
+}
+
+// ProcessLogFromRawData 从原始日志数据处理事件
+func (bp *BlockProcessor) ProcessLogFromRawData(ctx context.Context, client *ethclient.Client, rawLogData string) (types.TimelockEvent, error) {
+	// 解析原始日志数据
+	var log ethtypes.Log
+	if err := json.Unmarshal([]byte(rawLogData), &log); err != nil {
+		logger.Error("Failed to unmarshal log data", err, "chain_id", bp.chainInfo.ChainID, "raw_log_data", rawLogData)
+		return nil, fmt.Errorf("failed to unmarshal log data: %w", err)
 	}
 
-	return allEvents, nil
+	// 使用现有的processLog方法处理
+	return bp.processLog(ctx, client, &log)
 }
 
 // getAllEventTopics 获取所有事件的topic
@@ -157,367 +166,15 @@ func (bp *BlockProcessor) processLog(ctx context.Context, client *ethclient.Clie
 		return nil, fmt.Errorf("log has no topics")
 	}
 
-	eventSignature := log.Topics[0]
-
-	// 1. eth_getTransactionByHash 获取交易信息
-	tx, _, err := client.TransactionByHash(ctx, log.TxHash)
+	// 使用新的处理器架构
+	event, err := bp.processorManager.ProcessLog(ctx, client, log, bp.chainInfo.ChainID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction by hash %s: %w", log.TxHash.Hex(), err)
+		logger.Error("Failed to process log with chain processor", err,
+			"chain_id", bp.chainInfo.ChainID,
+			"tx_hash", log.TxHash.Hex(),
+			"block_number", log.BlockNumber)
+		return nil, err
 	}
 
-	// 2. eth_getTransactionReceipt 获取交易回执
-	receipt, err := client.TransactionReceipt(ctx, log.TxHash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction receipt %s: %w", log.TxHash.Hex(), err)
-	}
-
-	// 3. eth_getBlockByNumber 获取区块信息（用于时间戳）
-	blockTimestamp, err := bp.getBlockTimestamp(ctx, client, log.BlockNumber)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get block %d: %w", log.BlockNumber, err)
-	}
-
-	// 4. 解析from地址
-	fromAddress, err := bp.getTransactionSender(tx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction sender: %w", err)
-	}
-
-	// 5. 确定交易状态
-	txStatus := "failed"
-	if receipt.Status == ethtypes.ReceiptStatusSuccessful {
-		txStatus = "success"
-	}
-
-	// 6. 检查是否是Compound事件
-	if event := bp.parseCompoundEvent(log, eventSignature, fromAddress, txStatus, blockTimestamp); event != nil {
-		return event, nil
-	}
-
-	// 7. 检查是否是OpenZeppelin事件
-	if event := bp.parseOpenZeppelinEvent(log, eventSignature, fromAddress, txStatus, blockTimestamp); event != nil {
-		return event, nil
-	}
-
-	return nil, fmt.Errorf("unknown event signature: %s", eventSignature.Hex())
-}
-
-// getBlockTimestamp 获取区块时间戳
-func (bp *BlockProcessor) getBlockTimestamp(ctx context.Context, client *ethclient.Client, blockNumber uint64) (uint64, error) {
-	header, err := client.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
-	if err != nil {
-		logger.Warn("Failed to get block header by number", "block", blockNumber, "chain", bp.chainInfo.ChainName, "error", err)
-		return 0, err
-	}
-	return header.Time, nil
-}
-
-// getTransactionSender 获取交易发送者地址
-func (bp *BlockProcessor) getTransactionSender(tx *ethtypes.Transaction) (string, error) {
-	// 使用Sender方法获取发送者地址
-	signer := ethtypes.LatestSignerForChainID(big.NewInt(int64(bp.chainInfo.ChainID)))
-	sender, err := ethtypes.Sender(signer, tx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get transaction sender: %w", err)
-	}
-	return sender.Hex(), nil
-}
-
-// parseCompoundEvent 解析Compound Timelock事件
-func (bp *BlockProcessor) parseCompoundEvent(log *ethtypes.Log, eventSignature common.Hash, fromAddress, txStatus string, blockTimestamp uint64) TimelockEvent {
-	// 查找匹配的事件类型
-	var eventType string
-	for name, signature := range bp.compoundEventSignatures {
-		if signature == eventSignature {
-			eventType = name
-			break
-		}
-	}
-
-	if eventType == "" {
-		return nil
-	}
-
-	// 解析事件数据
-	eventData, err := bp.parseCompoundEventData(eventType, log)
-	if err != nil {
-		logger.Error("Failed to parse Compound event data", err, "event_type", eventType, "tx_hash", log.TxHash.Hex())
-		return nil
-	}
-
-	// 创建Compound事件
-	event := &types.CompoundTimelockEvent{
-		EventType:       eventType,
-		TxHash:          log.TxHash.Hex(),
-		BlockNumber:     log.BlockNumber,
-		BlockTimestamp:  blockTimestamp,
-		ChainID:         bp.chainInfo.ChainID,
-		ChainName:       bp.chainInfo.ChainName,
-		ContractAddress: log.Address.Hex(),
-		FromAddress:     fromAddress,
-		ToAddress:       log.Address.Hex(), // 对于事件，to地址就是合约地址
-		TxStatus:        txStatus,
-		EventData:       eventData,
-	}
-
-	// 解析特定字段
-	bp.extractCompoundEventFields(event, log)
-
-	return event
-}
-
-// parseOpenZeppelinEvent 解析OpenZeppelin Timelock事件
-func (bp *BlockProcessor) parseOpenZeppelinEvent(log *ethtypes.Log, eventSignature common.Hash, fromAddress, txStatus string, blockTimestamp uint64) TimelockEvent {
-	// 查找匹配的事件类型
-	var eventType string
-	for name, signature := range bp.ozEventSignatures {
-		if signature == eventSignature {
-			eventType = name
-			break
-		}
-	}
-
-	if eventType == "" {
-		return nil
-	}
-
-	// 解析事件数据
-	eventData, err := bp.parseOpenZeppelinEventData(eventType, log)
-	if err != nil {
-		logger.Error("Failed to parse OpenZeppelin event data", err, "event_type", eventType, "tx_hash", log.TxHash.Hex())
-		return nil
-	}
-
-	// 创建OpenZeppelin事件
-	event := &types.OpenZeppelinTimelockEvent{
-		EventType:       eventType,
-		TxHash:          log.TxHash.Hex(),
-		BlockNumber:     log.BlockNumber,
-		BlockTimestamp:  blockTimestamp,
-		ChainID:         bp.chainInfo.ChainID,
-		ChainName:       bp.chainInfo.ChainName,
-		ContractAddress: log.Address.Hex(),
-		FromAddress:     fromAddress,
-		ToAddress:       log.Address.Hex(), // 对于事件，to地址就是合约地址
-		TxStatus:        txStatus,
-		EventData:       eventData,
-	}
-
-	// 解析特定字段
-	bp.extractOpenZeppelinEventFields(event, log)
-
-	return event
-}
-
-// parseCompoundEventData 解析Compound事件数据
-func (bp *BlockProcessor) parseCompoundEventData(eventType string, log *ethtypes.Log) (string, error) {
-	event, exists := bp.compoundABI.Events[eventType]
-	if !exists {
-		return "", fmt.Errorf("event %s not found in Compound ABI", eventType)
-	}
-
-	// 解析事件数据
-	eventData := make(map[string]interface{})
-	if err := event.Inputs.UnpackIntoMap(eventData, log.Data); err != nil {
-		return "", fmt.Errorf("failed to unpack event data: %w", err)
-	}
-
-	// 解析indexed参数（topics）
-	indexedData := make(map[string]interface{})
-	topicIndex := 1 // 第0个topic是事件签名
-	for _, input := range event.Inputs {
-		if input.Indexed && topicIndex < len(log.Topics) {
-			switch input.Type.String() {
-			case "bytes32":
-				indexedData[input.Name] = log.Topics[topicIndex].Hex()
-			case "address":
-				indexedData[input.Name] = common.HexToAddress(log.Topics[topicIndex].Hex()).Hex()
-			default:
-				indexedData[input.Name] = log.Topics[topicIndex].Hex()
-			}
-			topicIndex++
-		}
-	}
-
-	// 合并数据
-	allData := make(map[string]interface{})
-	allData["indexed"] = indexedData
-	allData["non_indexed"] = eventData
-	allData["event_type"] = eventType
-	allData["contract_address"] = log.Address.Hex()
-
-	// 转换为JSON字符串
-	jsonData, err := json.Marshal(allData)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal event data: %w", err)
-	}
-
-	return string(jsonData), nil
-}
-
-// parseOpenZeppelinEventData 解析OpenZeppelin事件数据
-func (bp *BlockProcessor) parseOpenZeppelinEventData(eventType string, log *ethtypes.Log) (map[string]interface{}, error) {
-	event, exists := bp.ozABI.Events[eventType]
-	if !exists {
-		return nil, fmt.Errorf("event %s not found in OpenZeppelin ABI", eventType)
-	}
-
-	// 解析事件数据
-	eventData := make(map[string]interface{})
-	if err := event.Inputs.UnpackIntoMap(eventData, log.Data); err != nil {
-		return nil, fmt.Errorf("failed to unpack event data: %w", err)
-	}
-
-	// 解析indexed参数（topics）
-	indexedData := make(map[string]interface{})
-	topicIndex := 1 // 第0个topic是事件签名
-	for _, input := range event.Inputs {
-		if input.Indexed && topicIndex < len(log.Topics) {
-			switch input.Type.String() {
-			case "bytes32":
-				indexedData[input.Name] = log.Topics[topicIndex].Hex()
-			case "address":
-				indexedData[input.Name] = common.HexToAddress(log.Topics[topicIndex].Hex()).Hex()
-			case "uint256":
-				indexedData[input.Name] = log.Topics[topicIndex].Big().String()
-			default:
-				indexedData[input.Name] = log.Topics[topicIndex].Hex()
-			}
-			topicIndex++
-		}
-	}
-
-	// 合并数据
-	allData := make(map[string]interface{})
-	allData["indexed"] = indexedData
-	allData["non_indexed"] = eventData
-	allData["event_type"] = eventType
-	allData["contract_address"] = log.Address.Hex()
-
-	return allData, nil
-}
-
-// extractCompoundEventFields 提取Compound事件特定字段
-func (bp *BlockProcessor) extractCompoundEventFields(event *types.CompoundTimelockEvent, log *ethtypes.Log) {
-	abiEvent, exists := bp.compoundABI.Events[event.EventType]
-	if !exists {
-		logger.Error("Event not found in ABI", fmt.Errorf("event %s not found", event.EventType), "event_type", event.EventType)
-		return
-	}
-
-	// 解析非索引数据
-	eventData := make(map[string]interface{})
-	if err := abiEvent.Inputs.UnpackIntoMap(eventData, log.Data); err != nil {
-		logger.Error("Failed to unpack event data", err)
-		return
-	}
-
-	// 解析索引数据（topics）
-	topicIndex := 1
-	for _, input := range abiEvent.Inputs {
-		if input.Indexed && topicIndex < len(log.Topics) {
-			switch input.Name {
-			case "txHash":
-				txHashHex := log.Topics[topicIndex].Hex()
-				event.EventTxHash = &txHashHex
-			case "target":
-				targetAddr := common.HexToAddress(log.Topics[topicIndex].Hex()).Hex()
-				event.EventTarget = &targetAddr
-			}
-			topicIndex++
-		}
-	}
-
-	// 解析非索引数据中的字段
-	if value, ok := eventData["value"]; ok {
-		if bigIntValue, ok := value.(*big.Int); ok {
-			event.EventValue = bigIntValue.String()
-		}
-	}
-
-	if signature, ok := eventData["signature"]; ok {
-		if sigStr, ok := signature.(string); ok {
-			event.EventFunctionSignature = &sigStr
-		}
-	}
-
-	if data, ok := eventData["data"]; ok {
-		if dataBytes, ok := data.([]byte); ok {
-			event.EventCallData = dataBytes
-		}
-	}
-
-	if eta, ok := eventData["eta"]; ok {
-		if bigIntEta, ok := eta.(*big.Int); ok {
-			etaInt64 := bigIntEta.Int64()
-			event.EventEta = &etaInt64
-		}
-	}
-}
-
-// extractOpenZeppelinEventFields 提取OpenZeppelin事件特定字段
-func (bp *BlockProcessor) extractOpenZeppelinEventFields(event *types.OpenZeppelinTimelockEvent, log *ethtypes.Log) {
-	abiEvent, exists := bp.ozABI.Events[event.EventType]
-	if !exists {
-		logger.Error("Event not found in ABI", fmt.Errorf("event %s not found", event.EventType), "event_type", event.EventType)
-		return
-	}
-
-	// 解析非索引数据
-	eventData := make(map[string]interface{})
-	if err := abiEvent.Inputs.UnpackIntoMap(eventData, log.Data); err != nil {
-		logger.Error("Failed to unpack event data", err)
-		return
-	}
-
-	// 解析索引数据（topics）
-	topicIndex := 1
-	for _, input := range abiEvent.Inputs {
-		if input.Indexed && topicIndex < len(log.Topics) {
-			switch input.Name {
-			case "id":
-				idHex := log.Topics[topicIndex].Hex()
-				event.EventID = &idHex
-			case "index":
-				if event.EventType == "CallScheduled" || event.EventType == "CallExecuted" {
-					event.EventIndex = int(log.Topics[topicIndex].Big().Int64())
-				}
-			}
-			topicIndex++
-		}
-	}
-
-	// 解析非索引数据中的字段
-	if target, ok := eventData["target"]; ok {
-		if targetAddr, ok := target.(common.Address); ok {
-			targetStr := targetAddr.Hex()
-			event.EventTarget = &targetStr
-		}
-	}
-
-	if value, ok := eventData["value"]; ok {
-		if bigIntValue, ok := value.(*big.Int); ok {
-			event.EventValue = bigIntValue.String()
-		}
-	}
-
-	if data, ok := eventData["data"]; ok {
-		if dataBytes, ok := data.([]byte); ok {
-			event.EventCallData = dataBytes
-		}
-	}
-
-	if predecessor, ok := eventData["predecessor"]; ok {
-		if predBytes, ok := predecessor.([32]byte); ok {
-			predHex := common.BytesToHash(predBytes[:]).Hex()
-			event.EventPredecessor = &predHex
-		}
-	}
-
-	if delay, ok := eventData["delay"]; ok {
-		if bigIntDelay, ok := delay.(*big.Int); ok {
-			delayInt64 := bigIntDelay.Int64()
-			event.EventDelay = &delayInt64
-		}
-	}
+	return event, nil
 }

@@ -1,11 +1,8 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
-	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 
 	"github.com/spf13/viper"
@@ -18,6 +15,7 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	RPC      RPCConfig      `mapstructure:"rpc"`
+	RPCPool  RPCPoolConfig  `mapstructure:"rpc_pool"`
 	Email    EmailConfig    `mapstructure:"email"`
 	Scanner  ScannerConfig  `mapstructure:"scanner"`
 }
@@ -51,8 +49,14 @@ type JWTConfig struct {
 
 // RPCConfig RPC配置
 type RPCConfig struct {
-	Provider        string `mapstructure:"provider"`
-	IncludeTestnets bool   `mapstructure:"include_testnets"`
+	IncludeTestnets bool `mapstructure:"include_testnets"`
+}
+
+// RPCPoolConfig RPC池配置
+type RPCPoolConfig struct {
+	HealthCheckInterval time.Duration `mapstructure:"health_check_interval"` // 统一检查间隔（健康+能力）
+	MaxRetryCount       int           `mapstructure:"max_retry_count"`       // 单个RPC最大重试次数
+	MaxRPCSwitchCount   int           `mapstructure:"max_rpc_switch_count"`  // 最大RPC切换次数
 }
 
 // EmailConfig 邮件配置
@@ -69,16 +73,17 @@ type EmailConfig struct {
 
 // ScannerConfig 扫链配置
 type ScannerConfig struct {
-	// RPC配置
-	RPCTimeout    time.Duration `mapstructure:"rpc_timeout"`
-	RPCRetryMax   int           `mapstructure:"rpc_retry_max"`
-	RPCRetryDelay time.Duration `mapstructure:"rpc_retry_delay"`
-
-	// 扫块配置
-	ScanBatchSize     int           `mapstructure:"scan_batch_size"`
-	ScanInterval      time.Duration `mapstructure:"scan_interval"`
+	// 慢速模式配置
+	ScanBatchSizeSlow int           `mapstructure:"scan_batch_size_slow"`
 	ScanIntervalSlow  time.Duration `mapstructure:"scan_interval_slow"`
-	ScanConfirmations int           `mapstructure:"scan_confirmations"`
+
+	// 扫描通用配置
+	ScanConfirmations int `mapstructure:"scan_confirmations"`
+
+	// 接近最新区块的处理
+	NearLatestThreshold int           `mapstructure:"near_latest_threshold"`
+	NearLatestWaitTime  time.Duration `mapstructure:"near_latest_wait_time"`
+	LogQueueBatchSize   int           `mapstructure:"log_queue_batch_size"`
 
 	// Flow refresher config
 	FlowRefreshInterval  time.Duration `mapstructure:"flow_refresh_interval"`
@@ -118,15 +123,20 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("email.verification_code_expiry", time.Minute*10)
 	viper.SetDefault("email.email_url", "http://localhost:8080")
 
+	// RPC Pool defaults
+	viper.SetDefault("rpc_pool.health_check_interval", time.Minute*3)
+	viper.SetDefault("rpc_pool.max_retry_count", 5)
+	viper.SetDefault("rpc_pool.max_rpc_switch_count", 5)
+
 	// Scanner defaults
-	viper.SetDefault("scanner.rpc_timeout", time.Second*10)
-	viper.SetDefault("scanner.rpc_retry_max", 3)
-	viper.SetDefault("scanner.rpc_retry_delay", time.Second*1)
-	viper.SetDefault("scanner.scan_batch_size", 500)
-	viper.SetDefault("scanner.scan_interval", time.Second*5)
+	viper.SetDefault("scanner.scan_batch_size_slow", 100)
 	viper.SetDefault("scanner.scan_interval_slow", time.Second*30)
-	viper.SetDefault("scanner.scan_confirmations", 12)
+	viper.SetDefault("scanner.scan_confirmations", 3)
+	viper.SetDefault("scanner.near_latest_threshold", 100)
+	viper.SetDefault("scanner.near_latest_wait_time", time.Second*30)
+	viper.SetDefault("scanner.log_queue_batch_size", 100)
 	viper.SetDefault("scanner.flow_refresh_interval", time.Second*60)
+	viper.SetDefault("scanner.flow_refresh_batch_size", 100)
 
 	// Read environment variables
 	viper.AutomaticEnv()
@@ -146,26 +156,4 @@ func LoadConfig() (*Config, error) {
 
 	logger.Info("LoadConfig: ", "load config success")
 	return &config, nil
-}
-
-// GetRPCURL 根据链RPC信息获取RPC URL
-func (c *Config) GetRPCURL(chainInfo *types.ChainRPCInfo) (string, error) {
-	if !chainInfo.RPCEnabled {
-		return "", errors.New("RPC disabled for chain: " + chainInfo.ChainName)
-	}
-
-	// 解析官方RPC URLs
-	var officialRPCs []string
-	if err := json.Unmarshal([]byte(chainInfo.OfficialRPCUrls), &officialRPCs); err != nil {
-		logger.Error("GetRPCURL error: ", fmt.Errorf("failed to parse official RPC URLs for chain: %s", chainInfo.ChainName))
-		return "", errors.New("failed to parse official RPC URLs for chain: " + chainInfo.ChainName)
-	}
-
-	if len(officialRPCs) == 0 {
-		logger.Error("GetRPCURL error: ", fmt.Errorf("no official RPC URLs available for chain: %s", chainInfo.ChainName))
-		return "", errors.New("no official RPC URLs available for chain: " + chainInfo.ChainName)
-	}
-
-	// 使用第一个官方RPC URL
-	return officialRPCs[0], nil
 }

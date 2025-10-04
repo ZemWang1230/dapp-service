@@ -24,6 +24,7 @@ type Repository interface {
 
 	// RPC配置相关
 	GetRPCEnabledChains(ctx context.Context, includeTestnets bool) ([]types.ChainRPCInfo, error)
+	UpdateChainRPCData(ctx context.Context, chainID int, updateData map[string]interface{}) error
 }
 
 // repository 支持链仓库实现
@@ -168,4 +169,25 @@ func (r *repository) GetRPCEnabledChains(ctx context.Context, includeTestnets bo
 
 	logger.Info("GetRPCEnabledChains Success: ", "count", len(chains), "include_testnets", includeTestnets)
 	return chains, nil
+}
+
+// UpdateChainRPCData 更新链的RPC数据
+func (r *repository) UpdateChainRPCData(ctx context.Context, chainID int, updateData map[string]interface{}) error {
+	result := r.db.WithContext(ctx).
+		Model(&types.SupportChain{}).
+		Where("chain_id = ?", chainID).
+		Updates(updateData)
+
+	if result.Error != nil {
+		logger.Error("UpdateChainRPCData Error: ", result.Error, "chain_id", chainID)
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		logger.Warn("UpdateChainRPCData: No rows affected", "chain_id", chainID)
+		return fmt.Errorf("chain not found or no changes made: chain_id %d", chainID)
+	}
+
+	logger.Info("UpdateChainRPCData Success: ", "chain_id", chainID, "affected_rows", result.RowsAffected)
+	return nil
 }

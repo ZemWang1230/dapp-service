@@ -11,7 +11,7 @@ import (
 
 	"timelocker-backend/internal/repository/safe"
 	"timelocker-backend/internal/repository/user"
-	"timelocker-backend/internal/service/scanner"
+	"timelocker-backend/internal/service/rpc"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/crypto"
 	"timelocker-backend/pkg/logger"
@@ -47,11 +47,11 @@ type Service interface {
 type service struct {
 	userRepo   user.Repository
 	safeRepo   safe.Repository
-	rpcManager *scanner.RPCManager
+	rpcManager *rpc.Manager
 	jwtManager *utils.JWTManager
 }
 
-func NewService(userRepo user.Repository, safeRepo safe.Repository, rpcManager *scanner.RPCManager, jwtManager *utils.JWTManager) Service {
+func NewService(userRepo user.Repository, safeRepo safe.Repository, rpcManager *rpc.Manager, jwtManager *utils.JWTManager) Service {
 	return &service{
 		userRepo:   userRepo,
 		safeRepo:   safeRepo,
@@ -75,7 +75,7 @@ func (s *service) GetNonce(ctx context.Context, req *types.GetNonceRequest) (*ty
 	nonce := crypto.GenerateNonce()
 
 	// 构造签名消息
-	message := fmt.Sprintf("Welcome to TimeLocker!\n\nClick to sign in and accept the TimeLocker Terms of Service.\n\nThis request will not trigger a blockchain transaction or cost any gas fees.\n\nWallet address:\n%s\n\nNonce:\n%s", normalizedAddress, nonce)
+	message := fmt.Sprintf("Welcome to Timelock!\n\nClick to sign in and accept the Timelock Terms of Service.\n\nThis request will not trigger a blockchain transaction or cost any gas fees.\n\nWallet address:\n%s\n\nNonce:\n%s", normalizedAddress, nonce)
 
 	// 设置过期时间（5分钟）
 	expiresAt := time.Now().Add(5 * time.Minute)

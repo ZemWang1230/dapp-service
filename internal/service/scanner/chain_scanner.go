@@ -9,8 +9,10 @@ import (
 	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/repository/timelock"
+	"timelocker-backend/internal/service/rpc"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
+	"timelocker-backend/pkg/redis"
 
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -30,7 +32,8 @@ type ChainScanner struct {
 	config       *config.Config
 	chainInfo    *types.ChainRPCInfo
 	progress     *types.BlockScanProgress
-	rpcManager   *RPCManager
+	rpcManager   *rpc.Manager
+	queueManager *redis.QueueManager
 	progressRepo scanner.ProgressRepository
 	txRepo       scanner.TransactionRepository
 	flowRepo     scanner.FlowRepository
@@ -64,7 +67,8 @@ func NewChainScanner(
 	cfg *config.Config,
 	chainInfo *types.ChainRPCInfo,
 	progress *types.BlockScanProgress,
-	rpcManager *RPCManager,
+	rpcManager *rpc.Manager,
+	queueManager *redis.QueueManager,
 	progressRepo scanner.ProgressRepository,
 	txRepo scanner.TransactionRepository,
 	flowRepo scanner.FlowRepository,
@@ -77,6 +81,7 @@ func NewChainScanner(
 		chainInfo:    chainInfo,
 		progress:     progress,
 		rpcManager:   rpcManager,
+		queueManager: queueManager,
 		progressRepo: progressRepo,
 		txRepo:       txRepo,
 		flowRepo:     flowRepo,
@@ -86,7 +91,7 @@ func NewChainScanner(
 	}
 
 	// 创建处理器
-	cs.blockProcessor = NewBlockProcessor(cfg, cs.chainInfo)
+	cs.blockProcessor = NewBlockProcessorWithRPCManager(cfg, cs.chainInfo, rpcManager)
 	cs.eventProcessor = NewEventProcessor(cfg, txRepo, flowRepo, emailService, notificationService, timelockRepo)
 
 	return cs
@@ -104,6 +109,10 @@ func (cs *ChainScanner) Start(ctx context.Context) error {
 	// 启动扫描协程
 	cs.wg.Add(1)
 	go cs.scanLoop(ctx)
+
+	// 启动事件处理协程
+	cs.wg.Add(1)
+	go cs.eventProcessLoop(ctx)
 
 	cs.isRunning = true
 	return nil
@@ -126,7 +135,7 @@ func (cs *ChainScanner) Stop() {
 	// 安全地关闭channel
 	select {
 	case <-cs.stopCh:
-		// channel已经关闭
+	// channel已经关闭
 	default:
 		close(cs.stopCh)
 	}
@@ -201,72 +210,64 @@ func (cs *ChainScanner) scanLoop(ctx context.Context) {
 
 // scanBlocks 扫描区块
 func (cs *ChainScanner) scanBlocks(ctx context.Context) error {
-	var latestBlock uint64
-
-	// 使用RPC管理器的重试机制获取最新区块号
-	err := cs.rpcManager.ExecuteWithRetry(ctx, cs.chainInfo.ChainID, func(client *ethclient.Client) error {
-		var err error
-		latestBlock, err = client.BlockNumber(ctx)
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get latest block number: %w", err)
-	}
-
-	// 更新最新网络区块号
-	cs.progress.LatestNetworkBlock = int64(latestBlock)
-
-	// 计算需要扫描的区块范围
-	fromBlock := cs.progress.LastScannedBlock + 1
-	toBlock := cs.calculateToBlock(fromBlock, int64(latestBlock))
-
-	if fromBlock > int64(latestBlock) {
-		logger.Debug("No new blocks to scan", "chain_id", cs.chainInfo.ChainID, "latest", latestBlock)
-		return nil
-	}
-
-	// 批量扫描区块范围（使用eth_getLogs一次性获取所有事件）
-	select {
-	case <-cs.stopCh:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		var events []TimelockEvent
-
-		// 使用RPC管理器的重试机制扫描区块范围
-		err := cs.rpcManager.ExecuteWithRetry(ctx, cs.chainInfo.ChainID, func(client *ethclient.Client) error {
-			var err error
-			events, err = cs.blockProcessor.ScanBlockRange(ctx, client, fromBlock, toBlock)
-			return err
-		})
+	// 在同一RPC上：获取最新区块、计算范围并扫描
+	_, _, err := cs.rpcManager.ExecuteWithRPCInfoDoInfiniteRetry(ctx, cs.chainInfo.ChainID, func(client *ethclient.Client, maxSafeRange int) error {
+		// 1) 最新区块
+		latestBlock, err := client.BlockNumber(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to scan block range %d-%d: %w", fromBlock, toBlock, err)
+			return err
 		}
 
-		if len(events) > 0 {
-			// 处理事件
-			if err := cs.eventProcessor.ProcessEvents(ctx, cs.chainInfo.ChainID, cs.chainInfo.ChainName, events); err != nil {
-				return fmt.Errorf("failed to process events: %w", err)
+		// 2) 更新最新网络区块号
+		cs.progress.LatestNetworkBlock = int64(latestBlock)
+
+		// 3) 计算区间（使用该RPC的maxSafeRange）
+		fromBlock := cs.progress.LastScannedBlock + 1
+		if fromBlock > int64(latestBlock) {
+			logger.Debug("No new blocks to scan", "chain_id", cs.chainInfo.ChainID, "latest", latestBlock)
+			return nil
+		}
+		toBlock := cs.calculateToBlockWithSafeRange(fromBlock, int64(latestBlock), maxSafeRange)
+
+		// 4) 扫描并入队
+		if fromBlock <= toBlock {
+			logs, err := cs.blockProcessor.ScanBlockRangeRaw(ctx, client, fromBlock, toBlock)
+			if err != nil {
+				return err
+			}
+
+			if len(logs) > 0 {
+				rawLogs := make([]interface{}, len(logs))
+				for i, lg := range logs {
+					rawLogs[i] = lg
+				}
+				if err := cs.queueManager.PushLogs(ctx, cs.chainInfo.ChainID, rawLogs); err != nil {
+					return fmt.Errorf("failed to push logs to queue: %w", err)
+				}
+			}
+
+			cs.progress.LastScannedBlock = toBlock
+			cs.progress.LastUpdateTime = time.Now()
+			cs.lastUpdate = time.Now()
+			if err := cs.progressRepo.UpdateProgressBlock(ctx, cs.chainInfo.ChainID, toBlock, cs.progress.LatestNetworkBlock); err != nil {
+				logger.Error("Failed to update progress", err, "chain_id", cs.chainInfo.ChainID, "block", toBlock)
 			}
 		}
 
-		// 更新进度到最后扫描的区块
-		cs.progress.LastScannedBlock = toBlock
-		cs.progress.LastUpdateTime = time.Now()
-		cs.lastUpdate = time.Now()
-
-		if err := cs.progressRepo.UpdateProgressBlock(ctx, cs.chainInfo.ChainID, toBlock, int64(latestBlock)); err != nil {
-			logger.Error("Failed to update progress", err, "chain_id", cs.chainInfo.ChainID, "block", toBlock)
-		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to scan blocks (context cancelled): %w", err)
 	}
-
 	return nil
 }
 
-// calculateToBlock 计算要扫描到的区块号
-func (cs *ChainScanner) calculateToBlock(fromBlock, latestBlock int64) int64 {
-	batchSize := int64(cs.config.Scanner.ScanBatchSize)
+// calculateToBlockWithSafeRange 根据RPC安全范围计算要扫描到的区块号
+func (cs *ChainScanner) calculateToBlockWithSafeRange(fromBlock, latestBlock int64, maxSafeRange int) int64 {
+	// 根据RPC的安全范围确定批次大小
+	var batchSize int64
+
+	batchSize = int64(maxSafeRange)
 
 	// 计算批次结束区块
 	toBlock := fromBlock + batchSize - 1
@@ -293,13 +294,126 @@ func (cs *ChainScanner) getScanInterval() time.Duration {
 	// 计算落后的区块数
 	lag := cs.progress.LatestNetworkBlock - cs.progress.LastScannedBlock
 
-	if lag > 100 {
-		// 落后超过100个区块，使用快速扫描
-		return cs.config.Scanner.ScanInterval
+	if lag > int64(cs.config.Scanner.NearLatestThreshold) {
+		// 落后较多，使用较短间隔
+		return time.Second * 10
 	} else {
-		// 接近最新区块，使用慢速扫描
+		// 接近最新区块，使用正常扫描间隔
 		return cs.config.Scanner.ScanIntervalSlow
 	}
+}
+
+// eventProcessLoop 事件处理循环
+func (cs *ChainScanner) eventProcessLoop(ctx context.Context) {
+	defer cs.wg.Done()
+
+	logger.Info("Starting event process loop", "chain_id", cs.chainInfo.ChainID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Event process loop stopped by context", "chain_id", cs.chainInfo.ChainID)
+			return
+		case <-cs.stopCh:
+			logger.Info("Event process loop stopped by stop channel", "chain_id", cs.chainInfo.ChainID)
+			return
+		default:
+			// 从Redis队列中获取日志进行处理
+			if err := cs.processQueuedLogs(ctx); err != nil {
+				// 出错时短暂休息
+				select {
+				case <-time.After(time.Second * 5):
+				case <-cs.stopCh:
+					return
+				case <-ctx.Done():
+					return
+				}
+			} else {
+				// 没有数据时短暂休息
+				select {
+				case <-time.After(time.Second * 1):
+				case <-cs.stopCh:
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}
+}
+
+// processQueuedLogs 处理队列中的日志
+func (cs *ChainScanner) processQueuedLogs(ctx context.Context) error {
+	// 批量获取日志
+	rawLogs, err := cs.queueManager.PopLogs(ctx, cs.chainInfo.ChainID, int64(cs.config.Scanner.LogQueueBatchSize))
+	if err != nil {
+		return fmt.Errorf("failed to pop logs from queue: %w", err)
+	}
+
+	if len(rawLogs) == 0 {
+		return nil // 没有数据，正常返回
+	}
+
+	// 处理每个日志
+	for _, rawLog := range rawLogs {
+		if err := cs.processSingleQueuedLog(ctx, rawLog); err != nil {
+			logger.Error("Failed to process single log", err, "chain_id", cs.chainInfo.ChainID, "raw_log", rawLog)
+			// 单个日志处理失败不影响其他日志的处理
+		}
+	}
+
+	return nil
+}
+
+// processSingleQueuedLog 处理单个队列中的日志
+func (cs *ChainScanner) processSingleQueuedLog(ctx context.Context, rawLogData string) error {
+	// 解析日志数据并处理事件
+	event, err := cs.processLogWithRetry(ctx, rawLogData)
+	if err != nil {
+		logger.Error("Failed to process log after retries", err, "chain_id", cs.chainInfo.ChainID)
+		return fmt.Errorf("failed to process log after retries: %w", err)
+	}
+
+	if event != nil {
+		// 处理单个事件
+		events := []TimelockEvent{event}
+		if err := cs.eventProcessor.ProcessEvents(ctx, cs.chainInfo.ChainID, cs.chainInfo.ChainName, events); err != nil {
+			logger.Error("Failed to process event", err, "chain_id", cs.chainInfo.ChainID, "events", events)
+			return fmt.Errorf("failed to process event: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// processLogWithRetry 带重试机制处理日志
+func (cs *ChainScanner) processLogWithRetry(ctx context.Context, rawLogData string) (TimelockEvent, error) {
+	var lastErr error
+
+	// 尝试多个RPC进行处理
+	for attempt := 0; attempt < cs.config.RPCPool.MaxRPCSwitchCount; attempt++ {
+		// 获取健康的RPC客户端
+		client, err := cs.rpcManager.GetClient(ctx, cs.chainInfo.ChainID)
+		if err != nil {
+			lastErr = err
+			logger.Warn("Failed to get RPC client for log processing", "chain_id", cs.chainInfo.ChainID, "attempt", attempt+1, "error", err)
+			continue
+		}
+
+		// 尝试处理日志
+		event, err := cs.blockProcessor.ProcessLogFromRawData(ctx, client, rawLogData)
+		if err != nil {
+			lastErr = err
+			logger.Warn("Failed to process log with RPC", "chain_id", cs.chainInfo.ChainID, "attempt", attempt+1, "error", err)
+			continue
+		}
+
+		// 处理成功
+		return event, nil
+	}
+
+	// 所有RPC都失败了，返回错误
+	return nil, fmt.Errorf("failed to process log after %d RPC attempts: %w", cs.config.RPCPool.MaxRPCSwitchCount, lastErr)
 }
 
 // updateProgressStatus 更新进度状态

@@ -23,20 +23,23 @@ jwt:
 
 # RPC配置 - 用于监听链上事件
 rpc:
-  # 当前使用的提供商（official）
-  provider: "official"
-
   # 是否包含测试网
   include_testnets: true
+
+# RPC池配置
+rpc_pool:
+  health_check_interval: "3m"     # RPC统一检查间隔（健康+能力）
+  max_retry_count: 5               # 最大重试次数
+  max_rpc_switch_count: 5          # 最大RPC切换次数
 
 # 邮件服务配置
 email:
   smtp_host: "smtp.zoho.com"
   smtp_port: 587
-  smtp_username: "gm@timelock.live"  # 发送邮件的邮箱地址
+  smtp_username: "notifications@timelock.tech"  # 发送邮件的邮箱地址
   smtp_password: "xxx"     # 邮箱应用密码（不是登录密码）
-  from_name: "TimeLocker Notification"   # 发件人名称
-  from_email: "gm@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
+  from_name: "TimeLock Notification"   # 发件人名称
+  from_email: "notifications@timelock.tech"     # 发件人邮箱（通常与smtp_username相同）
   
   # 邮件通知功能配置
   verification_code_expiry: "5m"        # 验证码过期时间
@@ -46,16 +49,15 @@ email:
 
 # 扫链系统配置
 scanner:
-  # RPC配置（简化）
-  rpc_timeout: "20s"                  # RPC请求超时时间
-  rpc_retry_max: 10                    # RPC最大重试次数
-  rpc_retry_delay: "10s"               # RPC重试延迟（出错时等待时间）
+  # 扫描通用配置
+  scan_batch_size_slow: 100           # 慢速模式批次大小
+  scan_interval_slow: "30s"           # 慢速模式扫描间隔
+  scan_confirmations: 3               # 区块确认数
   
-  # 扫块配置
-  scan_batch_size: 500                # 每批扫描的区块数量
-  scan_interval: "30s"                 # 快速扫描间隔
-  scan_interval_slow: "30s"           # 慢速扫描间隔（到达最新块后）
-  scan_confirmations: 3              # 区块确认数
+  # 接近最新区块的处理
+  near_latest_threshold: 100          # 接近最新区块的阈值
+  near_latest_wait_time: "30s"        # 接近最新区块时的等待时间
+  log_queue_batch_size: 100           # 日志队列批处理大小
 
   # Flow refresher config
   flow_refresh_interval: "60s"        # 流刷新间隔

@@ -23,11 +23,14 @@ jwt:
 
 # RPC配置 - 用于监听链上事件
 rpc:
-  # 当前使用的提供商（official）
-  provider: "official"
-
   # 是否包含测试网
   include_testnets: true
+
+# RPC池配置
+rpc_pool:
+  health_check_interval: "3m"     # RPC统一检查间隔（健康+能力）
+  max_retry_count: 5               # 最大重试次数
+  max_rpc_switch_count: 5          # 最大RPC切换次数
 
 # 邮件服务配置
 email:
@@ -35,28 +38,27 @@ email:
   smtp_port: 587
   smtp_username: "notifications@timelock.tech"
   smtp_password: "xxx"
-  from_name: "TimeLocker Notification"
+  from_name: "TimeLock Notification"
   from_email: "notifications@timelock.tech"
   
   # 邮件通知功能配置
-  verification_code_expiry: "5m"
+  verification_code_expiry: "5m"        # 验证码过期时间
   
   # 邮件模板配置
-  email_url: "https://timelock.tech"
+  email_url: "https://timelock.tech"      # 前端基础URL，用于生成邮件中的链接
 
 # 扫链系统配置
 scanner:
-  # RPC配置（简化）
-  rpc_timeout: "20s"
-  rpc_retry_max: 10
-  rpc_retry_delay: "10s"
+  # 扫描通用配置
+  scan_batch_size_slow: 100           # 慢速模式批次大小
+  scan_interval_slow: "30s"           # 慢速模式扫描间隔
+  scan_confirmations: 3               # 区块确认数
   
-  # 扫块配置
-  scan_batch_size: 100
-  scan_interval: "30s"
-  scan_interval_slow: "30s"
-  scan_confirmations: 3
+  # 接近最新区块的处理
+  near_latest_threshold: 100          # 接近最新区块的阈值
+  near_latest_wait_time: "30s"        # 接近最新区块时的等待时间
+  log_queue_batch_size: 100           # 日志队列批处理大小
 
   # Flow refresher config
-  flow_refresh_interval: "90s"
-  flow_refresh_batch_size: 100
+  flow_refresh_interval: "60s"        # 流刷新间隔
+  flow_refresh_batch_size: 100        # 流刷新批量大小

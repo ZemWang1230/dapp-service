@@ -264,34 +264,3 @@ const (
 	RelationExecutor     = "executor"
 	RelationCanceller    = "canceller"
 )
-
-// RPCProvider RPC提供商类型
-type RPCProvider string
-
-const (
-	ProviderOfficial RPCProvider = "official"
-)
-
-// RPCHealth RPC健康状态
-type RPCHealth struct {
-	Provider     RPCProvider   `json:"provider"`
-	URL          string        `json:"url"`
-	IsHealthy    bool          `json:"is_healthy"`
-	LastCheck    time.Time     `json:"last_check"`
-	ResponseTime time.Duration `json:"response_time"`
-	ErrorCount   int           `json:"error_count"`
-	LastError    string        `json:"last_error,omitempty"`
-}
-
-// HealthCheckResult 健康检查结果
-type HealthCheckResult struct {
-	ChainID      int           `json:"chain_id"`
-	ChainName    string        `json:"chain_name"`
-	Provider     RPCProvider   `json:"provider"`
-	URL          string        `json:"url"`
-	IsHealthy    bool          `json:"is_healthy"`
-	ResponseTime time.Duration `json:"response_time"`
-	BlockNumber  uint64        `json:"block_number,omitempty"`
-	ErrorMessage string        `json:"error_message,omitempty"`
-	Timestamp    time.Time     `json:"timestamp"`
-}
