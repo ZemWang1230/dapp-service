@@ -291,20 +291,26 @@ func (ep *EventProcessor) processCompoundFlow(ctx context.Context, event *types.
 		}
 	}
 
-	// 发送邮件通知
+	// 异步发送邮件通知（不阻塞事件处理）
 	if statusFrom != statusTo && ep.emailService != nil {
-		if err := ep.emailService.SendFlowNotification(ctx, "compound", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
-			logger.Error("Failed to send email notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
-			// 不返回错误，因为邮件发送失败不应该影响流程状态更新
-		}
+		go func(standard string, chainID int, contract, flowID, from, to string, hash *string, initiator string) {
+			// 使用新的context避免被父context取消影响
+			bgCtx := context.Background()
+			if err := ep.emailService.SendFlowNotification(bgCtx, standard, chainID, contract, flowID, from, to, hash, initiator); err != nil {
+				logger.Error("Failed to send email notification", err, "flow_id", flowID, "status_change", from+"->"+to)
+			}
+		}("compound", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress)
 	}
 
-	// 发送渠道通知
+	// 异步发送渠道通知（不阻塞事件处理）
 	if statusFrom != statusTo && ep.notificationService != nil {
-		if err := ep.notificationService.SendFlowNotification(ctx, "compound", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
-			logger.Error("Failed to send channel notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
-			// 不返回错误，因为通知发送失败不应该影响流程状态更新
-		}
+		go func(standard string, chainID int, contract, flowID, from, to string, hash *string, initiator string) {
+			// 使用新的context避免被父context取消影响
+			bgCtx := context.Background()
+			if err := ep.notificationService.SendFlowNotification(bgCtx, standard, chainID, contract, flowID, from, to, hash, initiator); err != nil {
+				logger.Error("Failed to send channel notification", err, "flow_id", flowID, "status_change", from+"->"+to)
+			}
+		}("compound", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress)
 	}
 
 	return nil
@@ -421,20 +427,26 @@ func (ep *EventProcessor) processOpenZeppelinFlow(ctx context.Context, event *ty
 		}
 	}
 
-	// 发送邮件通知
+	// 异步发送邮件通知（不阻塞事件处理）
 	if statusFrom != statusTo && ep.emailService != nil {
-		if err := ep.emailService.SendFlowNotification(ctx, "openzeppelin", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
-			logger.Error("Failed to send email notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
-			// 不返回错误，因为邮件发送失败不应该影响流程状态更新
-		}
+		go func(standard string, chainID int, contract, flowID, from, to string, hash *string, initiator string) {
+			// 使用新的context避免被父context取消影响
+			bgCtx := context.Background()
+			if err := ep.emailService.SendFlowNotification(bgCtx, standard, chainID, contract, flowID, from, to, hash, initiator); err != nil {
+				logger.Error("Failed to send email notification", err, "flow_id", flowID, "status_change", from+"->"+to)
+			}
+		}("openzeppelin", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress)
 	}
 
-	// 发送渠道通知
+	// 异步发送渠道通知（不阻塞事件处理）
 	if statusFrom != statusTo && ep.notificationService != nil {
-		if err := ep.notificationService.SendFlowNotification(ctx, "openzeppelin", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress); err != nil {
-			logger.Error("Failed to send channel notification", err, "flow_id", flowID, "status_change", statusFrom+"->"+statusTo)
-			// 不返回错误，因为通知发送失败不应该影响流程状态更新
-		}
+		go func(standard string, chainID int, contract, flowID, from, to string, hash *string, initiator string) {
+			// 使用新的context避免被父context取消影响
+			bgCtx := context.Background()
+			if err := ep.notificationService.SendFlowNotification(bgCtx, standard, chainID, contract, flowID, from, to, hash, initiator); err != nil {
+				logger.Error("Failed to send channel notification", err, "flow_id", flowID, "status_change", from+"->"+to)
+			}
+		}("openzeppelin", event.ChainID, normalizedContract, flowID, statusFrom, statusTo, txHash, event.FromAddress)
 	}
 
 	return nil

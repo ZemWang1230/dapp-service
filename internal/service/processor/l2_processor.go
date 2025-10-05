@@ -142,7 +142,7 @@ func (l2p *L2Processor) ProcessLog(ctx context.Context, client *ethclient.Client
 	return event, nil
 }
 
-// tryEnrichEventDataWithL2Strategy L2特殊的数据丰富策略（时间戳必须成功）
+// tryEnrichEventDataWithL2Strategy L2数据丰富策略（简化重试逻辑）
 func (l2p *L2Processor) tryEnrichEventDataWithL2Strategy(ctx context.Context, client *ethclient.Client, log *ethtypes.Log, event types.TimelockEvent) {
 	// 获取链配置
 	chainConfig := l2p.getChainConfigByChainID(l2p.chainID)
@@ -150,28 +150,19 @@ func (l2p *L2Processor) tryEnrichEventDataWithL2Strategy(ctx context.Context, cl
 	// 设置链信息
 	l2p.setChainInfo(event, chainConfig)
 
-	if l2p.rpcManager != nil {
-		// 第一步：获取时间戳（使用无限重试，因为这是必须的）
-		_, _, err := l2p.rpcManager.ExecuteWithRPCInfoDoInfiniteRetry(ctx, l2p.chainID, func(c *ethclient.Client, _ int) error {
-			return l2p.getBlockTimestampWithRetry(ctx, c, log, event, chainConfig)
-		})
-		if err != nil {
-			logger.Error("Failed to get block timestamp (should not happen with infinite retry)", err,
-				"chain_id", l2p.chainID, "chain_name", chainConfig.ChainName,
-				"tx_hash", log.TxHash.Hex(), "block_number", log.BlockNumber)
-			// 即使无限重试失败（例如context取消），也记录错误
-			return
-		}
+	// 获取区块时间戳（带重试）
+	if err := l2p.getBlockTimestampWithRetry(ctx, client, log, event, chainConfig); err != nil {
+		logger.Error("Failed to get block timestamp", err,
+			"chain_id", l2p.chainID, "chain_name", chainConfig.ChainName,
+			"tx_hash", log.TxHash.Hex(), "block_number", log.BlockNumber)
+		return
+	}
 
-		// 第二步：获取交易信息（使用普通重试，失败不影响主流程）
-		_, _, err = l2p.rpcManager.ExecuteWithRPCInfoDo(ctx, l2p.chainID, func(c *ethclient.Client, _ int) error {
-			return l2p.getTransactionInfoWithRetry(ctx, c, log, event, chainConfig)
-		})
-		if err != nil {
-			logger.Warn("Failed to enrich transaction info (non-critical)",
-				"chain_id", l2p.chainID, "chain_name", chainConfig.ChainName,
-				"tx_hash", log.TxHash.Hex(), "error", err)
-		}
+	// 获取交易信息（带重试，失败不影响主流程）
+	if err := l2p.getTransactionInfoWithRetry(ctx, client, log, event, chainConfig); err != nil {
+		logger.Warn("Failed to get transaction info (non-critical)",
+			"chain_id", l2p.chainID, "chain_name", chainConfig.ChainName,
+			"tx_hash", log.TxHash.Hex(), "error", err)
 	}
 }
 
@@ -207,15 +198,30 @@ func (l2p *L2Processor) setChainInfo(event types.TimelockEvent, config *L2ChainC
 	}
 }
 
-// getBlockTimestampWithRetry 获取区块时间戳（用于无限重试）
+// getBlockTimestampWithRetry 获取区块时间戳（带简单重试）
 func (l2p *L2Processor) getBlockTimestampWithRetry(ctx context.Context, client *ethclient.Client, log *ethtypes.Log, event types.TimelockEvent, config *L2ChainConfig) error {
-	// 创建带超时的上下文
-	timeoutCtx, cancel := context.WithTimeout(ctx, config.TimeoutPerCall)
-	defer cancel()
+	var header *ethtypes.Header
+	var lastErr error
 
-	header, err := client.HeaderByNumber(timeoutCtx, big.NewInt(int64(log.BlockNumber)))
-	if err != nil {
-		return fmt.Errorf("failed to get block header: %w", err)
+	// 简单重试5次
+	for attempt := 0; attempt < 5; attempt++ {
+		// 创建带超时的上下文
+		timeoutCtx, cancel := context.WithTimeout(ctx, config.TimeoutPerCall)
+		var err error
+		header, err = client.HeaderByNumber(timeoutCtx, big.NewInt(int64(log.BlockNumber)))
+		cancel()
+
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if attempt < 4 {
+			logger.Debug("Retrying HeaderByNumber (L2)", "attempt", attempt+1, "error", err)
+		}
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("failed to get block header after retries: %w", lastErr)
 	}
 
 	// 设置区块时间戳
@@ -229,25 +235,47 @@ func (l2p *L2Processor) getBlockTimestampWithRetry(ctx context.Context, client *
 	return nil
 }
 
-// getTransactionInfoWithRetry 获取交易信息（用于普通重试，失败不影响主流程）
+// getTransactionInfoWithRetry 获取交易信息（带简单重试，失败不影响主流程）
 func (l2p *L2Processor) getTransactionInfoWithRetry(ctx context.Context, client *ethclient.Client, log *ethtypes.Log, event types.TimelockEvent, config *L2ChainConfig) error {
-	// 创建带超时的上下文
-	timeoutCtx, cancel := context.WithTimeout(ctx, config.TimeoutPerCall)
-	defer cancel()
-
-	// 获取交易信息
+	// 获取交易信息（带重试）
 	var tx *ethtypes.Transaction
-	var err error
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		timeoutCtx, cancel := context.WithTimeout(ctx, config.TimeoutPerCall)
+		var err error
+		tx, _, err = client.TransactionByHash(timeoutCtx, log.TxHash)
+		cancel()
 
-	tx, _, err = client.TransactionByHash(timeoutCtx, log.TxHash)
-	if err != nil {
-		return fmt.Errorf("failed to get transaction: %w", err)
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if attempt < 2 {
+			logger.Debug("Retrying TransactionByHash (L2)", "attempt", attempt+1, "error", err)
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("failed to get transaction after retries: %w", lastErr)
 	}
 
-	// 获取交易回执
-	receipt, err := client.TransactionReceipt(timeoutCtx, log.TxHash)
-	if err != nil {
-		return fmt.Errorf("failed to get transaction receipt: %w", err)
+	// 获取交易回执（带重试）
+	var receipt *ethtypes.Receipt
+	for attempt := 0; attempt < 3; attempt++ {
+		timeoutCtx, cancel := context.WithTimeout(ctx, config.TimeoutPerCall)
+		var err error
+		receipt, err = client.TransactionReceipt(timeoutCtx, log.TxHash)
+		cancel()
+
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if attempt < 2 {
+			logger.Debug("Retrying TransactionReceipt (L2)", "attempt", attempt+1, "error", err)
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("failed to get transaction receipt after retries: %w", lastErr)
 	}
 
 	// 获取发送者地址（L2特殊处理）

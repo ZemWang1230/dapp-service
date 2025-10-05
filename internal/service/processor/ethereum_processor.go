@@ -79,40 +79,42 @@ func (ep *EthereumProcessor) ProcessLog(ctx context.Context, client *ethclient.C
 	return event, nil
 }
 
-// tryEnrichEventData 使用正确的chainID尝试丰富事件数据（时间戳必须获取成功）
+// tryEnrichEventData 丰富事件数据（简化重试逻辑，直接在RPC调用处重试）
 func (ep *EthereumProcessor) tryEnrichEventData(ctx context.Context, client *ethclient.Client, log *ethtypes.Log, event types.TimelockEvent) {
-	if ep.rpcManager != nil {
-		// 分两步执行：
-		// 1. 时间戳获取使用无限重试（必须成功）
-		// 2. 其他信息使用普通重试（可选）
+	// 获取区块时间戳（带重试）
+	if err := ep.getBlockTimestamp(ctx, client, log, event); err != nil {
+		logger.Error("Failed to get block timestamp", err,
+			"chain_id", ep.chainID, "tx_hash", log.TxHash.Hex(), "block_number", log.BlockNumber)
+		return
+	}
 
-		// 第一步：获取时间戳（使用无限重试，因为这是必须的）
-		_, _, err := ep.rpcManager.ExecuteWithRPCInfoDoInfiniteRetry(ctx, ep.chainID, func(c *ethclient.Client, _ int) error {
-			return ep.getBlockTimestamp(ctx, c, log, event)
-		})
-		if err != nil {
-			logger.Error("Failed to get block timestamp (should not happen with infinite retry)", err,
-				"chain_id", ep.chainID, "tx_hash", log.TxHash.Hex(), "block_number", log.BlockNumber)
-			// 即使无限重试失败（例如context取消），也记录错误
-			return
-		}
-
-		// 第二步：获取其他信息（使用普通重试，失败不影响主流程）
-		_, _, err = ep.rpcManager.ExecuteWithRPCInfoDo(ctx, ep.chainID, func(c *ethclient.Client, _ int) error {
-			return ep.getTransactionInfo(ctx, c, log, event, ep.chainID)
-		})
-		if err != nil {
-			logger.Warn("Failed to enrich transaction info (non-critical)",
-				"chain_id", ep.chainID, "tx_hash", log.TxHash.Hex(), "error", err)
-		}
+	// 获取交易信息（带重试，失败不影响主流程）
+	if err := ep.getTransactionInfo(ctx, client, log, event, ep.chainID); err != nil {
+		logger.Warn("Failed to get transaction info (non-critical)",
+			"chain_id", ep.chainID, "tx_hash", log.TxHash.Hex(), "error", err)
 	}
 }
 
-// getBlockTimestamp 获取区块时间戳（独立方法，用于无限重试）
+// getBlockTimestamp 获取区块时间戳（带简单重试）
 func (ep *EthereumProcessor) getBlockTimestamp(ctx context.Context, client *ethclient.Client, log *ethtypes.Log, event types.TimelockEvent) error {
-	header, err := client.HeaderByNumber(ctx, big.NewInt(int64(log.BlockNumber)))
-	if err != nil {
-		return fmt.Errorf("failed to get block header: %w", err)
+	var header *ethtypes.Header
+	var lastErr error
+
+	// 简单重试3次
+	for attempt := 0; attempt < 3; attempt++ {
+		var err error
+		header, err = client.HeaderByNumber(ctx, big.NewInt(int64(log.BlockNumber)))
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if attempt < 2 {
+			logger.Debug("Retrying HeaderByNumber", "attempt", attempt+1, "error", err)
+		}
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("failed to get block header after retries: %w", lastErr)
 	}
 
 	// 设置区块时间戳
@@ -126,21 +128,41 @@ func (ep *EthereumProcessor) getBlockTimestamp(ctx context.Context, client *ethc
 	return nil
 }
 
-// getTransactionInfo 获取交易信息（独立方法，失败不影响主流程）
+// getTransactionInfo 获取交易信息（带简单重试，失败不影响主流程）
 func (ep *EthereumProcessor) getTransactionInfo(ctx context.Context, client *ethclient.Client, log *ethtypes.Log, event types.TimelockEvent, chainID int) error {
-	// 获取交易信息
+	// 获取交易信息（带重试）
 	var tx *ethtypes.Transaction
-	var err error
-
-	tx, _, err = client.TransactionByHash(ctx, log.TxHash)
-	if err != nil {
-		return fmt.Errorf("failed to get transaction: %w", err)
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		var err error
+		tx, _, err = client.TransactionByHash(ctx, log.TxHash)
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if attempt < 2 {
+			logger.Debug("Retrying TransactionByHash", "attempt", attempt+1, "error", err)
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("failed to get transaction after retries: %w", lastErr)
 	}
 
-	// 获取交易回执
-	receipt, err := client.TransactionReceipt(ctx, log.TxHash)
-	if err != nil {
-		return fmt.Errorf("failed to get transaction receipt: %w", err)
+	// 获取交易回执（带重试）
+	var receipt *ethtypes.Receipt
+	for attempt := 0; attempt < 3; attempt++ {
+		var err error
+		receipt, err = client.TransactionReceipt(ctx, log.TxHash)
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if attempt < 2 {
+			logger.Debug("Retrying TransactionReceipt", "attempt", attempt+1, "error", err)
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("failed to get transaction receipt after retries: %w", lastErr)
 	}
 
 	// 获取发送者地址

@@ -296,7 +296,7 @@ func (cs *ChainScanner) getScanInterval() time.Duration {
 
 	if lag > int64(cs.config.Scanner.NearLatestThreshold) {
 		// 落后较多，使用较短间隔
-		return time.Second * 10
+		return time.Second * 15
 	} else {
 		// 接近最新区块，使用正常扫描间隔
 		return cs.config.Scanner.ScanIntervalSlow
@@ -365,13 +365,20 @@ func (cs *ChainScanner) processQueuedLogs(ctx context.Context) error {
 	return nil
 }
 
-// processSingleQueuedLog 处理单个队列中的日志
+// processSingleQueuedLog 处理单个队列中的日志（简化重试逻辑）
 func (cs *ChainScanner) processSingleQueuedLog(ctx context.Context, rawLogData string) error {
-	// 解析日志数据并处理事件
-	event, err := cs.processLogWithRetry(ctx, rawLogData)
+	// 获取RPC客户端（由RPC manager内部处理健康检查和切换）
+	client, err := cs.rpcManager.GetClient(ctx, cs.chainInfo.ChainID)
 	if err != nil {
-		logger.Error("Failed to process log after retries", err, "chain_id", cs.chainInfo.ChainID)
-		return fmt.Errorf("failed to process log after retries: %w", err)
+		logger.Error("Failed to get RPC client", err, "chain_id", cs.chainInfo.ChainID)
+		return fmt.Errorf("failed to get RPC client: %w", err)
+	}
+
+	// 处理日志（processor内部会对必要的RPC调用进行重试）
+	event, err := cs.blockProcessor.ProcessLogFromRawData(ctx, client, rawLogData)
+	if err != nil {
+		logger.Error("Failed to process log", err, "chain_id", cs.chainInfo.ChainID)
+		return fmt.Errorf("failed to process log: %w", err)
 	}
 
 	if event != nil {
@@ -384,36 +391,6 @@ func (cs *ChainScanner) processSingleQueuedLog(ctx context.Context, rawLogData s
 	}
 
 	return nil
-}
-
-// processLogWithRetry 带重试机制处理日志
-func (cs *ChainScanner) processLogWithRetry(ctx context.Context, rawLogData string) (TimelockEvent, error) {
-	var lastErr error
-
-	// 尝试多个RPC进行处理
-	for attempt := 0; attempt < cs.config.RPCPool.MaxRPCSwitchCount; attempt++ {
-		// 获取健康的RPC客户端
-		client, err := cs.rpcManager.GetClient(ctx, cs.chainInfo.ChainID)
-		if err != nil {
-			lastErr = err
-			logger.Warn("Failed to get RPC client for log processing", "chain_id", cs.chainInfo.ChainID, "attempt", attempt+1, "error", err)
-			continue
-		}
-
-		// 尝试处理日志
-		event, err := cs.blockProcessor.ProcessLogFromRawData(ctx, client, rawLogData)
-		if err != nil {
-			lastErr = err
-			logger.Warn("Failed to process log with RPC", "chain_id", cs.chainInfo.ChainID, "attempt", attempt+1, "error", err)
-			continue
-		}
-
-		// 处理成功
-		return event, nil
-	}
-
-	// 所有RPC都失败了，返回错误
-	return nil, fmt.Errorf("failed to process log after %d RPC attempts: %w", cs.config.RPCPool.MaxRPCSwitchCount, lastErr)
 }
 
 // updateProgressStatus 更新进度状态

@@ -56,16 +56,17 @@ func (m *Manager) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// 检查并获取链数据
-	if err := m.ensureChainData(ctx, chains); err != nil {
-		return fmt.Errorf("failed to ensure chain data: %w", err)
-	}
+	// ********先不从chainlist获取数据********
+	// // 检查并获取链数据
+	// if err := m.ensureChainData(ctx, chains); err != nil {
+	// 	return fmt.Errorf("failed to ensure chain data: %w", err)
+	// }
 
-	// 重新获取更新后的链数据
-	chains, err = m.chainRepo.GetRPCEnabledChains(ctx, m.config.RPC.IncludeTestnets)
-	if err != nil {
-		return fmt.Errorf("failed to get updated RPC enabled chains: %w", err)
-	}
+	// // 重新获取更新后的链数据
+	// chains, err = m.chainRepo.GetRPCEnabledChains(ctx, m.config.RPC.IncludeTestnets)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to get updated RPC enabled chains: %w", err)
+	// }
 
 	// 并行为每条链创建和启动RPC池
 	var wg sync.WaitGroup

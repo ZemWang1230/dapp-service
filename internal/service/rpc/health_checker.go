@@ -40,7 +40,7 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, rpcURL string, chainID
 	}
 
 	// 创建带超时的上下文
-	checkCtx, cancel := context.WithTimeout(ctx, 20*time.Second) // 增加超时时间以进行能力测试
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second) // 增加超时时间以进行能力测试
 	defer cancel()
 
 	// 尝试连接RPC
@@ -53,37 +53,35 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, rpcURL string, chainID
 	}
 	defer client.Close()
 
-	// 测试基本RPC调用 - 获取最新区块号
-	_, err = client.BlockNumber(checkCtx)
-	if err != nil {
-		result.IsHealthy = false
-		result.Error = fmt.Sprintf("failed to get block number: %v", err)
-		logger.Debug("RPC check failed - block number", "url", rpcURL, "chain_id", chainID, "error", err)
-		return result, nil
-	}
+	// // 测试基本RPC调用 - 获取最新区块号
+	// _, err = client.BlockNumber(checkCtx)
+	// if err != nil {
+	// 	result.IsHealthy = false
+	// 	result.Error = fmt.Sprintf("failed to get block number: %v", err)
+	// 	logger.Debug("RPC check failed - block number", "url", rpcURL, "chain_id", chainID, "error", err)
+	// 	return result, nil
+	// }
 
-	// 验证链ID
-	actualChainID, err := client.ChainID(checkCtx)
-	if err != nil {
-		result.IsHealthy = false
-		result.Error = fmt.Sprintf("failed to get chain ID: %v", err)
-		logger.Debug("RPC check failed - chain ID", "url", rpcURL, "chain_id", chainID, "error", err)
-		return result, nil
-	}
+	// // 验证链ID
+	// actualChainID, err := client.ChainID(checkCtx)
+	// if err != nil {
+	// 	result.IsHealthy = false
+	// 	result.Error = fmt.Sprintf("failed to get chain ID: %v", err)
+	// 	logger.Debug("RPC check failed - chain ID", "url", rpcURL, "chain_id", chainID, "error", err)
+	// 	return result, nil
+	// }
 
-	if actualChainID.Int64() != int64(chainID) {
-		result.IsHealthy = false
-		result.Error = fmt.Sprintf("chain ID mismatch: expected %d, got %d", chainID, actualChainID.Int64())
-		logger.Debug("RPC check failed - chain ID mismatch", "url", rpcURL, "expected", chainID, "actual", actualChainID.Int64())
-		return result, nil
-	}
+	// if actualChainID.Int64() != int64(chainID) {
+	// 	result.IsHealthy = false
+	// 	result.Error = fmt.Sprintf("chain ID mismatch: expected %d, got %d", chainID, actualChainID.Int64())
+	// 	logger.Debug("RPC check failed - chain ID mismatch", "url", rpcURL, "expected", chainID, "actual", actualChainID.Int64())
+	// 	return result, nil
+	// }
 
 	// 测试FilterLogs能力，确定MaxSafeRange
-	maxSafeRange := hc.testFilterLogsCapability(checkCtx, client)
+	isHealthy, maxSafeRange := hc.testFilterLogsCapability(checkCtx, client)
+	result.IsHealthy = isHealthy
 	result.MaxSafeRange = maxSafeRange
-
-	// 健康检查通过
-	result.IsHealthy = true
 	result.ResponseTime = time.Since(startTime)
 
 	logger.Debug("RPC check passed", "url", rpcURL, "chain_id", chainID, "max_safe_range", maxSafeRange, "response_time", result.ResponseTime)
@@ -91,7 +89,7 @@ func (hc *HealthChecker) CheckHealth(ctx context.Context, rpcURL string, chainID
 }
 
 // testFilterLogsCapability 测试RPC的FilterLogs能力，返回MaxSafeRange
-func (hc *HealthChecker) testFilterLogsCapability(ctx context.Context, client *ethclient.Client) int {
+func (hc *HealthChecker) testFilterLogsCapability(ctx context.Context, client *ethclient.Client) (bool, int) {
 	// 测试范围序列：从大到小
 	testRanges := []int{50000, 2000, 500, 100}
 
@@ -103,7 +101,7 @@ func (hc *HealthChecker) testFilterLogsCapability(ctx context.Context, client *e
 
 		// 如果成功，这就是最大安全范围
 		if success {
-			return rangeSize
+			return true, rangeSize
 		}
 
 		// 测试间隔，避免过于频繁
@@ -112,13 +110,13 @@ func (hc *HealthChecker) testFilterLogsCapability(ctx context.Context, client *e
 		// 检查上下文是否被取消
 		select {
 		case <-ctx.Done():
-			return 100 // 如果被取消，返回最小值
+			return false, 100 // 如果被取消，返回最小值
 		default:
 		}
 	}
 
 	// 所有测试都失败，返回最小值
-	return 100
+	return false, 100
 }
 
 // testRangeSize 测试指定范围大小的FilterLogs调用
@@ -162,7 +160,7 @@ func (hc *HealthChecker) UpdateMetadataFromHealthCheck(ctx context.Context, resu
 	metadata.ResponseTimeMs = result.ResponseTime.Milliseconds()
 
 	// 更新MaxSafeRange（统一检查时已测试）
-	if result.IsHealthy && result.MaxSafeRange > 0 {
+	if result.IsHealthy {
 		metadata.MaxSafeRange = result.MaxSafeRange
 	}
 
@@ -211,7 +209,6 @@ func (hc *HealthChecker) CheckAllRPCs(ctx context.Context, chainID int, rpcURLs 
 	}
 
 	// 收集结果
-	healthyCount := 0
 	for i := 0; i < len(rpcURLs); i++ {
 		select {
 		case res := <-resultChan:
@@ -227,9 +224,6 @@ func (hc *HealthChecker) CheckAllRPCs(ctx context.Context, chainID int, rpcURLs 
 				}
 			} else {
 				results[res.index] = res.result
-				if res.result.IsHealthy {
-					healthyCount++
-				}
 			}
 
 			// 更新元数据

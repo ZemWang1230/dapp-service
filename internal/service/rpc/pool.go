@@ -116,20 +116,48 @@ func (p *Pool) Stop() {
 
 // GetHealthyClient 获取一个健康的RPC客户端
 func (p *Pool) GetHealthyClient(ctx context.Context) (*ethclient.Client, string, error) {
-	// 从FIFO队列取出一个RPC
-	rpcURL, err := p.rpcCache.PopRPCFromFIFOQueue(ctx, p.chainID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to get RPC from fifo queue: %w", err)
+	p.mutex.RLock()
+	maxAttempts := len(p.rpcURLs) // 最多尝试队列中所有的 RPC
+	p.mutex.RUnlock()
+
+	if maxAttempts == 0 {
+		return nil, "", fmt.Errorf("no RPC URLs available for chain %d", p.chainID)
 	}
 
-	// 获取或创建客户端
-	client, err := p.getOrCreateClient(rpcURL)
-	if err != nil {
-		// 如果获取客户端失败，尝试下一个
-		return nil, "", fmt.Errorf("failed to get client for %s: %w", rpcURL, err)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// 从FIFO队列取出一个RPC
+		rpcURL, err := p.rpcCache.PopRPCFromFIFOQueue(ctx, p.chainID)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to get RPC from fifo queue: %w", err)
+		}
+
+		// 检查 errorCount
+		metadata, err := p.rpcCache.GetRPCMetadata(ctx, p.chainID, rpcURL)
+		if err != nil {
+			logger.Warn("Failed to get RPC metadata, will try to use it anyway", "url", rpcURL, "chain_id", p.chainID, "error", err)
+			// 如果获取元数据失败，仍然尝试使用该 RPC
+		} else if metadata != nil && metadata.ErrorCount > 3 {
+			// 如果 errorCount > 3，放回队列尾部，尝试下一个
+			if pushErr := p.rpcCache.PushRPCToFIFOQueue(ctx, p.chainID, rpcURL); pushErr != nil {
+				logger.Error("Failed to push RPC back to queue", pushErr, "url", rpcURL, "chain_id", p.chainID)
+			}
+			continue
+		}
+
+		// 获取或创建客户端
+		client, err := p.getOrCreateClient(rpcURL)
+		if err != nil {
+			// 如果获取客户端失败，放回队列并尝试下一个
+			if pushErr := p.rpcCache.PushRPCToFIFOQueue(ctx, p.chainID, rpcURL); pushErr != nil {
+				logger.Error("Failed to push RPC back to queue", pushErr, "url", rpcURL, "chain_id", p.chainID)
+			}
+			continue
+		}
+
+		return client, rpcURL, nil
 	}
 
-	return client, rpcURL, nil
+	return nil, "", fmt.Errorf("no available RPC after checking all %d RPCs in queue for chain %d", maxAttempts, p.chainID)
 }
 
 // ExecuteWithRetry 带重试机制执行RPC调用
@@ -387,17 +415,9 @@ func (p *Pool) getOrCreateClient(rpcURL string) (*ethclient.Client, error) {
 
 // performInitialCheck 执行初始统一检查（健康+能力）
 func (p *Pool) performInitialCheck(ctx context.Context) error {
-	results, err := p.healthChecker.CheckAllRPCs(ctx, p.chainID, p.rpcURLs)
+	_, err := p.healthChecker.CheckAllRPCs(ctx, p.chainID, p.rpcURLs)
 	if err != nil {
 		return fmt.Errorf("initial check failed: %w", err)
-	}
-
-	// 记录检查结果，但不影响队列（所有RPC都已经在队列中）
-	healthyCount := 0
-	for _, result := range results {
-		if result.IsHealthy {
-			healthyCount++
-		}
 	}
 
 	return nil

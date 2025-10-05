@@ -520,8 +520,13 @@ type OpenzeppelinTimeLockData struct {
 	Executors []string `json:"executors"`
 }
 
-// 私有方法 - 从链上读取Compound timelock数据（所有callContract调用都使用无限重试）
+// 私有方法 - 从链上读取Compound timelock数据
 func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int, contractAddress string) (*CompoundTimeLockData, error) {
+	client, err := s.rpcManager.GetClient(ctx, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get RPC client: %w", err)
+	}
+
 	contractAddr := common.HexToAddress(contractAddress)
 
 	// Compound Timelock ABI (简化版，只包含需要的方法)
@@ -541,8 +546,8 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 
 	data := &CompoundTimeLockData{}
 
-	// 读取delay（使用无限重试）
-	result, err := s.callContract(ctx, chainID, contractAddr, parsedABI, "delay")
+	// 读取delay
+	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "delay")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read delay: %w", err)
 	}
@@ -554,8 +559,8 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 		}
 	}
 
-	// 读取admin（使用无限重试）
-	result, err = s.callContract(ctx, chainID, contractAddr, parsedABI, "admin")
+	// 读取admin
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "admin")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read admin: %w", err)
 	}
@@ -567,8 +572,8 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 		}
 	}
 
-	// 读取pendingAdmin（使用无限重试）
-	result, err = s.callContract(ctx, chainID, contractAddr, parsedABI, "pendingAdmin")
+	// 读取pendingAdmin
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "pendingAdmin")
 	if err != nil {
 		// pendingAdmin 可能为空，不是错误
 		logger.Warn("Failed to read pendingAdmin", "error", err)
@@ -579,8 +584,8 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 		}
 	}
 
-	// 读取GRACE_PERIOD（使用无限重试）
-	result, err = s.callContract(ctx, chainID, contractAddr, parsedABI, "GRACE_PERIOD")
+	// 读取GRACE_PERIOD
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "GRACE_PERIOD")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read GRACE_PERIOD: %w", err)
 	}
@@ -592,8 +597,8 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 		}
 	}
 
-	// 读取MINIMUM_DELAY（使用无限重试）
-	result, err = s.callContract(ctx, chainID, contractAddr, parsedABI, "MINIMUM_DELAY")
+	// 读取MINIMUM_DELAY
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "MINIMUM_DELAY")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read MINIMUM_DELAY: %w", err)
 	}
@@ -605,8 +610,8 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 		}
 	}
 
-	// 读取MAXIMUM_DELAY（使用无限重试）
-	result, err = s.callContract(ctx, chainID, contractAddr, parsedABI, "MAXIMUM_DELAY")
+	// 读取MAXIMUM_DELAY
+	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "MAXIMUM_DELAY")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read MAXIMUM_DELAY: %w", err)
 	}
@@ -621,8 +626,13 @@ func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int
 	return data, nil
 }
 
-// 私有方法 - 从链上读取OpenZeppelin timelock数据（所有callContract调用都使用无限重试）
+// 私有方法 - 从链上读取OpenZeppelin timelock数据
 func (s *service) readOpenzeppelinTimeLockFromChain(ctx context.Context, chainID int, contractAddress string) (*OpenzeppelinTimeLockData, error) {
+	client, err := s.rpcManager.GetClient(ctx, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get RPC client: %w", err)
+	}
+
 	contractAddr := common.HexToAddress(contractAddress)
 
 	// OpenZeppelin TimelockController ABI (简化版)
@@ -639,8 +649,8 @@ func (s *service) readOpenzeppelinTimeLockFromChain(ctx context.Context, chainID
 
 	data := &OpenzeppelinTimeLockData{}
 
-	// 读取delay（使用无限重试）
-	result, err := s.callContract(ctx, chainID, contractAddr, parsedABI, "getMinDelay")
+	// 读取delay
+	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "getMinDelay")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read delay: %w", err)
 	}
@@ -720,36 +730,22 @@ func (s *service) readOpenzeppelinTimeLockFromChain(ctx context.Context, chainID
 // 	return members, nil
 // }
 
-// 私有方法 - 调用合约方法（使用无限重试确保成功，因为获取的值都很重要）
-func (s *service) callContract(ctx context.Context, chainID int, contractAddr common.Address, parsedABI abi.ABI, method string, args ...interface{}) ([]interface{}, error) {
-	// 准备调用数据
+// 私有方法 - 调用合约方法
+func (s *service) callContract(ctx context.Context, client *ethclient.Client, contractAddr common.Address, parsedABI abi.ABI, method string, args ...interface{}) ([]interface{}, error) {
 	callData, err := parsedABI.Pack(method, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pack call data: %w", err)
 	}
 
-	var resultData []byte
-
-	// 使用无限重试机制调用合约方法，确保重要数据一定能获取成功
-	_, _, err = s.rpcManager.ExecuteWithRPCInfoDoInfiniteRetry(ctx, chainID, func(client *ethclient.Client, _ int) error {
-		result, err := client.CallContract(ctx, ethereum.CallMsg{
-			To:   &contractAddr,
-			Data: callData,
-		}, nil)
-		if err != nil {
-			return fmt.Errorf("failed to call contract method %s: %w", method, err)
-		}
-		resultData = result
-		return nil
-	})
-
+	result, err := client.CallContract(ctx, ethereum.CallMsg{
+		To:   &contractAddr,
+		Data: callData,
+	}, nil)
 	if err != nil {
-		logger.Error("Failed to call contract (should not happen with infinite retry)", err,
-			"chain_id", chainID, "contract", contractAddr.Hex(), "method", method)
-		return nil, fmt.Errorf("failed to call contract method %s: %w", method, err)
+		return nil, fmt.Errorf("failed to call contract: %w", err)
 	}
 
-	return parsedABI.Unpack(method, resultData)
+	return parsedABI.Unpack(method, result)
 }
 
 // 私有方法 - 刷新Compound timelock数据
