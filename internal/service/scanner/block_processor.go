@@ -130,6 +130,11 @@ func (bp *BlockProcessor) ScanBlockRangeRaw(ctx context.Context, client *ethclie
 	return logs, nil
 }
 
+// ProcessLog 处理日志事件（公开方法）
+func (bp *BlockProcessor) ProcessLog(ctx context.Context, client *ethclient.Client, log ethtypes.Log) (TimelockEvent, error) {
+	return bp.processLog(ctx, client, &log)
+}
+
 // ProcessLogFromRawData 从原始日志数据处理事件
 func (bp *BlockProcessor) ProcessLogFromRawData(ctx context.Context, client *ethclient.Client, rawLogData string) (types.TimelockEvent, error) {
 	// 解析原始日志数据

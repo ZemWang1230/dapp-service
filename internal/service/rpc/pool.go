@@ -114,50 +114,79 @@ func (p *Pool) Stop() {
 	logger.Info("RPC pool stopped", "chain_id", p.chainID)
 }
 
-// GetHealthyClient 获取一个健康的RPC客户端
+// GetHealthyClient 获取一个健康的RPC客户端（带无限重试，直到获取到可用RPC或context取消）
 func (p *Pool) GetHealthyClient(ctx context.Context) (*ethclient.Client, string, error) {
 	p.mutex.RLock()
-	maxAttempts := len(p.rpcURLs) // 最多尝试队列中所有的 RPC
+	maxAttempts := len(p.rpcURLs) // 单轮最多尝试队列中所有的 RPC
 	p.mutex.RUnlock()
 
 	if maxAttempts == 0 {
 		return nil, "", fmt.Errorf("no RPC URLs available for chain %d", p.chainID)
 	}
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		// 从FIFO队列取出一个RPC
-		rpcURL, err := p.rpcCache.PopRPCFromFIFOQueue(ctx, p.chainID)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to get RPC from fifo queue: %w", err)
+	roundCount := 0
+	for {
+		// 检查context是否已取消
+		select {
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		default:
 		}
 
-		// 检查 errorCount
-		metadata, err := p.rpcCache.GetRPCMetadata(ctx, p.chainID, rpcURL)
-		if err != nil {
-			logger.Warn("Failed to get RPC metadata, will try to use it anyway", "url", rpcURL, "chain_id", p.chainID, "error", err)
-			// 如果获取元数据失败，仍然尝试使用该 RPC
-		} else if metadata != nil && metadata.ErrorCount > 3 {
-			// 如果 errorCount > 3，放回队列尾部，尝试下一个
-			if pushErr := p.rpcCache.PushRPCToFIFOQueue(ctx, p.chainID, rpcURL); pushErr != nil {
-				logger.Error("Failed to push RPC back to queue", pushErr, "url", rpcURL, "chain_id", p.chainID)
+		roundCount++
+
+		// 尝试一轮：遍历队列中所有RPC
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			// 从FIFO队列取出一个RPC
+			rpcURL, err := p.rpcCache.PopRPCFromFIFOQueue(ctx, p.chainID)
+			if err != nil {
+				logger.Warn("Failed to get RPC from fifo queue, will retry", "chain_id", p.chainID, "error", err)
+				break
 			}
-			continue
-		}
 
-		// 获取或创建客户端
-		client, err := p.getOrCreateClient(rpcURL)
-		if err != nil {
-			// 如果获取客户端失败，放回队列并尝试下一个
-			if pushErr := p.rpcCache.PushRPCToFIFOQueue(ctx, p.chainID, rpcURL); pushErr != nil {
-				logger.Error("Failed to push RPC back to queue", pushErr, "url", rpcURL, "chain_id", p.chainID)
+			// 检查 errorCount
+			metadata, err := p.rpcCache.GetRPCMetadata(ctx, p.chainID, rpcURL)
+			if err != nil {
+				logger.Warn("Failed to get RPC metadata, will try to use it anyway", "url", rpcURL, "chain_id", p.chainID, "error", err)
+				// 如果获取元数据失败，仍然尝试使用该 RPC
+			} else if metadata != nil && metadata.ErrorCount > 5 {
+				// 如果 errorCount > 5，放回队列尾部，尝试下一个
+				if pushErr := p.rpcCache.PushRPCToFIFOQueue(ctx, p.chainID, rpcURL); pushErr != nil {
+					logger.Error("Failed to push RPC back to queue", pushErr, "url", rpcURL, "chain_id", p.chainID)
+				}
+				continue
 			}
-			continue
+
+			// 获取或创建客户端
+			client, err := p.getOrCreateClient(rpcURL)
+			if err != nil {
+				// 如果获取客户端失败，放回队列并尝试下一个
+				logger.Warn("Failed to get client, trying next RPC", "url", rpcURL, "chain_id", p.chainID, "error", err)
+				if pushErr := p.rpcCache.PushRPCToFIFOQueue(ctx, p.chainID, rpcURL); pushErr != nil {
+					logger.Error("Failed to push RPC back to queue", pushErr, "url", rpcURL, "chain_id", p.chainID)
+				}
+				continue
+			}
+
+			// 成功获取到可用RPC
+			return client, rpcURL, nil
 		}
 
-		return client, rpcURL, nil
+		// 如果这一轮没有找到可用的RPC，立即执行健康检查（可能恢复某些 RPC）
+		checkCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+		if err := p.performCheck(checkCtx); err != nil {
+			logger.Error("Emergency health check failed", err, "chain_id", p.chainID)
+		}
+		cancel()
+
+		// 短暂等待后继续下一轮尝试（避免过快循环）
+		select {
+		case <-time.After(time.Second * 2):
+			// 继续下一轮
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		}
 	}
-
-	return nil, "", fmt.Errorf("no available RPC after checking all %d RPCs in queue for chain %d", maxAttempts, p.chainID)
 }
 
 // ExecuteWithRetry 带重试机制执行RPC调用
