@@ -1,4 +1,4 @@
--- TimeLocker 数据库初始化脚本
+-- Timelock 数据库初始化脚本
 -- 这个脚本会在PostgreSQL容器首次启动时执行
 
 -- 创建必要的扩展
@@ -21,7 +21,7 @@ ALTER DATABASE timelocker_db SET log_min_duration_statement = 1000;
 -- 输出初始化完成信息
 DO $$ 
 BEGIN 
-    RAISE NOTICE 'TimeLocker database initialized successfully';
+    RAISE NOTICE 'Timelock database initialized successfully';
     RAISE NOTICE 'Extensions created: uuid-ossp, pg_trgm, btree_gin';
     RAISE NOTICE 'Database tables will be created automatically by the Go application';
 END $$;

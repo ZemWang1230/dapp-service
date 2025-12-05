@@ -115,7 +115,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("email.smtp_port", 587)
 	viper.SetDefault("email.smtp_username", "")
 	viper.SetDefault("email.smtp_password", "")
-	viper.SetDefault("email.from_name", "TimeLocker Notification")
+	viper.SetDefault("email.from_name", "Timelock Notification")
 	viper.SetDefault("email.from_email", "")
 	viper.SetDefault("email.verification_code_expiry", time.Minute*10)
 	viper.SetDefault("email.email_url", "http://localhost:8080")

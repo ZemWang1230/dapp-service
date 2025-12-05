@@ -566,7 +566,7 @@ func (s *notificationService) generateNotificationMessage(ctx context.Context, n
 
 	// 构建简约消息
 	message := fmt.Sprintf("━━━━━━━━━━━━━━━━\n")
-	message += fmt.Sprintf("⚡ TimeLocker Notification\n")
+	message += fmt.Sprintf("⚡ Timelock Notification\n")
 	message += fmt.Sprintf("━━━━━━━━━━━━━━━━\n")
 	message += fmt.Sprintf("[%s] %s    ➡️    [%s] %s\n", strings.ToUpper(notificationData.StatusFrom), getStatusEmoji(notificationData.StatusFrom), strings.ToUpper(notificationData.StatusTo), getStatusEmoji(notificationData.StatusTo))
 	message += fmt.Sprintf("🔗 Chain    : %s\n", notificationData.Network)

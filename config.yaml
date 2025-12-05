@@ -39,7 +39,7 @@ email:
   smtp_port: 587
   smtp_username: "gm@timelock.live"  # 发送邮件的邮箱地址
   smtp_password: "xxx"     # 邮箱应用密码（不是登录密码）
-  from_name: "TimeLocker Notification"   # 发件人名称
+  from_name: "Timelock Notification"   # 发件人名称
   from_email: "gm@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
   
   # 邮件通知功能配置

@@ -51,9 +51,9 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// @title TimeLock Backend API
+// @title Timelock Backend API
 // @version 1.0
-// @description TimeLock Backend API
+// @description Timelock Backend API
 // @host localhost:8080
 // @BasePath /
 // @schemes http https
@@ -70,7 +70,7 @@ func updateAllScannersStatusToPaused(ctx context.Context, progressRepo scannerRe
 
 func main() {
 	logger.Init(logger.DefaultConfig())
-	logger.Info("Starting TimeLock Backend v1.0.0")
+	logger.Info("Starting Timelock Backend v1.0.0")
 
 	// 创建根context和WaitGroup用于协调关闭
 	ctx, cancel := context.WithCancel(context.Background())
@@ -161,8 +161,8 @@ func main() {
 
 	// 10. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
-	docs.SwaggerInfo.Title = "TimeLocker Backend API v1.0"
-	docs.SwaggerInfo.Description = "TimeLocker Backend API"
+	docs.SwaggerInfo.Title = "Timelock Backend API v1.0"
+	docs.SwaggerInfo.Description = "Timelock Backend API"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	// 健康检查端点
 	router.GET("/api/v1/health", func(c *gin.Context) {

@@ -538,7 +538,7 @@ func (s *emailService) generateVerificationCode() (string, error) {
 
 // sendVerificationEmail 发送验证码邮件
 func (s *emailService) sendVerificationEmail(toEmail, code string) error {
-	subject := "TimeLocker - Verify Your Email Address"
+	subject := "Timelock - Verify Your Email Address"
 	// 用VerificationEmail.html 模板生成邮件内容
 	body, err := os.ReadFile("email_templates/VerificationEmail.html")
 	if err != nil {
@@ -558,7 +558,7 @@ func (s *emailService) sendFlowNotificationEmail(ctx context.Context, emailID in
 	if err != nil {
 		return fmt.Errorf("failed to get email: %w", err)
 	}
-	subject := fmt.Sprintf("TimeLocker Status Update: %s → %s",
+	subject := fmt.Sprintf("Timelock Status Update: %s → %s",
 		cases.Title(language.English).String(emailData.StatusFrom),
 		cases.Title(language.English).String(emailData.StatusTo))
 

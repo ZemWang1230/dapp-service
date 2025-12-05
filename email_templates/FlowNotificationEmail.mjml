@@ -1,6 +1,6 @@
 <mjml>
   <mj-head>
-    <mj-title>TimeLocker Flow Notification</mj-title>
+    <mj-title>Timelock Flow Notification</mj-title>
     <mj-attributes>
       <mj-all font-family="Inter, Helvetica, Arial, sans-serif" />
       <mj-text color="#1f2937" font-size="16px" line-height="1.6" />
@@ -11,7 +11,7 @@
     <!-- Header Section -->
     <mj-section padding="30px 20px">
       <mj-column background-color="#ffffff" border-radius="12px" padding="30px" css-class="shadow-card">
-        <mj-text align="center" font-size="28px" font-weight="700" color="#1f2937" padding="0 0 8px 0"> TimeLocker </mj-text>
+        <mj-text align="center" font-size="28px" font-weight="700" color="#1f2937" padding="0 0 8px 0"> Timelock </mj-text>
         <mj-text align="center" font-size="20px" font-weight="600" color="#4b5563" padding="0 0 10px 0"> Flow Status Update </mj-text>
         <mj-text align="center" color="#6b7280" font-size="14px"> Your subscribed timelock flow has a status update </mj-text>
       </mj-column>
@@ -89,9 +89,9 @@
     </mj-section> <!-- Footer Section -->
     <mj-section padding="30px 20px">
       <mj-column background-color="#ffffff" border-radius="12px" padding="25px" css-class="shadow-card">
-        <mj-text align="center" color="#1f2937" font-size="16px" font-weight="700" padding="0 0 8px 0"> TimeLocker </mj-text>
-        <mj-text align="center" color="#6b7280" font-size="13px" padding="5px 0"> Automated notification from TimeLocker Protocol </mj-text>
-        <mj-text align="center" color="#9ca3af" font-size="11px" padding="8px 0 0 0"> © 2025 TimeLocker Labs. All rights reserved. </mj-text>
+        <mj-text align="center" color="#1f2937" font-size="16px" font-weight="700" padding="0 0 8px 0"> Timelock </mj-text>
+        <mj-text align="center" color="#6b7280" font-size="13px" padding="5px 0"> Automated notification from Timelock Protocol </mj-text>
+        <mj-text align="center" color="#9ca3af" font-size="11px" padding="8px 0 0 0"> © 2025 Timelock Labs. All rights reserved. </mj-text>
       </mj-column>
     </mj-section>
   </mj-body>

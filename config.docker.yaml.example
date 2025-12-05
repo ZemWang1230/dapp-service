@@ -39,7 +39,7 @@ email:
   smtp_port: 587
   smtp_username: "notifications@timelock.tech"
   smtp_password: "xxx"
-  from_name: "TimeLocker Notification"
+  from_name: "Timelock Notification"
   from_email: "notifications@timelock.tech"
   
   # 邮件通知功能配置
