@@ -16,6 +16,7 @@ import (
 	emailHandler "timelocker-backend/internal/api/email"
 	flowHandler "timelocker-backend/internal/api/flow"
 	notificationHandler "timelocker-backend/internal/api/notification"
+	publicHandler "timelocker-backend/internal/api/public"
 	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 
@@ -25,6 +26,7 @@ import (
 	emailRepo "timelocker-backend/internal/repository/email"
 
 	notificationRepo "timelocker-backend/internal/repository/notification"
+	publicRepo "timelocker-backend/internal/repository/public"
 	safeRepo "timelocker-backend/internal/repository/safe"
 	scannerRepo "timelocker-backend/internal/repository/scanner"
 	sponsorRepo "timelocker-backend/internal/repository/sponsor"
@@ -37,6 +39,7 @@ import (
 	emailService "timelocker-backend/internal/service/email"
 	flowService "timelocker-backend/internal/service/flow"
 	notificationService "timelocker-backend/internal/service/notification"
+	publicService "timelocker-backend/internal/service/public"
 	scannerService "timelocker-backend/internal/service/scanner"
 	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
@@ -116,6 +119,9 @@ func main() {
 	transactionRepository := scannerRepo.NewTransactionRepository(db)
 	flowRepository := scannerRepo.NewFlowRepository(db)
 
+	// 公共数据仓库
+	publicRepository := publicRepo.NewRepository(db)
+
 	// 5. 初始化JWT管理器
 	jwtManager := utils.NewJWTManager(
 		cfg.JWT.Secret,
@@ -127,6 +133,7 @@ func main() {
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
 	sponsorSvc := sponsorService.NewService(sponsorRepository)
+	publicSvc := publicService.NewService(publicRepository)
 	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, timelockRepository, transactionRepository, cfg)
 	flowSvc := flowService.NewFlowService(flowRepository, timelockRepository)
 	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, transactionRepository, cfg)
@@ -154,6 +161,9 @@ func main() {
 	{
 		chainHandler := chainHandler.NewHandler(chainSvc)
 		chainHandler.RegisterRoutes(v1)
+
+		publicHdl := publicHandler.NewHandler(publicSvc)
+		publicHdl.RegisterRoutes(v1)
 
 		sponsorHdl := sponsorHandler.NewHandler(sponsorSvc)
 		sponsorHdl.RegisterRoutes(v1)

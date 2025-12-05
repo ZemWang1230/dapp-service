@@ -496,6 +496,20 @@ definitions:
           $ref: '#/definitions/types.SponsorInfo'
         type: array
     type: object
+  types.GetStatsRequest:
+    type: object
+  types.GetStatsResponse:
+    properties:
+      chain_count:
+        description: 支持的链数量
+        type: integer
+      contract_count:
+        description: timelock合约数量
+        type: integer
+      transaction_count:
+        description: 交易数量
+        type: integer
+    type: object
   types.GetSupportChainsRequest:
     properties:
       is_active:
@@ -2495,6 +2509,50 @@ paths:
       summary: 更新通知配置
       tags:
       - Notification
+  /api/v1/public/stats:
+    post:
+      consumes:
+      - application/json
+      description: 获取支持的链数量、timelock合约数量和交易数量等统计信息，无需认证
+      parameters:
+      - description: 统计数据请求参数
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/types.GetStatsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功获取统计数据
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.GetStatsResponse'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+        "500":
+          description: 服务器内部错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 获取首页统计数据
+      tags:
+      - Public
   /api/v1/sponsors/public:
     post:
       consumes:

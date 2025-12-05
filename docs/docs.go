@@ -2853,6 +2853,87 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/public/stats": {
+            "post": {
+                "description": "获取支持的链数量、timelock合约数量和交易数量等统计信息，无需认证",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Public"
+                ],
+                "summary": "获取首页统计数据",
+                "parameters": [
+                    {
+                        "description": "统计数据请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/types.GetStatsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功获取统计数据",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/types.GetStatsResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "服务器内部错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sponsors/public": {
             "post": {
                 "description": "获取所有激活的赞助方和生态伙伴信息，用于在前端展示。返回的数据按照排序权重和创建时间排序。",
@@ -4414,6 +4495,26 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/types.SponsorInfo"
                     }
+                }
+            }
+        },
+        "types.GetStatsRequest": {
+            "type": "object"
+        },
+        "types.GetStatsResponse": {
+            "type": "object",
+            "properties": {
+                "chain_count": {
+                    "description": "支持的链数量",
+                    "type": "integer"
+                },
+                "contract_count": {
+                    "description": "timelock合约数量",
+                    "type": "integer"
+                },
+                "transaction_count": {
+                    "description": "交易数量",
+                    "type": "integer"
                 }
             }
         },
