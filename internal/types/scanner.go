@@ -269,6 +269,8 @@ const (
 type RPCProvider string
 
 const (
+	ProviderAlchemy  RPCProvider = "alchemy"
+	ProviderInfura   RPCProvider = "infura"
 	ProviderOfficial RPCProvider = "official"
 )
 

@@ -5,8 +5,8 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "TimeLocker Backend API",
-        "title": "TimeLocker Backend API",
+        "description": "TimeLock Backend API",
+        "title": "TimeLock Backend API",
         "contact": {},
         "version": "1.0"
     },

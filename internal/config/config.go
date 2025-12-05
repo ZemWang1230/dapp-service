@@ -1,9 +1,9 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
@@ -51,6 +51,8 @@ type JWTConfig struct {
 
 // RPCConfig RPC配置
 type RPCConfig struct {
+	AlchemyAPIKey   string `mapstructure:"alchemy_api_key"`
+	InfuraAPIKey    string `mapstructure:"infura_api_key"`
 	Provider        string `mapstructure:"provider"`
 	IncludeTestnets bool   `mapstructure:"include_testnets"`
 }
@@ -154,18 +156,32 @@ func (c *Config) GetRPCURL(chainInfo *types.ChainRPCInfo) (string, error) {
 		return "", errors.New("RPC disabled for chain: " + chainInfo.ChainName)
 	}
 
-	// 解析官方RPC URLs
-	var officialRPCs []string
-	if err := json.Unmarshal([]byte(chainInfo.OfficialRPCUrls), &officialRPCs); err != nil {
-		logger.Error("GetRPCURL error: ", fmt.Errorf("failed to parse official RPC URLs for chain: %s", chainInfo.ChainName))
-		return "", errors.New("failed to parse official RPC URLs for chain: " + chainInfo.ChainName)
-	}
+	// 根据配置的提供商选择RPC
+	switch c.RPC.Provider {
+	case "alchemy":
+		if chainInfo.AlchemyRPCTemplate == nil {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("alchemy RPC not supported for chain: %s", chainInfo.ChainName))
+			return "", errors.New("alchemy RPC not supported for chain: " + chainInfo.ChainName)
+		}
+		if c.RPC.AlchemyAPIKey == "" || c.RPC.AlchemyAPIKey == "YOUR_ALCHEMY_API_KEY" {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("alchemy API key not configured"))
+			return "", errors.New("alchemy API key not configured")
+		}
+		return strings.Replace(*chainInfo.AlchemyRPCTemplate, "{API_KEY}", c.RPC.AlchemyAPIKey, 1), nil
 
-	if len(officialRPCs) == 0 {
-		logger.Error("GetRPCURL error: ", fmt.Errorf("no official RPC URLs available for chain: %s", chainInfo.ChainName))
-		return "", errors.New("no official RPC URLs available for chain: " + chainInfo.ChainName)
-	}
+	case "infura":
+		if chainInfo.InfuraRPCTemplate == nil {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("infura RPC not supported for chain: %s", chainInfo.ChainName))
+			return "", errors.New("infura RPC not supported for chain: " + chainInfo.ChainName)
+		}
+		if c.RPC.InfuraAPIKey == "" || c.RPC.InfuraAPIKey == "YOUR_INFURA_API_KEY" {
+			logger.Error("GetRPCURL error: ", fmt.Errorf("infura API key not configured"))
+			return "", errors.New("infura API key not configured")
+		}
+		return strings.Replace(*chainInfo.InfuraRPCTemplate, "{API_KEY}", c.RPC.InfuraAPIKey, 1), nil
 
-	// 使用第一个官方RPC URL
-	return officialRPCs[0], nil
+	default:
+		logger.Error("GetRPCURL error: ", fmt.Errorf("unsupported RPC provider: %s", c.RPC.Provider))
+		return "", fmt.Errorf("unsupported RPC provider: %s", c.RPC.Provider)
+	}
 }

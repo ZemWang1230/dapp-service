@@ -971,8 +971,8 @@ definitions:
 host: localhost:8080
 info:
   contact: {}
-  description: TimeLocker Backend API
-  title: TimeLocker Backend API
+  description: TimeLock Backend API
+  title: TimeLock Backend API
   version: "1.0"
 paths:
   /api/v1/abi:

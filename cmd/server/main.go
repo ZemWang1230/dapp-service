@@ -51,9 +51,9 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// @title TimeLocker Backend API
+// @title TimeLock Backend API
 // @version 1.0
-// @description TimeLocker Backend API
+// @description TimeLock Backend API
 // @host localhost:8080
 // @BasePath /
 // @schemes http https
@@ -161,8 +161,8 @@ func main() {
 
 	// 10. Swagger API文档端点
 	docs.SwaggerInfo.Host = "localhost:" + cfg.Server.Port
-	docs.SwaggerInfo.Title = "TimeLock Backend API v1.0"
-	docs.SwaggerInfo.Description = "TimeLock Backend API"
+	docs.SwaggerInfo.Title = "TimeLocker Backend API v1.0"
+	docs.SwaggerInfo.Description = "TimeLocker Backend API"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	// 健康检查端点
 	router.GET("/api/v1/health", func(c *gin.Context) {
