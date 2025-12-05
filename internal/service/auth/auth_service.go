@@ -75,7 +75,7 @@ func (s *service) GetNonce(ctx context.Context, req *types.GetNonceRequest) (*ty
 	nonce := crypto.GenerateNonce()
 
 	// 构造签名消息
-	message := fmt.Sprintf("Welcome to TimeLocker!\n\nClick to sign in and accept the TimeLocker Terms of Service.\n\nThis request will not trigger a blockchain transaction or cost any gas fees.\n\nWallet address:\n%s\n\nNonce:\n%s", normalizedAddress, nonce)
+	message := fmt.Sprintf("Welcome to TimeLock!\n\nClick to sign in and accept the TimeLock Terms of Service.\n\nThis request will not trigger a blockchain transaction or cost any gas fees.\n\nWallet address:\n%s\n%s", normalizedAddress, nonce)
 
 	// 设置过期时间（5分钟）
 	expiresAt := time.Now().Add(5 * time.Minute)

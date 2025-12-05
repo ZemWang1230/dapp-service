@@ -126,5 +126,5 @@ func NormalizeAddress(address string) string {
 func GenerateNonce() string {
 	// 基于时间戳给一个随机的字符串
 	random := fmt.Sprintf("%d", time.Now().UnixNano())
-	return fmt.Sprintf("TimeLocker Login Nonce: %d", crypto.Keccak256Hash([]byte(fmt.Sprintf("%d", crypto.Keccak256Hash([]byte(random)).Big().Int64()))).Big().Int64())
+	return fmt.Sprintf("TimeLock Login Nonce: %d", crypto.Keccak256Hash([]byte(fmt.Sprintf("%d", crypto.Keccak256Hash([]byte(random)).Big().Int64()))).Big().Int64())
 }
