@@ -70,7 +70,7 @@ func updateAllScannersStatusToPaused(ctx context.Context, progressRepo scannerRe
 
 func main() {
 	logger.Init(logger.DefaultConfig())
-	logger.Info("Starting TimeLocker Backend v2.0.0")
+	logger.Info("Starting TimeLock Backend v1.0.0")
 
 	// 创建根context和WaitGroup用于协调关闭
 	ctx, cancel := context.WithCancel(context.Background())
