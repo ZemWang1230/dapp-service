@@ -41,26 +41,9 @@ email:
   smtp_password: "xxx"
   from_name: "Timelock Notification"
   from_email: "notifications@timelock.tech"
-  
+
   # 邮件通知功能配置
   verification_code_expiry: "5m"
-  
+
   # 邮件模板配置
   email_url: "https://timelock.tech"
-
-# 扫链系统配置
-scanner:
-  # RPC配置（简化）
-  rpc_timeout: "20s"
-  rpc_retry_max: 10
-  rpc_retry_delay: "10s"
-  
-  # 扫块配置
-  scan_batch_size: 100
-  scan_interval: "30s"
-  scan_interval_slow: "30s"
-  scan_confirmations: 3
-
-  # Flow refresher config
-  flow_refresh_interval: "90s"
-  flow_refresh_batch_size: 100

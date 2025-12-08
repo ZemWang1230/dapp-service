@@ -41,26 +41,9 @@ email:
   smtp_password: "xxx"     # 邮箱应用密码（不是登录密码）
   from_name: "Timelock Notification"   # 发件人名称
   from_email: "gm@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
-  
+
   # 邮件通知功能配置
   verification_code_expiry: "5m"        # 验证码过期时间
-  
+
   # 邮件模板配置
   email_url: "https://timelock.tech"      # 前端基础URL，用于生成邮件中的链接
-
-# 扫链系统配置
-scanner:
-  # RPC配置（简化）
-  rpc_timeout: "20s"                  # RPC请求超时时间
-  rpc_retry_max: 10                    # RPC最大重试次数
-  rpc_retry_delay: "10s"               # RPC重试延迟（出错时等待时间）
-  
-  # 扫块配置
-  scan_batch_size: 500                # 每批扫描的区块数量
-  scan_interval: "30s"                 # 快速扫描间隔
-  scan_interval_slow: "30s"           # 慢速扫描间隔（到达最新块后）
-  scan_confirmations: 3              # 区块确认数
-
-  # Flow refresher config
-  flow_refresh_interval: "60s"        # 流刷新间隔
-  flow_refresh_batch_size: 100        # 流刷新批量大小
