@@ -14,6 +14,7 @@ type Service interface {
 	GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) (*types.GetSupportChainsResponse, error)
 	GetChainByChainID(ctx context.Context, chainID int64) (*types.SupportChainResponse, error)
 	GetWalletChainConfig(ctx context.Context, chainID int64) (*types.WalletChainConfig, error)
+	GetSubgraphURL(ctx context.Context, chainName string) (string, error)
 }
 
 // service 支持链服务实现
@@ -75,6 +76,7 @@ func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportCha
 			OfficialRPCUrls:        rpcURLs,
 			BlockExplorerUrls:      firstExplorer,
 			RPCEnabled:             ch.RPCEnabled,
+			SubgraphURL:            ch.SubgraphURL,
 		})
 	}
 
@@ -85,6 +87,22 @@ func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportCha
 
 	logger.Info("GetSupportChains: ", "total", total, "count", len(chains))
 	return response, nil
+}
+
+// GetSubgraphURL 根据链名称获取Goldsky subgraph URL
+func (s *service) GetSubgraphURL(ctx context.Context, chainName string) (string, error) {
+	chain, err := s.chainRepo.GetChainByChainName(chainName)
+	if err != nil {
+		logger.Error("GetSubgraphURL error: ", err, "chain_name", chainName)
+		return "", err
+	}
+
+	if chain.SubgraphURL == "" {
+		logger.Warn("GetSubgraphURL: subgraph URL not configured for chain", "chain_name", chainName)
+		return "", fmt.Errorf("subgraph URL not configured for chain: %s", chainName)
+	}
+
+	return chain.SubgraphURL, nil
 }
 
 // GetChainByChainID 根据ChainID获取链信息
@@ -131,6 +149,7 @@ func (s *service) GetChainByChainID(ctx context.Context, chainID int64) (*types.
 		OfficialRPCUrls:        officialRPCs,
 		BlockExplorerUrls:      firstExplorer,
 		RPCEnabled:             chain.RPCEnabled,
+		SubgraphURL:            chain.SubgraphURL,
 	}
 
 	logger.Info("GetChainByChainID success: ", "chain_id", chainID, "chain_name", chain.ChainName)

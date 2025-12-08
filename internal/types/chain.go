@@ -21,6 +21,7 @@ type SupportChain struct {
 	OfficialRPCUrls        string    `json:"official_rpc_urls" gorm:"type:text;not null"`         // 官方RPC URLs (JSON数组)
 	BlockExplorerUrls      string    `json:"block_explorer_urls" gorm:"type:text;not null"`       // 区块浏览器URLs (JSON数组)
 	RPCEnabled             bool      `json:"rpc_enabled" gorm:"not null;default:true"`            // 是否启用RPC功能
+	SubgraphURL            string    `json:"subgraph_url" gorm:"type:text"`                       // Goldsky Subgraph URL
 	CreatedAt              time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt              time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -43,6 +44,7 @@ type SupportChainResponse struct {
 	// 返回单个区块浏览器URL（取第一个），字段名保持不变以兼容前端
 	BlockExplorerUrls string `json:"block_explorer_urls"`
 	RPCEnabled        bool   `json:"rpc_enabled"`
+	SubgraphURL       string `json:"subgraph_url"`
 }
 
 // TableName 设置表名
