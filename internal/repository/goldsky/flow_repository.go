@@ -3,7 +3,6 @@ package goldsky
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 	"timelocker-backend/internal/types"
@@ -29,8 +28,8 @@ type FlowRepository interface {
 	GetOpenzeppelinFlowsByContract(ctx context.Context, chainID int, contractAddress string) ([]types.OpenzeppelinTimelockFlowDB, error)
 
 	// 用户相关查询（用于 API）
-	GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error)
-	GetUserRelatedFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error)
+	GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error)
+	GetUserRelatedCompoundFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error)
 }
 
 type flowRepository struct {
@@ -208,39 +207,16 @@ func (r *flowRepository) GetOpenzeppelinFlowsNeedStatusUpdate(ctx context.Contex
 	return flows, nil
 }
 
-// GetUserRelatedFlows 获取用户相关的 Flows（用于 API）
-func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error) {
-	// 1. 获取用户相关的合约地址列表
-	var contractAddresses []string
-	if standard == nil || *standard == "" || *standard == "compound" {
-		contractAddresses, err := r.getUserRelatedCompoundContracts(ctx, userAddress)
-		if err != nil {
-			return nil, 0, err
-		}
+// GetUserRelatedCompoundFlows 获取用户相关的 Compound Flows（用于 API）
+func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAddress string, status *string, standard *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error) {
+	normalizedUserAddress := strings.ToLower(userAddress)
 
-		if len(contractAddresses) == 0 {
-			return []types.CompoundFlowResponse{}, 0, nil
-		}
-	}
-
-	if standard == nil || *standard == "" || *standard == "openzeppelin" {
-		contractAddresses, err := r.getUserRelatedOpenzeppelinContracts(ctx, userAddress)
-		if err != nil {
-			return nil, 0, err
-		}
-		if len(contractAddresses) == 0 {
-			return []types.CompoundFlowResponse{}, 0, nil
-		}
-	}
-
-	// 2. 构建查询
 	var responses []types.CompoundFlowResponse
 	var total int64
 
-	// 根据 standard 决定查询哪个表
-	if standard == nil || *standard == "" || *standard == "compound" {
+	if *standard == "compound" {
 		// 查询 Compound Flows
-		compoundFlows, compoundTotal, err := r.queryCompoundFlows(ctx, contractAddresses, status, offset, limit)
+		compoundFlows, compoundTotal, err := r.queryCompoundFlowsWithPermission(ctx, normalizedUserAddress, status, offset, limit)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -248,93 +224,58 @@ func (r *flowRepository) GetUserRelatedFlows(ctx context.Context, userAddress st
 		total += compoundTotal
 	}
 
-	if standard == nil || *standard == "" || *standard == "openzeppelin" {
-		// 查询 OpenZeppelin Flows
-		ozFlows, ozTotal, err := r.queryOpenzeppelinFlows(ctx, contractAddresses, status, offset, limit)
-		if err != nil {
-			return nil, 0, err
-		}
-		responses = append(responses, ozFlows...)
-		total += ozTotal
-	}
-
 	return responses, total, nil
 }
 
-// getUserRelatedContracts 获取用户相关的合约地址
-func (r *flowRepository) getUserRelatedCompoundContracts(ctx context.Context, userAddress string) ([]string, error) {
-	var contracts []string
-	userAddressLower := strings.ToLower(userAddress)
-	err := r.db.WithContext(ctx).
-		Model(&struct {
-			ChainID         int
-			ContractAddress string
-		}{}).
-		Table("compound_timelocks").
-		Where("LOWER(creator_address) = ? OR LOWER(admin) = ? OR LOWER(pending_admin) = ?",
-			userAddressLower, userAddressLower, userAddressLower).
-		Where("status = ?", "active").
-		Pluck("CONCAT(chain_id, ':', contract_address)", &contracts).Error
-	if err != nil {
-		logger.Error("Failed to get user related compound contracts", err, "user", userAddress)
-		return nil, err
-	}
-	return contracts, nil
-}
-
-func (r *flowRepository) getUserRelatedOpenzeppelinContracts(ctx context.Context, userAddress string) ([]string, error) {
-	var contracts []string
-	userAddressLower := strings.ToLower(userAddress)
-	err := r.db.WithContext(ctx).
-		Model(&struct {
-			ChainID         int
-			ContractAddress string
-			Proposers       string
-			Executors       string
-		}{}).
-		Table("openzeppelin_timelocks").
-		Where("LOWER(creator_address) = ? OR LOWER(admin) = ? OR LOWER(proposers) LIKE ? OR LOWER(executors) LIKE ?",
-			userAddressLower, userAddressLower, "%"+userAddressLower+"%", "%"+userAddressLower+"%").
-		Where("status = ?", "active").
-		Pluck("CONCAT(chain_id, ':', contract_address)", &contracts).Error
-
-	if err != nil {
-		logger.Error("Failed to get user related openzeppelin contracts", err, "user", userAddress)
-		return nil, err
-	}
-	return contracts, nil
-}
-
-// queryCompoundFlows 查询 Compound Flows
-func (r *flowRepository) queryCompoundFlows(ctx context.Context, contractAddresses []string, status *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error) {
+// queryCompoundFlowsWithPermission 使用子查询方式查询用户有权限的 Compound Flows
+func (r *flowRepository) queryCompoundFlowsWithPermission(ctx context.Context, normalizedUserAddress string, status *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error) {
 	var flows []types.CompoundTimelockFlowDB
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&types.CompoundTimelockFlowDB{})
+	// 构建WHERE条件，包含两种情况：
+	// 1. initiator_address是该地址
+	// 2. 该flow的合约中，该地址是管理员（admin、pending_admin或creator）
+	whereConditions := []string{}
+	args := []interface{}{}
 
-	// 构建合约地址过滤条件
-	if len(contractAddresses) > 0 {
-		var conditions []string
-		for _, addr := range contractAddresses {
-			conditions = append(conditions, fmt.Sprintf("CONCAT(chain_id, ':', LOWER(contract_address)) = '%s'", strings.ToLower(addr)))
-		}
-		query = query.Where(strings.Join(conditions, " OR "))
-	}
+	// 第一种情况：initiator_address是该地址
+	whereConditions = append(whereConditions, "LOWER(initiator_address) = ?")
+	args = append(args, normalizedUserAddress)
 
-	// 状态过滤
+	// 第二种情况：根据合约权限查询（admin、pending_admin或creator）
+	compoundCondition := `(chain_id, contract_address) IN (
+		SELECT chain_id, contract_address FROM compound_timelocks 
+		WHERE (LOWER(admin) = ? OR LOWER(pending_admin) = ? OR LOWER(creator_address) = ?)
+		AND status = ?
+	)`
+	whereConditions = append(whereConditions, compoundCondition)
+	args = append(args, normalizedUserAddress, normalizedUserAddress, normalizedUserAddress, "active")
+
+	// 组合所有条件
+	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
+
+	// 添加状态过滤
 	if status != nil && *status != "" && *status != "all" {
-		query = query.Where("status = ?", *status)
+		finalWhere += " AND status = ?"
+		args = append(args, *status)
 	}
 
-	// 获取总数
-	if err := query.Count(&total).Error; err != nil {
-		logger.Error("Failed to count compound flows", err)
+	// 计算总数
+	if err := r.db.WithContext(ctx).Model(&types.CompoundTimelockFlowDB{}).
+		Where(finalWhere, args...).
+		Count(&total).Error; err != nil {
+		logger.Error("Failed to count compound flows with permission", err, "user", normalizedUserAddress)
 		return nil, 0, err
 	}
 
 	// 分页查询
-	if err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&flows).Error; err != nil {
-		logger.Error("Failed to query compound flows", err)
+	if err := r.db.WithContext(ctx).
+		Where(finalWhere, args...).
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&flows).Error; err != nil {
+		logger.Error("Failed to query compound flows with permission", err, "user", normalizedUserAddress)
 		return nil, 0, err
 	}
 
@@ -342,48 +283,6 @@ func (r *flowRepository) queryCompoundFlows(ctx context.Context, contractAddress
 	responses := make([]types.CompoundFlowResponse, len(flows))
 	for i, flow := range flows {
 		responses[i] = r.convertCompoundFlowToResponse(ctx, flow)
-	}
-
-	return responses, total, nil
-}
-
-// queryOpenzeppelinFlows 查询 OpenZeppelin Flows
-func (r *flowRepository) queryOpenzeppelinFlows(ctx context.Context, contractAddresses []string, status *string, offset int, limit int) ([]types.CompoundFlowResponse, int64, error) {
-	var flows []types.OpenzeppelinTimelockFlowDB
-	var total int64
-
-	query := r.db.WithContext(ctx).Model(&types.OpenzeppelinTimelockFlowDB{})
-
-	// 构建合约地址过滤条件
-	if len(contractAddresses) > 0 {
-		var conditions []string
-		for _, addr := range contractAddresses {
-			conditions = append(conditions, fmt.Sprintf("CONCAT(chain_id, ':', LOWER(contract_address)) = '%s'", strings.ToLower(addr)))
-		}
-		query = query.Where(strings.Join(conditions, " OR "))
-	}
-
-	// 状态过滤
-	if status != nil && *status != "" && *status != "all" {
-		query = query.Where("status = ?", *status)
-	}
-
-	// 获取总数
-	if err := query.Count(&total).Error; err != nil {
-		logger.Error("Failed to count openzeppelin flows", err)
-		return nil, 0, err
-	}
-
-	// 分页查询
-	if err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&flows).Error; err != nil {
-		logger.Error("Failed to query openzeppelin flows", err)
-		return nil, 0, err
-	}
-
-	// 转换为响应格式
-	responses := make([]types.CompoundFlowResponse, len(flows))
-	for i, flow := range flows {
-		responses[i] = r.convertOpenzeppelinFlowToResponse(ctx, flow)
 	}
 
 	return responses, total, nil
@@ -426,72 +325,14 @@ func (r *flowRepository) convertCompoundFlowToResponse(ctx context.Context, flow
 	}
 }
 
-// convertOpenzeppelinFlowToResponse 转换 OpenZeppelin Flow 为响应格式
-func (r *flowRepository) convertOpenzeppelinFlowToResponse(ctx context.Context, flow types.OpenzeppelinTimelockFlowDB) types.CompoundFlowResponse {
-	// 获取合约备注
-	var remark string
-	r.db.WithContext(ctx).
-		Model(&struct{ Remark string }{}).
-		Table("openzeppelin_timelocks").
-		Where("chain_id = ? AND LOWER(contract_address) = LOWER(?)", flow.ChainID, flow.ContractAddress).
-		Pluck("remark", &remark)
-
-	callDataHex := hex.EncodeToString(flow.CallData)
-
-	return types.CompoundFlowResponse{
-		ID:               flow.ID,
-		FlowID:           flow.FlowID,
-		TimelockStandard: flow.TimelockStandard,
-		ChainID:          flow.ChainID,
-		ContractAddress:  flow.ContractAddress,
-		ContractRemark:   remark,
-		Status:           flow.Status,
-		QueueTxHash:      flow.ScheduleTxHash,
-		ExecuteTxHash:    flow.ExecuteTxHash,
-		CancelTxHash:     flow.CancelTxHash,
-		InitiatorAddress: flow.InitiatorAddress,
-		TargetAddress:    flow.TargetAddress,
-		CallDataHex:      &callDataHex,
-		Value:            flow.Value,
-		Eta:              flow.Eta,
-		ExpiredAt:        nil, // OpenZeppelin 没有 expired
-		ExecutedAt:       flow.ExecutedAt,
-		CancelledAt:      flow.CancelledAt,
-		CreatedAt:        flow.CreatedAt,
-		UpdatedAt:        flow.UpdatedAt,
-	}
-}
-
-// GetUserRelatedFlowsCount 获取用户相关的 Flows 数量统计
-func (r *flowRepository) GetUserRelatedFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error) {
-	// 1. 获取用户相关的合约地址列表
-	var contractAddresses []string
-
-	if standard == nil || *standard == "" || *standard == "compound" {
-		compoundAddresses, err := r.getUserRelatedCompoundContracts(ctx, userAddress)
-		if err != nil {
-			return nil, err
-		}
-		contractAddresses = append(contractAddresses, compoundAddresses...)
-	}
-
-	if standard == nil || *standard == "" || *standard == "openzeppelin" {
-		ozAddresses, err := r.getUserRelatedOpenzeppelinContracts(ctx, userAddress)
-		if err != nil {
-			return nil, err
-		}
-		contractAddresses = append(contractAddresses, ozAddresses...)
-	}
-
-	if len(contractAddresses) == 0 {
-		return &types.FlowStatusCount{}, nil
-	}
-
+// GetUserRelatedCompoundFlowsCount 获取用户相关的 Compound Flows 数量统计
+func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, userAddress string, standard *string) (*types.FlowStatusCount, error) {
+	normalizedUserAddress := strings.ToLower(userAddress)
 	count := &types.FlowStatusCount{}
 
-	// 2. 统计 Compound Flows
-	if standard == nil || *standard == "" || *standard == "compound" {
-		compoundCount, err := r.countCompoundFlows(ctx, contractAddresses)
+	// 统计 Compound Flows
+	if *standard == "compound" {
+		compoundCount, err := r.countCompoundFlowsWithPermission(ctx, normalizedUserAddress)
 		if err != nil {
 			return nil, err
 		}
@@ -501,20 +342,6 @@ func (r *flowRepository) GetUserRelatedFlowsCount(ctx context.Context, userAddre
 		count.Executed += compoundCount.Executed
 		count.Cancelled += compoundCount.Cancelled
 		count.Expired += compoundCount.Expired
-	}
-
-	// 3. 统计 OpenZeppelin Flows
-	if standard == nil || *standard == "" || *standard == "openzeppelin" {
-		ozCount, err := r.countOpenzeppelinFlows(ctx, contractAddresses)
-		if err != nil {
-			return nil, err
-		}
-		count.Count += ozCount.Count
-		count.Waiting += ozCount.Waiting
-		count.Ready += ozCount.Ready
-		count.Executed += ozCount.Executed
-		count.Cancelled += ozCount.Cancelled
-		// OpenZeppelin 没有 expired 状态
 	}
 
 	return count, nil
@@ -538,28 +365,42 @@ func (r *flowRepository) GetOpenzeppelinFlowsByContract(ctx context.Context, cha
 	return flows, err
 }
 
-// countCompoundFlows 统计 Compound Flows
-func (r *flowRepository) countCompoundFlows(ctx context.Context, contractAddresses []string) (*types.FlowStatusCount, error) {
+// countCompoundFlowsWithPermission 统计用户有权限的 Compound Flows
+func (r *flowRepository) countCompoundFlowsWithPermission(ctx context.Context, normalizedUserAddress string) (*types.FlowStatusCount, error) {
 	count := &types.FlowStatusCount{}
 
-	query := r.db.WithContext(ctx).Model(&types.CompoundTimelockFlowDB{})
+	// 构建WHERE条件（与查询逻辑一致）
+	whereConditions := []string{}
+	args := []interface{}{}
 
-	// 构建合约地址过滤条件
-	if len(contractAddresses) > 0 {
-		var conditions []string
-		for _, addr := range contractAddresses {
-			conditions = append(conditions, fmt.Sprintf("CONCAT(chain_id, ':', LOWER(contract_address)) = '%s'", strings.ToLower(addr)))
-		}
-		query = query.Where(strings.Join(conditions, " OR "))
-	}
+	// 第一种情况：initiator_address是该地址
+	whereConditions = append(whereConditions, "LOWER(initiator_address) = ?")
+	args = append(args, normalizedUserAddress)
+
+	// 第二种情况：根据合约权限查询
+	compoundCondition := `(chain_id, contract_address) IN (
+		SELECT chain_id, contract_address FROM compound_timelocks 
+		WHERE (LOWER(admin) = ? OR LOWER(pending_admin) = ? OR LOWER(creator_address) = ?)
+		AND status = ?
+	)`
+	whereConditions = append(whereConditions, compoundCondition)
+	args = append(args, normalizedUserAddress, normalizedUserAddress, normalizedUserAddress, "active")
+
+	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
 
 	// 总数
-	if err := query.Count(&count.Count).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&types.CompoundTimelockFlowDB{}).
+		Where(finalWhere, args...).
+		Count(&count.Count).Error; err != nil {
 		return nil, err
 	}
 
 	// 按状态统计
-	rows, err := query.Select("status, COUNT(*) as count").Group("status").Rows()
+	rows, err := r.db.WithContext(ctx).Model(&types.CompoundTimelockFlowDB{}).
+		Select("status, COUNT(*) as count").
+		Where(finalWhere, args...).
+		Group("status").
+		Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -583,55 +424,6 @@ func (r *flowRepository) countCompoundFlows(ctx context.Context, contractAddress
 			count.Cancelled = cnt
 		case "expired":
 			count.Expired = cnt
-		}
-	}
-
-	return count, nil
-}
-
-// countOpenzeppelinFlows 统计 OpenZeppelin Flows
-func (r *flowRepository) countOpenzeppelinFlows(ctx context.Context, contractAddresses []string) (*types.FlowStatusCount, error) {
-	count := &types.FlowStatusCount{}
-
-	query := r.db.WithContext(ctx).Model(&types.OpenzeppelinTimelockFlowDB{})
-
-	// 构建合约地址过滤条件
-	if len(contractAddresses) > 0 {
-		var conditions []string
-		for _, addr := range contractAddresses {
-			conditions = append(conditions, fmt.Sprintf("CONCAT(chain_id, ':', LOWER(contract_address)) = '%s'", strings.ToLower(addr)))
-		}
-		query = query.Where(strings.Join(conditions, " OR "))
-	}
-
-	// 总数
-	if err := query.Count(&count.Count).Error; err != nil {
-		return nil, err
-	}
-
-	// 按状态统计
-	rows, err := query.Select("status, COUNT(*) as count").Group("status").Rows()
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var status string
-		var cnt int64
-		if err := rows.Scan(&status, &cnt); err != nil {
-			return nil, err
-		}
-
-		switch status {
-		case "waiting":
-			count.Waiting = cnt
-		case "ready":
-			count.Ready = cnt
-		case "executed":
-			count.Executed = cnt
-		case "cancelled":
-			count.Cancelled = cnt
 		}
 	}
 

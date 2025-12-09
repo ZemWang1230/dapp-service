@@ -87,10 +87,10 @@ func (s *flowService) GetCompoundFlowList(ctx context.Context, userAddress strin
 	}
 	offset := (page - 1) * pageSize
 
-	flows, total, err := s.flowRepo.GetUserRelatedFlows(ctx, userAddress, req.Status, req.Standard, offset, pageSize)
+	flows, total, err := s.flowRepo.GetUserRelatedCompoundFlows(ctx, userAddress, req.Status, req.Standard, offset, pageSize)
 	if err != nil {
-		logger.Error("Failed to get user related flows", err, "user", userAddress)
-		return nil, fmt.Errorf("failed to get user related flows: %w", err)
+		logger.Error("Failed to get user related compound flows", err, "user", userAddress)
+		return nil, fmt.Errorf("failed to get user related compound flows: %w", err)
 	}
 
 	return &types.GetCompoundFlowListResponse{
@@ -117,10 +117,10 @@ func (s *flowService) GetCompoundFlowListCount(ctx context.Context, userAddress 
 	}
 
 	// 调用repository层获取数量统计
-	flowCount, err := s.flowRepo.GetUserRelatedFlowsCount(ctx, userAddress, req.Standard)
+	flowCount, err := s.flowRepo.GetUserRelatedCompoundFlowsCount(ctx, userAddress, req.Standard)
 	if err != nil {
-		logger.Error("Failed to get user related flows count", err, "user", userAddress)
-		return nil, fmt.Errorf("failed to get user related flows count: %w", err)
+		logger.Error("Failed to get user related compound flows count", err, "user", userAddress)
+		return nil, fmt.Errorf("failed to get user related compound flows count: %w", err)
 	}
 
 	return &types.GetCompoundFlowListCountResponse{

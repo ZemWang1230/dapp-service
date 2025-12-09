@@ -235,11 +235,6 @@ func (s *GoldskyService) syncCompoundFlows(chainID int, client *GoldskyClient, c
 			logger.Error("Failed to create or update compound flow", err, "flow_id", dbFlow.FlowID)
 			continue
 		}
-
-		// 检测状态变化并发送通知
-		if oldFlow != nil && oldFlow.Status != dbFlow.Status {
-			go s.sendFlowStatusChangeNotification(chainID, dbFlow.ContractAddress, dbFlow.FlowID, "compound", oldFlow.Status, dbFlow.Status)
-		}
 	}
 
 	return nil
@@ -284,11 +279,6 @@ func (s *GoldskyService) syncOpenzeppelinFlows(chainID int, client *GoldskyClien
 		if err := s.flowRepo.CreateOrUpdateOpenzeppelinFlow(s.ctx, dbFlow); err != nil {
 			logger.Error("Failed to create or update openzeppelin flow", err, "flow_id", dbFlow.FlowID)
 			continue
-		}
-
-		// 检测状态变化并发送通知
-		if oldFlow != nil && oldFlow.Status != dbFlow.Status {
-			go s.sendFlowStatusChangeNotification(chainID, dbFlow.ContractAddress, dbFlow.FlowID, "openzeppelin", oldFlow.Status, dbFlow.Status)
 		}
 	}
 
