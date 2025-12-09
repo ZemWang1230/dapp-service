@@ -15,21 +15,19 @@ import (
 	chainHandler "timelocker-backend/internal/api/chain"
 	emailHandler "timelocker-backend/internal/api/email"
 	flowHandler "timelocker-backend/internal/api/flow"
+	goldskyHandler "timelocker-backend/internal/api/goldsky"
 	notificationHandler "timelocker-backend/internal/api/notification"
 	publicHandler "timelocker-backend/internal/api/public"
-	sponsorHandler "timelocker-backend/internal/api/sponsor"
 	timelockHandler "timelocker-backend/internal/api/timelock"
 
 	"timelocker-backend/internal/config"
 	abiRepo "timelocker-backend/internal/repository/abi"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	emailRepo "timelocker-backend/internal/repository/email"
-
+	goldskyRepo "timelocker-backend/internal/repository/goldsky"
 	notificationRepo "timelocker-backend/internal/repository/notification"
 	publicRepo "timelocker-backend/internal/repository/public"
 	safeRepo "timelocker-backend/internal/repository/safe"
-	scannerRepo "timelocker-backend/internal/repository/scanner"
-	sponsorRepo "timelocker-backend/internal/repository/sponsor"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 
 	userRepo "timelocker-backend/internal/repository/user"
@@ -38,10 +36,10 @@ import (
 	chainService "timelocker-backend/internal/service/chain"
 	emailService "timelocker-backend/internal/service/email"
 	flowService "timelocker-backend/internal/service/flow"
+	goldskyService "timelocker-backend/internal/service/goldsky"
 	notificationService "timelocker-backend/internal/service/notification"
 	publicService "timelocker-backend/internal/service/public"
 	scannerService "timelocker-backend/internal/service/scanner"
-	sponsorService "timelocker-backend/internal/service/sponsor"
 	timelockService "timelocker-backend/internal/service/timelock"
 
 	"timelocker-backend/pkg/database"
@@ -64,12 +62,6 @@ import (
 // @in header
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
-
-// updateAllScannersStatusToPaused 更新所有扫链器状态为暂停
-func updateAllScannersStatusToPaused(ctx context.Context, progressRepo scannerRepo.ProgressRepository) error {
-	// 批量更新所有运行中的扫描器状态为 paused
-	return progressRepo.UpdateAllRunningScannersToPaused(ctx)
-}
 
 func main() {
 	logger.Init(logger.DefaultConfig())
@@ -97,6 +89,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 设置logger数据库写入器，使错误日志可以写入数据库
+	logger.SetDB(db)
+
 	// 3. 连接Redis
 	// redisClient, err := database.NewRedisConnection(&cfg.Redis)
 	// if err != nil {
@@ -108,16 +103,13 @@ func main() {
 	userRepository := userRepo.NewRepository(db)
 	chainRepository := chainRepo.NewRepository(db)
 	abiRepository := abiRepo.NewRepository(db)
-	sponsorRepository := sponsorRepo.NewRepository(db)
 	timelockRepository := timelockRepo.NewRepository(db)
 	emailRepository := emailRepo.NewEmailRepository(db)
 	notificationRepository := notificationRepo.NewRepository(db)
 	safeRepository := safeRepo.NewRepository(db)
 
-	// 扫链相关仓库
-	progressRepository := scannerRepo.NewProgressRepository(db)
-	transactionRepository := scannerRepo.NewTransactionRepository(db)
-	flowRepository := scannerRepo.NewFlowRepository(db)
+	// Goldsky Flow 仓库
+	goldskyFlowRepository := goldskyRepo.NewFlowRepository(db)
 
 	// 公共数据仓库
 	publicRepository := publicRepo.NewRepository(db)
@@ -129,14 +121,36 @@ func main() {
 		cfg.JWT.RefreshExpiry,
 	)
 
-	// 6. 初始化服务层（注意：authSvc需要在RPC管理器启动后初始化）
+	// 6. 初始化服务层
 	abiSvc := abiService.NewService(abiRepository)
 	chainSvc := chainService.NewService(chainRepository)
-	sponsorSvc := sponsorService.NewService(sponsorRepository)
-	publicSvc := publicService.NewService(publicRepository)
-	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, timelockRepository, transactionRepository, cfg)
-	flowSvc := flowService.NewFlowService(flowRepository, timelockRepository)
-	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, transactionRepository, cfg)
+
+	// 初始化 email 和 notification 服务（使用 Goldsky Flow Repository）
+	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, timelockRepository, goldskyFlowRepository, cfg)
+	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, goldskyFlowRepository, cfg)
+
+	// 初始化 Goldsky 服务
+	goldskySvc := goldskyService.NewGoldskyService(
+		chainRepository,
+		timelockRepository,
+		goldskyFlowRepository,
+		emailSvc,
+		notificationSvc,
+	)
+
+	// 初始化公共服务（需要 Goldsky 服务）
+	publicSvc := publicService.NewService(publicRepository, goldskyFlowRepository, goldskySvc)
+
+	// 初始化 Goldsky Webhook Processor
+	goldskyProcessor := goldskyService.NewWebhookProcessor(
+		timelockRepository,
+		goldskyFlowRepository,
+		emailSvc,
+		notificationSvc,
+	)
+
+	// 初始化 Flow 服务
+	flowSvc := flowService.NewFlowService(goldskyFlowRepository, chainRepository, goldskySvc)
 
 	// 7. 设置Gin和路由
 	gin.SetMode(cfg.Server.Mode)
@@ -165,8 +179,6 @@ func main() {
 		publicHdl := publicHandler.NewHandler(publicSvc)
 		publicHdl.RegisterRoutes(v1)
 
-		sponsorHdl := sponsorHandler.NewHandler(sponsorSvc)
-		sponsorHdl.RegisterRoutes(v1)
 	}
 
 	// 10. Swagger API文档端点
@@ -179,7 +191,7 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// 11. 启动RPC管理器
+	// 11. 启动 RPC 管理器（auth 和 timelock 服务需要）
 	rpcManager := scannerService.NewRPCManager(cfg, chainRepository)
 	if err := rpcManager.Start(ctx); err != nil {
 		logger.Error("Failed to start RPC manager", err)
@@ -187,27 +199,16 @@ func main() {
 		logger.Info("RPC Manager started successfully")
 	}
 
-	// 12. 启动扫链管理器
-	scannerManager := scannerService.NewManager(
-		cfg,
-		chainRepository,
-		timelockRepository,
-		progressRepository,
-		transactionRepository,
-		flowRepository,
-		rpcManager,
-		emailSvc,
-		notificationSvc,
-	)
-	if err := scannerManager.Start(ctx); err != nil {
-		logger.Error("Failed to start scanner manager", err)
+	// 12. 启动 Goldsky 服务
+	if err := goldskySvc.Start(); err != nil {
+		logger.Error("Failed to start Goldsky service", err)
 	} else {
-		logger.Info("Scanner Manager started successfully")
+		logger.Info("Goldsky service started successfully")
 	}
 
-	// 13. 初始化需要RPC管理器的服务和处理器
+	// 13. 初始化需要 RPC 的服务和处理器
 	authSvc := authService.NewService(userRepository, safeRepository, rpcManager, jwtManager)
-	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, flowRepository, rpcManager, cfg)
+	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, rpcManager, goldskySvc)
 
 	// 14. 初始化处理器并注册路由
 	authHandler := authHandler.NewHandler(authSvc)
@@ -227,6 +228,9 @@ func main() {
 
 	notificationHdl := notificationHandler.NewNotificationHandler(notificationSvc, authSvc)
 	notificationHdl.RegisterRoutes(v1)
+
+	goldskyHdl := goldskyHandler.NewWebhookHandler(goldskyProcessor, chainRepository)
+	goldskyHdl.RegisterRoutes(v1)
 
 	// 15. 启动定时任务
 	wg.Add(1)
@@ -311,27 +315,19 @@ func main() {
 	}
 	shutdownCancel()
 
-	// Step 2: 取消context，通知所有扫链组件停止
-	logger.Info("Cancelling context to stop all scanner services...")
+	// Step 2: 取消context，通知所有服务停止
+	logger.Info("Cancelling context to stop all services...")
 	cancel()
 
-	// Step 3: 停止扫链管理器（会自动更新状态为paused）
-	logger.Info("Stopping scanner manager...")
-	scannerManager.Stop()
+	// Step 3: 停止 Goldsky 服务
+	logger.Info("Stopping Goldsky service...")
+	goldskySvc.Stop()
 
-	// Step 4: 停止RPC管理器
+	// Step 4: 停止 RPC 管理器
 	logger.Info("Stopping RPC manager...")
 	rpcManager.Stop()
 
-	// Step 5: 确保所有扫链器状态已更新为paused（兜底保护）
-	logger.Info("Ensuring all scanner status updated to paused...")
-	shutdownCtx, shutdownCancel = context.WithTimeout(context.Background(), 3*time.Second)
-	if err := updateAllScannersStatusToPaused(shutdownCtx, progressRepository); err != nil {
-		logger.Error("Failed to ensure scanner status paused: ", err)
-	}
-	shutdownCancel()
-
-	// Step 6: 等待所有goroutine结束
+	// Step 5: 等待所有goroutine结束
 	logger.Info("Waiting for all goroutines to finish...")
 	done := make(chan struct{})
 	go func() {

@@ -14,7 +14,7 @@ import (
 	"timelocker-backend/internal/config"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	emailRepo "timelocker-backend/internal/repository/email"
-	"timelocker-backend/internal/repository/scanner"
+	goldskyRepo "timelocker-backend/internal/repository/goldsky"
 	timeLockRepo "timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	emailPkg "timelocker-backend/pkg/email"
@@ -51,23 +51,23 @@ type EmailService interface {
 
 // emailService 邮箱服务实现
 type emailService struct {
-	repo            emailRepo.EmailRepository
-	chainRepo       chainRepo.Repository
-	timeLockRepo    timeLockRepo.Repository
-	transactionRepo scanner.TransactionRepository
-	config          *config.Config
-	sender          *emailPkg.SMTPSender
+	repo         emailRepo.EmailRepository
+	chainRepo    chainRepo.Repository
+	timeLockRepo timeLockRepo.Repository
+	flowRepo     goldskyRepo.FlowRepository
+	config       *config.Config
+	sender       *emailPkg.SMTPSender
 }
 
 // NewEmailService 创建邮箱服务实例
-func NewEmailService(repo emailRepo.EmailRepository, chainRepo chainRepo.Repository, timeLockRepo timeLockRepo.Repository, transactionRepo scanner.TransactionRepository, cfg *config.Config) EmailService {
+func NewEmailService(repo emailRepo.EmailRepository, chainRepo chainRepo.Repository, timeLockRepo timeLockRepo.Repository, flowRepo goldskyRepo.FlowRepository, cfg *config.Config) EmailService {
 	return &emailService{
-		repo:            repo,
-		chainRepo:       chainRepo,
-		timeLockRepo:    timeLockRepo,
-		transactionRepo: transactionRepo,
-		config:          cfg,
-		sender:          emailPkg.NewSMTPSender(&cfg.Email),
+		repo:         repo,
+		chainRepo:    chainRepo,
+		timeLockRepo: timeLockRepo,
+		flowRepo:     flowRepo,
+		config:       cfg,
+		sender:       emailPkg.NewSMTPSender(&cfg.Email),
 	}
 }
 
@@ -393,30 +393,49 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 		toBg, toText := getStatusColor(statusTo)
 
 		if standard == "compound" {
-			// 通过chainid、contractAddress获得该合约信息，拿到合约备注，GetCompoundTimeLockByChainAndAddress
+			// 获取合约信息
 			compoundTimeLock, err := s.timeLockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
 			if err != nil {
 				logger.Error("Failed to get compound time lock", err, "chainID", chainID, "contractAddress", contractAddress)
 				continue
 			}
 
-			// 通过flowID去交易表中拿到交易信息
-			transaction, err := s.transactionRepo.GetQueueCompoundTransactionByFlowID(ctx, flowID, contractAddress)
+			// 从 Goldsky Flow 表中获取 Flow 信息
+			flow, err := s.flowRepo.GetCompoundFlowByID(ctx, flowID, chainID, contractAddress)
 			if err != nil {
-				logger.Error("Failed to get queue compound transaction", err, "flowID", flowID, "contractAddress", contractAddress)
+				logger.Error("Failed to get compound flow", err, "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
 				continue
 			}
-			if transaction == nil {
-				logger.Warn("No queue compound transaction found", "flowID", flowID, "contractAddress", contractAddress)
+			if flow == nil {
+				logger.Warn("No compound flow found", "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
 				continue
 			}
 
 			var functionName string
 			var calldataParams []types.CalldataParam
+			var caller string
+			var target string
+
+			// 获取 caller
+			if flow.InitiatorAddress != nil {
+				caller = *flow.InitiatorAddress
+			} else if initiatorAddress != "" {
+				caller = initiatorAddress
+			} else {
+				caller = "Unknown"
+			}
+
+			// 获取 target
+			if flow.TargetAddress != nil {
+				target = *flow.TargetAddress
+			} else {
+				target = "Unknown"
+			}
+
 			// 解析calldata
-			if transaction.EventCallData != nil && transaction.EventFunctionSignature != nil {
-				functionName = *transaction.EventFunctionSignature
-				calldataParams, err = utils.ParseCalldataNoSelector(*transaction.EventFunctionSignature, transaction.EventCallData)
+			if flow.CallData != nil && flow.FunctionSignature != nil {
+				functionName = *flow.FunctionSignature
+				calldataParams, err = utils.ParseCalldataNoSelector(*flow.FunctionSignature, flow.CallData)
 				if err != nil {
 					calldataParams = []types.CalldataParam{
 						{
@@ -425,7 +444,7 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 							Value: "Please Check Your Call Data",
 						},
 					}
-					logger.Error("Failed to parse calldata", err, "functionSignature", *transaction.EventFunctionSignature, "callData", transaction.EventCallData)
+					logger.Error("Failed to parse calldata", err, "functionSignature", *flow.FunctionSignature, "callData", flow.CallData)
 				}
 			} else {
 				functionName = "No Function Call"
@@ -433,9 +452,9 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 			}
 
 			nativeToken := chainInfo.NativeCurrencySymbol
-			value, err := utils.WeiToEth(transaction.EventValue, nativeToken)
+			value, err := utils.WeiToEth(flow.Value, nativeToken)
 			if err != nil {
-				logger.Error("Failed to convert wei to eth", err, "eventValue", transaction.EventValue)
+				logger.Error("Failed to convert wei to eth", err, "eventValue", flow.Value)
 				value = fmt.Sprintf("0 %s", nativeToken)
 			}
 
@@ -443,8 +462,8 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 				Standard:       strings.ToUpper(standard),
 				Contract:       contractAddress,
 				Remark:         compoundTimeLock.Remark,
-				Caller:         transaction.FromAddress,
-				Target:         *transaction.EventTarget,
+				Caller:         caller,
+				Target:         target,
 				Function:       functionName,
 				Value:          value,
 				CalldataParams: calldataParams,

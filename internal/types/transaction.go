@@ -5,6 +5,7 @@ import "time"
 // GetTransactionDetailRequest 获取交易详情请求
 type GetTransactionDetailRequest struct {
 	Standard string `json:"standard" form:"standard" binding:"required,oneof=compound openzeppelin"` // 标准
+	ChainID  int    `json:"chain_id" form:"chain_id" binding:"required"`                             // 链ID
 	TxHash   string `json:"tx_hash" form:"tx_hash" binding:"required"`                               // 交易哈希
 }
 

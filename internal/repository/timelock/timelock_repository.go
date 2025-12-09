@@ -48,6 +48,10 @@ type Repository interface {
 	GetAllActiveCompoundTimeLocks(ctx context.Context) ([]types.CompoundTimeLock, error)
 	GetAllActiveOpenzeppelinTimeLocks(ctx context.Context) ([]types.OpenzeppelinTimeLock, error)
 
+	// 获取指定链的所有活跃timelock合约
+	GetAllActiveCompoundTimelocks(ctx context.Context, chainID int) ([]types.CompoundTimeLock, error)
+	GetAllActiveOpenzeppelinTimelocks(ctx context.Context, chainID int) ([]types.OpenzeppelinTimeLock, error)
+
 	// 通用方法：根据标准、链ID和合约地址获取合约备注
 	GetContractRemarkByStandardAndAddress(ctx context.Context, standard string, chainID int, contractAddress string) (string, error)
 }
@@ -430,6 +434,40 @@ func (r *repository) GetAllActiveOpenzeppelinTimeLocks(ctx context.Context) ([]t
 	}
 
 	logger.Info("GetAllActiveOpenzeppelinTimeLocks success", "count", len(timelocks))
+	return timelocks, nil
+}
+
+// GetAllActiveCompoundTimelocks 获取指定链的所有活跃compound timelock合约
+func (r *repository) GetAllActiveCompoundTimelocks(ctx context.Context, chainID int) ([]types.CompoundTimeLock, error) {
+	var timelocks []types.CompoundTimeLock
+
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND chain_id = ?", "active", chainID).
+		Find(&timelocks).Error
+
+	if err != nil {
+		logger.Error("GetAllActiveCompoundTimelocks error", err, "chain_id", chainID)
+		return nil, err
+	}
+
+	logger.Info("GetAllActiveCompoundTimelocks success", "chain_id", chainID, "count", len(timelocks))
+	return timelocks, nil
+}
+
+// GetAllActiveOpenzeppelinTimelocks 获取指定链的所有活跃openzeppelin timelock合约
+func (r *repository) GetAllActiveOpenzeppelinTimelocks(ctx context.Context, chainID int) ([]types.OpenzeppelinTimeLock, error) {
+	var timelocks []types.OpenzeppelinTimeLock
+
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND chain_id = ?", "active", chainID).
+		Find(&timelocks).Error
+
+	if err != nil {
+		logger.Error("GetAllActiveOpenzeppelinTimelocks error", err, "chain_id", chainID)
+		return nil, err
+	}
+
+	logger.Info("GetAllActiveOpenzeppelinTimelocks success", "chain_id", chainID, "count", len(timelocks))
 	return timelocks, nil
 }
 

@@ -22,6 +22,8 @@ type SupportChain struct {
 	BlockExplorerUrls      string    `json:"block_explorer_urls" gorm:"type:text;not null"`       // 区块浏览器URLs (JSON数组)
 	RPCEnabled             bool      `json:"rpc_enabled" gorm:"not null;default:true"`            // 是否启用RPC功能
 	SubgraphURL            string    `json:"subgraph_url" gorm:"type:text"`                       // Goldsky Subgraph URL
+	CompoundWebhookSecret  string    `json:"compound_webhook_secret" gorm:"type:text"`            // Goldsky Compound Webhook Secret
+	OZWebhookSecret        string    `json:"oz_webhook_secret" gorm:"type:text"`                  // Goldsky OpenZeppelin Webhook Secret
 	CreatedAt              time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt              time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

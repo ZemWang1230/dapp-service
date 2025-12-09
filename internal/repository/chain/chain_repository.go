@@ -24,6 +24,9 @@ type Repository interface {
 
 	// RPC配置相关
 	GetRPCEnabledChains(ctx context.Context, includeTestnets bool) ([]types.ChainRPCInfo, error)
+
+	// Goldsky Webhook 相关
+	GetChainByWebhookSecret(ctx context.Context, secret string) (*types.SupportChain, string, error) // 返回 chain, standard (compound/openzeppelin), error
 }
 
 // repository 支持链仓库实现
@@ -168,4 +171,43 @@ func (r *repository) GetRPCEnabledChains(ctx context.Context, includeTestnets bo
 
 	logger.Info("GetRPCEnabledChains Success: ", "count", len(chains), "include_testnets", includeTestnets)
 	return chains, nil
+}
+
+// GetChainByWebhookSecret 根据 Webhook Secret 查找链和类型
+// 返回：链信息, 标准类型(compound/openzeppelin), 错误
+func (r *repository) GetChainByWebhookSecret(ctx context.Context, secret string) (*types.SupportChain, string, error) {
+	var chain types.SupportChain
+
+	// 先尝试匹配 Compound webhook secret
+	err := r.db.WithContext(ctx).
+		Where("compound_webhook_secret = ? AND compound_webhook_secret != ''", secret).
+		First(&chain).Error
+
+	if err == nil {
+		logger.Info("Found chain by Compound webhook secret", "chain_id", chain.ChainID, "chain_name", chain.ChainName)
+		return &chain, "compound", nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("GetChainByWebhookSecret Error (Compound): ", err)
+		return nil, "", err
+	}
+
+	// 再尝试匹配 OpenZeppelin webhook secret
+	err = r.db.WithContext(ctx).
+		Where("oz_webhook_secret = ? AND oz_webhook_secret != ''", secret).
+		First(&chain).Error
+
+	if err == nil {
+		logger.Info("Found chain by OpenZeppelin webhook secret", "chain_id", chain.ChainID, "chain_name", chain.ChainName)
+		return &chain, "openzeppelin", nil
+	}
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Warn("No chain found for webhook secret")
+		return nil, "", fmt.Errorf("invalid webhook secret")
+	}
+
+	logger.Error("GetChainByWebhookSecret Error (OpenZeppelin): ", err)
+	return nil, "", err
 }

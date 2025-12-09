@@ -8,8 +8,8 @@ import (
 	"time"
 	"timelocker-backend/internal/config"
 	chainRepo "timelocker-backend/internal/repository/chain"
+	goldskyRepo "timelocker-backend/internal/repository/goldsky"
 	"timelocker-backend/internal/repository/notification"
-	"timelocker-backend/internal/repository/scanner"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
@@ -35,27 +35,27 @@ type NotificationService interface {
 
 // notificationService 通知服务实现
 type notificationService struct {
-	repo            notification.NotificationRepository
-	chainRepo       chainRepo.Repository
-	timelockRepo    timelockRepo.Repository
-	transactionRepo scanner.TransactionRepository
-	config          *config.Config
-	telegramSender  *notificationPkg.TelegramSender
-	larkSender      *notificationPkg.LarkSender
-	feishuSender    *notificationPkg.FeishuSender
+	repo           notification.NotificationRepository
+	chainRepo      chainRepo.Repository
+	timelockRepo   timelockRepo.Repository
+	flowRepo       goldskyRepo.FlowRepository
+	config         *config.Config
+	telegramSender *notificationPkg.TelegramSender
+	larkSender     *notificationPkg.LarkSender
+	feishuSender   *notificationPkg.FeishuSender
 }
 
 // NewNotificationService 创建通知服务实例
-func NewNotificationService(repo notification.NotificationRepository, chainRepo chainRepo.Repository, timelockRepo timelockRepo.Repository, transactionRepo scanner.TransactionRepository, config *config.Config) NotificationService {
+func NewNotificationService(repo notification.NotificationRepository, chainRepo chainRepo.Repository, timelockRepo timelockRepo.Repository, flowRepo goldskyRepo.FlowRepository, config *config.Config) NotificationService {
 	return &notificationService{
-		repo:            repo,
-		chainRepo:       chainRepo,
-		timelockRepo:    timelockRepo,
-		transactionRepo: transactionRepo,
-		config:          config,
-		telegramSender:  notificationPkg.NewTelegramSender(),
-		larkSender:      notificationPkg.NewLarkSender(),
-		feishuSender:    notificationPkg.NewFeishuSender(),
+		repo:           repo,
+		chainRepo:      chainRepo,
+		timelockRepo:   timelockRepo,
+		flowRepo:       flowRepo,
+		config:         config,
+		telegramSender: notificationPkg.NewTelegramSender(),
+		larkSender:     notificationPkg.NewLarkSender(),
+		feishuSender:   notificationPkg.NewFeishuSender(),
 	}
 }
 
@@ -423,28 +423,49 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 	}
 
 	if standard == "compound" {
-		// 通过chainid、contractAddress获得该合约信息，拿到合约备注，GetCompoundTimeLockByChainAndAddress
+		// 获取合约信息
 		compoundTimeLock, err := s.timelockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
 		if err != nil {
 			logger.Error("Failed to get compound time lock", err, "chainID", chainID, "contractAddress", contractAddress)
+			return fmt.Errorf("failed to get compound timelock: %w", err)
 		}
 
-		// 通过flowID去交易表中拿到交易信息
-		transaction, err := s.transactionRepo.GetQueueCompoundTransactionByFlowID(ctx, flowID, contractAddress)
+		// 从 Goldsky Flow 表中获取 Flow 信息
+		flow, err := s.flowRepo.GetCompoundFlowByID(ctx, flowID, chainID, contractAddress)
 		if err != nil {
-			logger.Error("Failed to get queue compound transaction", err, "flowID", flowID, "contractAddress", contractAddress)
+			logger.Error("Failed to get compound flow", err, "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
+			return fmt.Errorf("failed to get compound flow: %w", err)
 		}
-		if transaction == nil {
-			logger.Warn("No queue compound transaction found", "flowID", flowID, "contractAddress", contractAddress)
-			return nil // 返回nil而不是继续执行，避免后续的nil指针解引用
+		if flow == nil {
+			logger.Warn("No compound flow found", "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
+			return nil
 		}
 
 		var functionName string
 		var calldataParams []types.CalldataParam
+		var caller string
+		var target string
+
+		// 获取 caller
+		if flow.InitiatorAddress != nil {
+			caller = *flow.InitiatorAddress
+		} else if initiatorAddress != "" {
+			caller = initiatorAddress
+		} else {
+			caller = "Unknown"
+		}
+
+		// 获取 target
+		if flow.TargetAddress != nil {
+			target = *flow.TargetAddress
+		} else {
+			target = "Unknown"
+		}
+
 		// 解析calldata
-		if transaction.EventCallData != nil && transaction.EventFunctionSignature != nil {
-			functionName = *transaction.EventFunctionSignature
-			calldataParams, err = utils.ParseCalldataNoSelector(*transaction.EventFunctionSignature, transaction.EventCallData)
+		if flow.CallData != nil && flow.FunctionSignature != nil {
+			functionName = *flow.FunctionSignature
+			calldataParams, err = utils.ParseCalldataNoSelector(*flow.FunctionSignature, flow.CallData)
 			if err != nil {
 				calldataParams = []types.CalldataParam{
 					{
@@ -453,7 +474,7 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 						Value: "Please Check Your Call Data",
 					},
 				}
-				logger.Error("Failed to parse calldata", err, "functionSignature", *transaction.EventFunctionSignature, "callData", transaction.EventCallData)
+				logger.Error("Failed to parse calldata", err, "functionSignature", *flow.FunctionSignature, "callData", flow.CallData)
 			}
 		} else {
 			functionName = "No Function Call"
@@ -461,9 +482,9 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 		}
 
 		nativeToken := chainInfo.NativeCurrencySymbol
-		value, err := utils.WeiToEth(transaction.EventValue, nativeToken)
+		value, err := utils.WeiToEth(flow.Value, nativeToken)
 		if err != nil {
-			logger.Error("Failed to convert wei to eth", err, "eventValue", transaction.EventValue)
+			logger.Error("Failed to convert wei to eth", err, "eventValue", flow.Value)
 			value = fmt.Sprintf("0 %s", nativeToken)
 		}
 
@@ -471,8 +492,8 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 			Standard:       strings.ToUpper(standard),
 			Contract:       contractAddress,
 			Remark:         compoundTimeLock.Remark,
-			Caller:         transaction.FromAddress,
-			Target:         *transaction.EventTarget,
+			Caller:         caller,
+			Target:         target,
 			Function:       functionName,
 			Value:          value,
 			CalldataParams: calldataParams,

@@ -11,9 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/chain"
-	scannerRepo "timelocker-backend/internal/repository/scanner"
 	"timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/service/scanner"
 	"timelocker-backend/internal/types"
@@ -26,6 +24,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"gorm.io/gorm"
 )
+
+// GoldskyService Goldsky服务接口（用于同步flow）
+type GoldskyService interface {
+	SyncFlowsForContract(ctx context.Context, chainID int, standard, contractAddress string) error
+}
 
 var (
 	ErrTimeLockNotFound      = errors.New("timelock not found")
@@ -68,19 +71,17 @@ type Service interface {
 type service struct {
 	timeLockRepo timelock.Repository
 	chainRepo    chain.Repository
-	flowRepo     scannerRepo.FlowRepository
 	rpcManager   *scanner.RPCManager
-	config       *config.Config
+	goldskySvc   GoldskyService
 }
 
 // NewService 创建timelock服务实例
-func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, flowRepo scannerRepo.FlowRepository, rpcManager *scanner.RPCManager, config *config.Config) Service {
+func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, rpcManager *scanner.RPCManager, goldskySvc GoldskyService) Service {
 	return &service{
 		timeLockRepo: timeLockRepo,
 		chainRepo:    chainRepo,
-		flowRepo:     flowRepo,
 		rpcManager:   rpcManager,
-		config:       config,
+		goldskySvc:   goldskySvc,
 	}
 }
 
@@ -381,20 +382,19 @@ func (s *service) createOrImportCompoundTimeLock(ctx context.Context, userAddres
 		return nil, fmt.Errorf("failed to create compound timelock: %w", err)
 	}
 
-	// 刷新该合约相关的所有flows的expired_at字段，使用正确的GRACE_PERIOD
-	if s.flowRepo != nil {
-		updatedCount, err := s.flowRepo.RefreshCompoundFlowsExpiredAt(ctx, req.ChainID, contractAddress, contractData.GracePeriod)
-		if err != nil {
-			logger.Error("Failed to refresh compound flows expired_at", err,
-				"contract_address", contractAddress, "grace_period", contractData.GracePeriod)
-			// 不影响主流程，只记录错误
+	logger.Info("CreateOrImportCompoundTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
+
+	// 【优化】创建合约后立即同步Goldsky flows，确保状态正确
+	if s.goldskySvc != nil {
+		logger.Info("Syncing flows from Goldsky after compound timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
+		if err := s.goldskySvc.SyncFlowsForContract(ctx, req.ChainID, "compound", contractAddress); err != nil {
+			logger.Error("Failed to sync flows after compound timelock creation", err, "contract_address", contractAddress, "chain_id", req.ChainID)
+			// 同步失败不影响合约创建，但要记录警告
 		} else {
-			logger.Info("Refreshed compound flows expired_at after import",
-				"updated_flows", updatedCount, "contract_address", contractAddress, "grace_period", contractData.GracePeriod)
+			logger.Info("Successfully synced flows after compound timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
 		}
 	}
 
-	logger.Info("CreateOrImportCompoundTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
 	return timeLock, nil
 }
 
@@ -436,6 +436,18 @@ func (s *service) createOrImportOpenzeppelinTimeLock(ctx context.Context, userAd
 	}
 
 	logger.Info("CreateOrImportOpenzeppelinTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
+
+	// 【优化】创建合约后立即同步Goldsky flows，确保状态正确
+	if s.goldskySvc != nil {
+		logger.Info("Syncing flows from Goldsky after openzeppelin timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
+		if err := s.goldskySvc.SyncFlowsForContract(ctx, req.ChainID, "openzeppelin", contractAddress); err != nil {
+			logger.Error("Failed to sync flows after openzeppelin timelock creation", err, "contract_address", contractAddress, "chain_id", req.ChainID)
+			// 同步失败不影响合约创建，但要记录警告
+		} else {
+			logger.Info("Successfully synced flows after openzeppelin timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
+		}
+	}
+
 	return timeLock, nil
 }
 

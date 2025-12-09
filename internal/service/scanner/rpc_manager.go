@@ -17,7 +17,6 @@ import (
 
 // RPCManager RPC管理器，只使用Alchemy RPC
 type RPCManager struct {
-	config    *config.ScannerConfig
 	rpcConfig *config.RPCConfig
 	chainRepo chain.Repository
 	clients   map[int]*ethclient.Client // 直接使用chainID作为key
@@ -27,7 +26,6 @@ type RPCManager struct {
 // NewRPCManager 创建RPC管理器
 func NewRPCManager(cfg *config.Config, chainRepo chain.Repository) *RPCManager {
 	return &RPCManager{
-		config:    &cfg.Scanner,
 		rpcConfig: &cfg.RPC,
 		chainRepo: chainRepo,
 		clients:   make(map[int]*ethclient.Client),
@@ -140,7 +138,7 @@ func (rm *RPCManager) initChainAlchemyRPC(ctx context.Context, chainInfo *types.
 // createClient 创建RPC客户端
 func (rm *RPCManager) createClient(ctx context.Context, chainID int, rpcURL string) (*ethclient.Client, error) {
 	// 创建带超时的上下文
-	dialCtx, cancel := context.WithTimeout(ctx, rm.config.RPCTimeout)
+	dialCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
 	// 创建RPC客户端
@@ -170,16 +168,16 @@ func (rm *RPCManager) createClient(ctx context.Context, chainID int, rpcURL stri
 // ExecuteWithRetry 带重试的RPC调用执行
 func (rm *RPCManager) ExecuteWithRetry(ctx context.Context, chainID int, fn func(*ethclient.Client) error) error {
 	var lastErr error
-	retryDelay := rm.config.RPCRetryDelay
+	retryDelay := 10 * time.Second
 
-	for i := 0; i < rm.config.RPCRetryMax; i++ {
+	for i := 0; i < 5; i++ {
 		client, err := rm.GetOrCreateClient(ctx, chainID)
 		if err != nil {
 			lastErr = err
 			logger.Warn("Failed to get RPC client", "chain_id", chainID, "attempt", i+1, "error", err)
 
 			// 等待重试延迟
-			if i < rm.config.RPCRetryMax-1 {
+			if i < 5-1 {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -199,7 +197,7 @@ func (rm *RPCManager) ExecuteWithRetry(ctx context.Context, chainID int, fn func
 			rm.removeClient(chainID)
 
 			// 等待重试延迟
-			if i < rm.config.RPCRetryMax-1 {
+			if i < 5-1 {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -214,8 +212,8 @@ func (rm *RPCManager) ExecuteWithRetry(ctx context.Context, chainID int, fn func
 		return nil
 	}
 
-	logger.Error("RPC call failed after all retries", lastErr, "chain_id", chainID, "max_retries", rm.config.RPCRetryMax)
-	return fmt.Errorf("RPC call failed after %d retries: %w", rm.config.RPCRetryMax, lastErr)
+	logger.Error("RPC call failed after all retries", lastErr, "chain_id", chainID, "max_retries", 5)
+	return fmt.Errorf("RPC call failed after %d retries: %w", 5, lastErr)
 }
 
 // removeClient 移除指定链的客户端

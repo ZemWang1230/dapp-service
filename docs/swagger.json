@@ -2426,6 +2426,65 @@
                 }
             }
         },
+        "/api/v1/goldsky/webhook": {
+            "post": {
+                "description": "接收 Goldsky 推送的 Timelock 交易事件",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Goldsky"
+                ],
+                "summary": "Goldsky Webhook 接收端点",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Webhook Secret",
+                        "name": "goldsky-webhook-secret",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Webhook Payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/types.GoldskyWebhookPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid webhook secret",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "schema": {
+                            "$ref": "#/definitions/types.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/notifications/configs": {
             "post": {
                 "description": "获取当前用户的所有通知渠道配置，如果用户没有任何配置则返回空列表",
@@ -2913,59 +2972,6 @@
                     },
                     "500": {
                         "description": "服务器内部错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/sponsors/public": {
-            "post": {
-                "description": "获取所有激活的赞助方和生态伙伴信息，用于在前端展示。返回的数据按照排序权重和创建时间排序。",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Sponsors"
-                ],
-                "summary": "获取公开的赞助方和生态伙伴列表",
-                "responses": {
-                    "200": {
-                        "description": "成功获取赞助方和生态伙伴列表",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.GetPublicSponsorsResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "获取赞助方列表失败",
                         "schema": {
                             "allOf": [
                                 {
@@ -4479,23 +4485,6 @@
                 }
             }
         },
-        "types.GetPublicSponsorsResponse": {
-            "type": "object",
-            "properties": {
-                "partners": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.SponsorInfo"
-                    }
-                },
-                "sponsors": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/types.SponsorInfo"
-                    }
-                }
-            }
-        },
         "types.GetStatsRequest": {
             "type": "object"
         },
@@ -4614,10 +4603,15 @@
         "types.GetTransactionDetailRequest": {
             "type": "object",
             "required": [
+                "chain_id",
                 "standard",
                 "tx_hash"
             ],
             "properties": {
+                "chain_id": {
+                    "description": "链ID",
+                    "type": "integer"
+                },
                 "standard": {
                     "description": "标准",
                     "type": "string",
@@ -4653,6 +4647,147 @@
             "properties": {
                 "chain_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "types.GoldskyCompoundTransactionWebhook": {
+            "type": "object",
+            "properties": {
+                "blockNumber": {
+                    "type": "string"
+                },
+                "blockTimestamp": {
+                    "type": "string"
+                },
+                "contractAddress": {
+                    "type": "string"
+                },
+                "eventData": {
+                    "description": "调用数据",
+                    "type": "string"
+                },
+                "eventEta": {
+                    "description": "ETA 时间戳",
+                    "type": "string"
+                },
+                "eventSignature": {
+                    "description": "函数签名",
+                    "type": "string"
+                },
+                "eventTarget": {
+                    "description": "目标地址",
+                    "type": "string"
+                },
+                "eventTxHash": {
+                    "description": "Event 数据",
+                    "type": "string"
+                },
+                "eventType": {
+                    "description": "QueueTransaction, ExecuteTransaction, CancelTransaction",
+                    "type": "string"
+                },
+                "eventValue": {
+                    "description": "金额",
+                    "type": "string"
+                },
+                "fromAddress": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "logIndex": {
+                    "type": "string"
+                },
+                "txHash": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.GoldskyOpenzeppelinTransactionWebhook": {
+            "type": "object",
+            "properties": {
+                "blockNumber": {
+                    "type": "string"
+                },
+                "blockTimestamp": {
+                    "type": "string"
+                },
+                "contractAddress": {
+                    "type": "string"
+                },
+                "eventData": {
+                    "description": "调用数据",
+                    "type": "string"
+                },
+                "eventDelay": {
+                    "description": "延迟时间",
+                    "type": "string"
+                },
+                "eventId": {
+                    "description": "Event 数据",
+                    "type": "string"
+                },
+                "eventIndex": {
+                    "description": "索引",
+                    "type": "string"
+                },
+                "eventPredecessor": {
+                    "description": "前驱",
+                    "type": "string"
+                },
+                "eventTarget": {
+                    "description": "目标地址",
+                    "type": "string"
+                },
+                "eventType": {
+                    "description": "CallScheduled, CallExecuted, Cancelled",
+                    "type": "string"
+                },
+                "eventValue": {
+                    "description": "金额",
+                    "type": "string"
+                },
+                "fromAddress": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "logIndex": {
+                    "type": "string"
+                },
+                "txHash": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.GoldskyWebhookPayload": {
+            "type": "object",
+            "properties": {
+                "event": {
+                    "type": "object",
+                    "properties": {
+                        "data": {
+                            "type": "object",
+                            "properties": {
+                                "compoundTimelockTransactions": {
+                                    "description": "Compound Transaction 事件",
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/types.GoldskyCompoundTransactionWebhook"
+                                    }
+                                },
+                                "openzeppelinTimelockTransactions": {
+                                    "description": "OpenZeppelin Transaction 事件",
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/definitions/types.GoldskyOpenzeppelinTransactionWebhook"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -4817,47 +4952,6 @@
                 }
             }
         },
-        "types.SponsorInfo": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "link": {
-                    "type": "string"
-                },
-                "logo_url": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "sort_order": {
-                    "type": "integer"
-                },
-                "type": {
-                    "$ref": "#/definitions/types.SponsorType"
-                }
-            }
-        },
-        "types.SponsorType": {
-            "type": "string",
-            "enum": [
-                "partner",
-                "sponsor"
-            ],
-            "x-enum-comments": {
-                "SponsorTypePartner": "生态伙伴",
-                "SponsorTypeSponsor": "赞助方"
-            },
-            "x-enum-varnames": [
-                "SponsorTypePartner",
-                "SponsorTypeSponsor"
-            ]
-        },
         "types.SupportChainResponse": {
             "type": "object",
             "properties": {
@@ -4909,6 +5003,9 @@
                 },
                 "rpc_enabled": {
                     "type": "boolean"
+                },
+                "subgraph_url": {
+                    "type": "string"
                 }
             }
         },

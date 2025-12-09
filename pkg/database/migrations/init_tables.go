@@ -80,7 +80,6 @@ func (h *MigrationHandler) runMigrations(ctx context.Context) error {
 		{"v1.0.1", "Create indexes", h.createIndexes},
 		{"v1.0.2", "Insert default chains data", h.insertSupportedChains},
 		{"v1.0.3", "Insert shared ABIs data", h.insertSharedABIs},
-		{"v1.0.4", "Insert default sponsors data", h.insertDefaultSponsors},
 	}
 
 	for _, migration := range migrations {
@@ -193,6 +192,9 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			official_rpc_urls TEXT NOT NULL,
 			block_explorer_urls TEXT NOT NULL,
 			rpc_enabled BOOLEAN NOT NULL DEFAULT true,
+			subgraph_url TEXT,  -- Goldsky subgraph URL
+			compound_webhook_secret TEXT,  -- Goldsky Compound Timelock Transaction webhook secret
+			oz_webhook_secret TEXT,  -- Goldsky OpenZeppelin Timelock Transaction webhook secret
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 		)`
@@ -280,152 +282,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: openzeppelin_timelocks")
 	}
 
-	// 6. 赞助方和生态伙伴表
-	if !h.db.Migrator().HasTable("sponsors") {
-		createSponsorsTable := `
-		CREATE TABLE sponsors (
-			id BIGSERIAL PRIMARY KEY,
-			name VARCHAR(200) NOT NULL,
-			logo_url TEXT NOT NULL,
-			link TEXT NOT NULL,
-			description TEXT NOT NULL,
-			type VARCHAR(20) NOT NULL CHECK (type IN ('sponsor', 'partner')),
-			sort_order INTEGER NOT NULL DEFAULT 0,
-			is_active BOOLEAN NOT NULL DEFAULT true,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createSponsorsTable).Error; err != nil {
-			return fmt.Errorf("failed to create sponsors table: %w", err)
-		}
-		logger.Info("Created table: sponsors")
-	}
-
-	// 7. 区块扫描进度表
-	if !h.db.Migrator().HasTable("block_scan_progress") {
-		createBlockScanProgressTable := `
-		CREATE TABLE block_scan_progress (
-			id BIGSERIAL PRIMARY KEY,
-			chain_id INTEGER NOT NULL UNIQUE,
-			chain_name VARCHAR(50) NOT NULL,
-			last_scanned_block BIGINT NOT NULL DEFAULT 0,
-			latest_network_block BIGINT DEFAULT 0,
-			scan_status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (scan_status IN ('running', 'paused', 'error')),
-			error_message TEXT,
-			last_update_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createBlockScanProgressTable).Error; err != nil {
-			return fmt.Errorf("failed to create block_scan_progress table: %w", err)
-		}
-		logger.Info("Created table: block_scan_progress")
-	}
-
-	// 8. Compound Timelock 交易记录表
-	if !h.db.Migrator().HasTable("compound_timelock_transactions") {
-		createCompoundTimelockTransactionsTable := `
-		CREATE TABLE compound_timelock_transactions (
-			id BIGSERIAL PRIMARY KEY,
-			tx_hash VARCHAR(66) NOT NULL,
-			block_number BIGINT NOT NULL,
-			block_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-			chain_id INTEGER NOT NULL,
-			chain_name VARCHAR(100) NOT NULL,
-			contract_address VARCHAR(42) NOT NULL,
-			from_address VARCHAR(42) NOT NULL,
-			to_address VARCHAR(42) NOT NULL,
-			tx_status VARCHAR(20) NOT NULL DEFAULT 'failed' CHECK (tx_status IN ('success', 'failed')),
-			event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('QueueTransaction', 'ExecuteTransaction', 'CancelTransaction')),
-			event_data JSONB NOT NULL,
-			event_tx_hash VARCHAR(128),
-			event_target VARCHAR(42),
-            event_value DECIMAL(200,0) DEFAULT 0,
-			event_function_signature VARCHAR(500),
-			event_call_data BYTEA,
-			event_eta BIGINT,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(tx_hash, contract_address, event_type)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createCompoundTimelockTransactionsTable).Error; err != nil {
-			return fmt.Errorf("failed to create compound_timelock_transactions table: %w", err)
-		}
-		logger.Info("Created table: compound_timelock_transactions")
-	}
-
-	// 9. OpenZeppelin Timelock 交易记录表
-	if !h.db.Migrator().HasTable("openzeppelin_timelock_transactions") {
-		createOpenzeppelinTimelockTransactionsTable := `
-		CREATE TABLE openzeppelin_timelock_transactions (
-			id BIGSERIAL PRIMARY KEY,
-			tx_hash VARCHAR(66) NOT NULL,
-			block_number BIGINT NOT NULL,
-			block_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-			chain_id INTEGER NOT NULL,
-			chain_name VARCHAR(100) NOT NULL,
-			contract_address VARCHAR(42) NOT NULL,
-			from_address VARCHAR(42) NOT NULL,
-			to_address VARCHAR(42) NOT NULL,
-			tx_status VARCHAR(20) NOT NULL DEFAULT 'failed' CHECK (tx_status IN ('success', 'failed')),
-			event_type VARCHAR(50) NOT NULL CHECK (event_type IN ('CallScheduled', 'CallExecuted', 'Cancelled')),
-			event_data JSONB NOT NULL,
-			event_id VARCHAR(66),
-			event_index INTEGER,
-			event_target VARCHAR(42),
-            event_value DECIMAL(200,0) DEFAULT 0,
-			event_call_data BYTEA,
-			event_predecessor VARCHAR(66),
-			event_delay BIGINT,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(tx_hash, contract_address, event_type)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createOpenzeppelinTimelockTransactionsTable).Error; err != nil {
-			return fmt.Errorf("failed to create openzeppelin_timelock_transactions table: %w", err)
-		}
-		logger.Info("Created table: openzeppelin_timelock_transactions")
-	}
-
-	// 10. Timelock 交易流程关联表
-	if !h.db.Migrator().HasTable("timelock_transaction_flows") {
-		createTimelockTransactionFlowsTable := `
-		CREATE TABLE timelock_transaction_flows (
-			id BIGSERIAL PRIMARY KEY,
-			flow_id VARCHAR(128) NOT NULL,
-			timelock_standard VARCHAR(20) NOT NULL CHECK (timelock_standard IN ('compound', 'openzeppelin')),
-			chain_id INTEGER NOT NULL,
-			contract_address VARCHAR(42) NOT NULL,
-			status VARCHAR(20) NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'ready', 'executed', 'cancelled', 'expired')),
-			propose_tx_hash VARCHAR(66),
-			queue_tx_hash VARCHAR(66),
-			execute_tx_hash VARCHAR(66),
-			cancel_tx_hash VARCHAR(66),
-			initiator_address VARCHAR(42),
-			queued_at TIMESTAMP WITH TIME ZONE,
-			executed_at TIMESTAMP WITH TIME ZONE,
-			cancelled_at TIMESTAMP WITH TIME ZONE,
-			eta TIMESTAMP WITH TIME ZONE,
-			expired_at TIMESTAMP WITH TIME ZONE,
-			target_address VARCHAR(42),
-			call_data BYTEA,
-            value DECIMAL(200,0) DEFAULT 0,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			UNIQUE(flow_id, timelock_standard, chain_id, contract_address)
-		)`
-
-		if err := h.db.WithContext(ctx).Exec(createTimelockTransactionFlowsTable).Error; err != nil {
-			return fmt.Errorf("failed to create timelock_transaction_flows table: %w", err)
-		}
-		logger.Info("Created table: timelock_transaction_flows")
-	}
-
-	// 11. emails 表
+	// 6. emails 表
 	if !h.db.Migrator().HasTable("emails") {
 		sql := `
         CREATE TABLE emails (
@@ -441,7 +298,25 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: emails")
 	}
 
-	// 12. user_emails 表
+	// 7. error_logs 表 - 用于记录 logger.error 的错误详情
+	if !h.db.Migrator().HasTable("error_logs") {
+		sql := `
+        CREATE TABLE error_logs (
+            id BIGSERIAL PRIMARY KEY,
+            timestamp TIMESTAMPTZ DEFAULT NOW(),          -- 时间戳
+            caller VARCHAR(255) NOT NULL,                 -- 调用者 (文件:行号)
+            function VARCHAR(255) NOT NULL,               -- 函数名
+            message TEXT NOT NULL,                        -- 日志消息
+            error TEXT,                                   -- 错误信息
+            context TEXT                                  -- 上下文信息 (JSON字符串)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create error_logs table: %w", err)
+		}
+		logger.Info("Created table: error_logs")
+	}
+
+	// 8. user_emails 表
 	if !h.db.Migrator().HasTable("user_emails") {
 		sql := `
         CREATE TABLE user_emails (
@@ -461,7 +336,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: user_emails")
 	}
 
-	// 13. email_verification_codes 表
+	// 9. email_verification_codes 表
 	if !h.db.Migrator().HasTable("email_verification_codes") {
 		sql := `
         CREATE TABLE email_verification_codes (
@@ -479,7 +354,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: email_verification_codes")
 	}
 
-	// 14. email_send_logs 表（按邮箱去重）
+	// 10. email_send_logs 表（按邮箱去重）
 	if !h.db.Migrator().HasTable("email_send_logs") {
 		sql := `
         CREATE TABLE email_send_logs (
@@ -504,7 +379,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: email_send_logs")
 	}
 
-	// 15. safe_wallets 表
+	// 11. safe_wallets 表
 	if !h.db.Migrator().HasTable("safe_wallets") {
 		sql := `
         CREATE TABLE safe_wallets (
@@ -526,7 +401,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: safe_wallets")
 	}
 
-	// 16. auth_nonces 表
+	// 12. auth_nonces 表
 	if !h.db.Migrator().HasTable("auth_nonces") {
 		sql := `
         CREATE TABLE auth_nonces (
@@ -545,7 +420,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: auth_nonces")
 	}
 
-	// 15. telegram_configs 表
+	// 13. telegram_configs 表
 	if !h.db.Migrator().HasTable("telegram_configs") {
 		sql := `
         CREATE TABLE telegram_configs (
@@ -565,7 +440,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: telegram_configs")
 	}
 
-	// 16. lark_configs 表
+	// 14. lark_configs 表
 	if !h.db.Migrator().HasTable("lark_configs") {
 		sql := `
         CREATE TABLE lark_configs (
@@ -585,7 +460,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: lark_configs")
 	}
 
-	// 17. feishu_configs 表
+	// 15. feishu_configs 表
 	if !h.db.Migrator().HasTable("feishu_configs") {
 		sql := `
         CREATE TABLE feishu_configs (
@@ -605,7 +480,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: feishu_configs")
 	}
 
-	// 18. notification_logs 表
+	// 16. notification_logs 表
 	if !h.db.Migrator().HasTable("notification_logs") {
 		sql := `
         CREATE TABLE notification_logs (
@@ -629,6 +504,88 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 			return fmt.Errorf("failed to create notification_logs table: %w", err)
 		}
 		logger.Info("Created table: notification_logs")
+	}
+
+	// 17. compound_timelock_flows 表
+	if !h.db.Migrator().HasTable("compound_timelock_flows") {
+		sql := `
+        CREATE TABLE compound_timelock_flows (
+            id BIGSERIAL PRIMARY KEY,
+            flow_id VARCHAR(128) NOT NULL,
+            timelock_standard VARCHAR(20) NOT NULL DEFAULT 'compound',
+            chain_id INTEGER NOT NULL,
+            contract_address VARCHAR(42) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'waiting',
+            
+            -- 关联的交易哈希
+            queue_tx_hash VARCHAR(66),
+            execute_tx_hash VARCHAR(66),
+            cancel_tx_hash VARCHAR(66),
+            
+            -- Flow 信息
+            initiator_address VARCHAR(42),
+            target_address VARCHAR(42),
+            value DECIMAL(78,0) NOT NULL DEFAULT 0,
+            call_data BYTEA,
+            function_signature TEXT,
+            
+            -- 时间信息
+            queued_at TIMESTAMPTZ,
+            eta TIMESTAMPTZ,
+            grace_period BIGINT,
+            expired_at TIMESTAMPTZ,
+            executed_at TIMESTAMPTZ,
+            cancelled_at TIMESTAMPTZ,
+            
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            
+            UNIQUE(flow_id, chain_id, contract_address)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create compound_timelock_flows table: %w", err)
+		}
+		logger.Info("Created table: compound_timelock_flows")
+	}
+
+	// 18. openzeppelin_timelock_flows 表
+	if !h.db.Migrator().HasTable("openzeppelin_timelock_flows") {
+		sql := `
+        CREATE TABLE openzeppelin_timelock_flows (
+            id BIGSERIAL PRIMARY KEY,
+            flow_id VARCHAR(128) NOT NULL,
+            timelock_standard VARCHAR(20) NOT NULL DEFAULT 'openzeppelin',
+            chain_id INTEGER NOT NULL,
+            contract_address VARCHAR(42) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'waiting',
+            
+            -- 关联的交易哈希
+            schedule_tx_hash VARCHAR(66),
+            execute_tx_hash VARCHAR(66),
+            cancel_tx_hash VARCHAR(66),
+            
+            -- Flow 信息
+            initiator_address VARCHAR(42),
+            target_address VARCHAR(42),
+            value DECIMAL(78,0) NOT NULL DEFAULT 0,
+            call_data BYTEA,
+            
+            -- 时间信息
+            queued_at TIMESTAMPTZ,
+            delay BIGINT,
+            eta TIMESTAMPTZ,
+            executed_at TIMESTAMPTZ,
+            cancelled_at TIMESTAMPTZ,
+            
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            
+            UNIQUE(flow_id, chain_id, contract_address)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create openzeppelin_timelock_flows table: %w", err)
+		}
+		logger.Info("Created table: openzeppelin_timelock_flows")
 	}
 
 	logger.Info("All tables created successfully")
@@ -667,39 +624,6 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_chain_address ON openzeppelin_timelocks(chain_id, contract_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_oz_timelocks_creator_chain_address ON openzeppelin_timelocks(creator_address, chain_id, contract_address)`,
 
-		// Sponsors
-		`CREATE INDEX IF NOT EXISTS idx_sponsors_is_active ON sponsors(is_active)`,
-
-		// Block Scan Progress
-		`CREATE INDEX IF NOT EXISTS idx_scan_progress_status ON block_scan_progress(scan_status)`,
-		`CREATE INDEX IF NOT EXISTS idx_scan_progress_last_update ON block_scan_progress(last_update_time)`,
-
-		// Compound Timelock Transactions
-		`CREATE INDEX IF NOT EXISTS idx_ctt_chain_contract ON compound_timelock_transactions(chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_ctt_block_number ON compound_timelock_transactions(block_number)`,
-		`CREATE INDEX IF NOT EXISTS idx_ctt_event_type ON compound_timelock_transactions(event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_ctt_tx_hash ON compound_timelock_transactions(tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_ctt_event_tx_hash ON compound_timelock_transactions(event_tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_ctt_event_value ON compound_timelock_transactions(event_value)`,
-		`CREATE INDEX IF NOT EXISTS idx_ctt_event_data_gin ON compound_timelock_transactions USING GIN (event_data)`,
-
-		// OpenZeppelin Timelock Transactions
-		`CREATE INDEX IF NOT EXISTS idx_oztt_chain_contract ON openzeppelin_timelock_transactions(chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_oztt_block_number ON openzeppelin_timelock_transactions(block_number)`,
-		`CREATE INDEX IF NOT EXISTS idx_oztt_event_type ON openzeppelin_timelock_transactions(event_type)`,
-		`CREATE INDEX IF NOT EXISTS idx_oztt_tx_hash ON openzeppelin_timelock_transactions(tx_hash)`,
-		`CREATE INDEX IF NOT EXISTS idx_oztt_event_id ON openzeppelin_timelock_transactions(event_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_oztt_event_value ON openzeppelin_timelock_transactions(event_value)`,
-		`CREATE INDEX IF NOT EXISTS idx_oztt_event_data_gin ON openzeppelin_timelock_transactions USING GIN (event_data)`,
-
-		// Timelock Transaction Flows
-		`CREATE INDEX IF NOT EXISTS idx_flows_chain_contract ON timelock_transaction_flows(chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_flows_standard_chain_contract ON timelock_transaction_flows(timelock_standard, chain_id, contract_address)`,
-		`CREATE INDEX IF NOT EXISTS idx_flows_status ON timelock_transaction_flows(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_flows_eta ON timelock_transaction_flows(eta)`,
-		`CREATE INDEX IF NOT EXISTS idx_flows_expired_at ON timelock_transaction_flows(expired_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_flows_initiator ON timelock_transaction_flows(initiator_address)`,
-
 		// Email & Notification
 		`CREATE INDEX IF NOT EXISTS idx_emails_email ON emails(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_user_emails_user ON user_emails(user_id)`,
@@ -721,6 +645,12 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_auth_nonces_used ON auth_nonces(is_used)`,
 		`CREATE INDEX IF NOT EXISTS idx_auth_nonces_wallet_nonce ON auth_nonces(wallet_address, nonce)`,
 
+		// Error Logs
+		`CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_error_logs_caller ON error_logs(caller)`,
+		`CREATE INDEX IF NOT EXISTS idx_error_logs_function ON error_logs(function)`,
+		`CREATE INDEX IF NOT EXISTS idx_error_logs_message_gin ON error_logs USING GIN (to_tsvector('english', message))`,
+
 		// Notification Channels
 		`CREATE INDEX IF NOT EXISTS idx_telegram_configs_user ON telegram_configs(user_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_telegram_configs_active ON telegram_configs(is_active)`,
@@ -740,6 +670,25 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_notification_logs_contract ON notification_logs(timelock_standard, chain_id, contract_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_notification_logs_flow_status ON notification_logs(flow_id, status_to)`,
 		`CREATE INDEX IF NOT EXISTS idx_notification_logs_unique_check ON notification_logs(channel, config_id, flow_id, status_to)`,
+
+		// Compound Timelock Flows
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_flow_id ON compound_timelock_flows(flow_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_chain_contract ON compound_timelock_flows(chain_id, contract_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_status ON compound_timelock_flows(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_initiator ON compound_timelock_flows(initiator_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_eta ON compound_timelock_flows(eta)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_expired_at ON compound_timelock_flows(expired_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_status_eta ON compound_timelock_flows(status, eta)`,
+		`CREATE INDEX IF NOT EXISTS idx_compound_flows_queue_tx ON compound_timelock_flows(queue_tx_hash)`,
+
+		// OpenZeppelin Timelock Flows
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_flow_id ON openzeppelin_timelock_flows(flow_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_chain_contract ON openzeppelin_timelock_flows(chain_id, contract_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_status ON openzeppelin_timelock_flows(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_initiator ON openzeppelin_timelock_flows(initiator_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_eta ON openzeppelin_timelock_flows(eta)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_status_eta ON openzeppelin_timelock_flows(status, eta)`,
+		`CREATE INDEX IF NOT EXISTS idx_oz_flows_schedule_tx ON openzeppelin_timelock_flows(schedule_tx_hash)`,
 	}
 
 	for _, indexSQL := range indexes {
@@ -777,284 +726,285 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/eth-mainnet.png",
 			"is_testnet":               false,
 			"is_active":                true,
-			"alchemy_rpc_template":     "https://eth.llamarpc.com",
+			"alchemy_rpc_template":     "https://mainnet.infura.io/v3/",
 			"infura_rpc_template":      "",
 			"official_rpc_urls":        `["https://ethereum.publicnode.com","https://rpc.ankr.com/eth"]`,
 			"block_explorer_urls":      `["https://etherscan.io"]`,
 			"rpc_enabled":              true,
+			"subgraph_url":             "https://api.goldsky.com/api/public/project_cmisnqs37gdlo01y7f60oa25h/subgraphs/timelock-eth-mainnet/1.0.0/gn",
 		},
-		{
-			"chain_name":               "bsc-mainnet",
-			"display_name":             "BNB Chain",
-			"chain_id":                 56,
-			"native_currency_name":     "BNB",
-			"native_currency_symbol":   "BNB",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bsc-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://binance.llamarpc.com",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://bsc.drpc.org", "https://bsc.blockrazor.xyz"]`,
-			"block_explorer_urls":      `["https://bscscan.com"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "arbitrum-mainnet",
-			"display_name":             "Arbitrum",
-			"chain_id":                 42161,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/arbitrum-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://arb1.arbitrum.io/rpc",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://arbitrum.drpc.org", "https://arb-pokt.nodies.app"]`,
-			"block_explorer_urls":      `["https://arbiscan.io"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "optimism-mainnet",
-			"display_name":             "Optimism",
-			"chain_id":                 10,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/optimism-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://mainnet.optimism.io",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://mainnet.optimism.io","https://optimism.drpc.org"]`,
-			"block_explorer_urls":      `["https://optimistic.etherscan.io"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "base-mainnet",
-			"display_name":             "Base",
-			"chain_id":                 8453,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/base-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://mainnet.base.org",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://mainnet.base.org","https://base.llamarpc.com"]`,
-			"block_explorer_urls":      `["https://basescan.org"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "linea-mainnet",
-			"display_name":             "Linea",
-			"chain_id":                 59144,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/linea-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.linea.build",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.linea.build", "https://linea.drpc.org"]`,
-			"block_explorer_urls":      `["https://lineascan.build"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "scroll-mainnet",
-			"display_name":             "Scroll",
-			"chain_id":                 534352,
-			"native_currency_name":     "SCROLL",
-			"native_currency_symbol":   "SCROLL",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/scroll-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.scroll.io",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.scroll.io"]`,
-			"block_explorer_urls":      `["https://scrollscan.com"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "xlayer-mainnet",
-			"display_name":             "X Layer",
-			"chain_id":                 196,
-			"native_currency_name":     "OKB",
-			"native_currency_symbol":   "OKB",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/xlayer-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.xlayer.tech",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.xlayer.tech", "https://xlayerrpc.okx.com"]`,
-			"block_explorer_urls":      `["https://web3.okx.com/explorer/x-layer"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "bitlayer-mainnet",
-			"display_name":             "Bitlayer",
-			"chain_id":                 200901,
-			"native_currency_name":     "BTC",
-			"native_currency_symbol":   "BTC",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bitlayer-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.ankr.com/bitlayer",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.ankr.com/bitlayer", "https://rpc-bitlayer.rockx.com"]`,
-			"block_explorer_urls":      `["https://www.btrscan.com"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "mode-mainnet",
-			"display_name":             "Mode",
-			"chain_id":                 34443,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/mode-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://mainnet.mode.network",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://mainnet.mode.network", "https://mode.drpc.org"]`,
-			"block_explorer_urls":      `["https://explorer.mode.network"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "plume-mainnet",
-			"display_name":             "Plume",
-			"chain_id":                 98866,
-			"native_currency_name":     "Plume",
-			"native_currency_symbol":   "PLUME",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/plume-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.plume.org",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.plume.org"]`,
-			"block_explorer_urls":      `["https://explorer.plumenetwork.xyz"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "core-mainnet",
-			"display_name":             "Core",
-			"chain_id":                 1116,
-			"native_currency_name":     "Core",
-			"native_currency_symbol":   "CORE",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/core-mainnet.png",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.ankr.com/core",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.ankr.com/core", "https://core.drpc.org"]`,
-			"block_explorer_urls":      `["https://scan.coredao.org"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "hemi-mainnet",
-			"display_name":             "Hemi",
-			"chain_id":                 43111,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/hemi-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.hemi.network/rpc",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.hemi.network/rpc", "https://hemi.drpc.org"]`,
-			"block_explorer_urls":      `["https://explorer.hemi.xyz"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "goat-mainnet",
-			"display_name":             "GOAT",
-			"chain_id":                 2345,
-			"native_currency_name":     "BTC",
-			"native_currency_symbol":   "BTC",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/goat-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.ankr.com/goat_mainnet",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.ankr.com/goat_mainnet", "https://rpc.goat.network"]`,
-			"block_explorer_urls":      `["https://explorer.goat.network"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "b2-mainnet",
-			"display_name":             "B2",
-			"chain_id":                 223,
-			"native_currency_name":     "BTC",
-			"native_currency_symbol":   "BTC",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/b2-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.ankr.com/b2",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.bsquared.network", "https://rpc.ankr.com/b2"]`,
-			"block_explorer_urls":      `["https://explorer.bsquared.network"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "ailayer-mainnet",
-			"display_name":             "AILayer",
-			"chain_id":                 2649,
-			"native_currency_name":     "BTC",
-			"native_currency_symbol":   "BTC",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/ailayer-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://mainnet-rpc.ailayer.xyz",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://mainnet-rpc.ailayer.xyz"]`,
-			"block_explorer_urls":      `["https://mainnet-explorer.ailayer.xyz"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "zklink-mainnet",
-			"display_name":             "zkLink",
-			"chain_id":                 810180,
-			"native_currency_name":     "Ether",
-			"native_currency_symbol":   "ETH",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/zklink-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.zklink.io",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.zklink.io"]`,
-			"block_explorer_urls":      `["https://explorer.zklink.io"]`,
-			"rpc_enabled":              true,
-		},
-		{
-			"chain_name":               "merlin-mainnet",
-			"display_name":             "Merlin",
-			"chain_id":                 4200,
-			"native_currency_name":     "BTC",
-			"native_currency_symbol":   "BTC",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/merlin-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.merlinchain.io",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://rpc.merlinchain.io", "https://merlin.drpc.org"]`,
-			"block_explorer_urls":      `["https://scan.merlinchain.io"]`,
-			"rpc_enabled":              true,
-		},
+		// {
+		// 	"chain_name":               "bsc-mainnet",
+		// 	"display_name":             "BNB Chain",
+		// 	"chain_id":                 56,
+		// 	"native_currency_name":     "BNB",
+		// 	"native_currency_symbol":   "BNB",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bsc-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://binance.llamarpc.com",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://bsc.drpc.org", "https://bsc.blockrazor.xyz"]`,
+		// 	"block_explorer_urls":      `["https://bscscan.com"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "arbitrum-mainnet",
+		// 	"display_name":             "Arbitrum",
+		// 	"chain_id":                 42161,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/arbitrum-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://arb1.arbitrum.io/rpc",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://arbitrum.drpc.org", "https://arb-pokt.nodies.app"]`,
+		// 	"block_explorer_urls":      `["https://arbiscan.io"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "optimism-mainnet",
+		// 	"display_name":             "Optimism",
+		// 	"chain_id":                 10,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/optimism-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://mainnet.optimism.io",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://mainnet.optimism.io","https://optimism.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://optimistic.etherscan.io"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "base-mainnet",
+		// 	"display_name":             "Base",
+		// 	"chain_id":                 8453,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/base-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://mainnet.base.org",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://mainnet.base.org","https://base.llamarpc.com"]`,
+		// 	"block_explorer_urls":      `["https://basescan.org"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "linea-mainnet",
+		// 	"display_name":             "Linea",
+		// 	"chain_id":                 59144,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/linea-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.linea.build",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.linea.build", "https://linea.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://lineascan.build"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "scroll-mainnet",
+		// 	"display_name":             "Scroll",
+		// 	"chain_id":                 534352,
+		// 	"native_currency_name":     "SCROLL",
+		// 	"native_currency_symbol":   "SCROLL",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/scroll-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.scroll.io",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.scroll.io"]`,
+		// 	"block_explorer_urls":      `["https://scrollscan.com"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "xlayer-mainnet",
+		// 	"display_name":             "X Layer",
+		// 	"chain_id":                 196,
+		// 	"native_currency_name":     "OKB",
+		// 	"native_currency_symbol":   "OKB",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/xlayer-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.xlayer.tech",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.xlayer.tech", "https://xlayerrpc.okx.com"]`,
+		// 	"block_explorer_urls":      `["https://web3.okx.com/explorer/x-layer"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "bitlayer-mainnet",
+		// 	"display_name":             "Bitlayer",
+		// 	"chain_id":                 200901,
+		// 	"native_currency_name":     "BTC",
+		// 	"native_currency_symbol":   "BTC",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bitlayer-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.ankr.com/bitlayer",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.ankr.com/bitlayer", "https://rpc-bitlayer.rockx.com"]`,
+		// 	"block_explorer_urls":      `["https://www.btrscan.com"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "mode-mainnet",
+		// 	"display_name":             "Mode",
+		// 	"chain_id":                 34443,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/mode-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://mainnet.mode.network",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://mainnet.mode.network", "https://mode.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://explorer.mode.network"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "plume-mainnet",
+		// 	"display_name":             "Plume",
+		// 	"chain_id":                 98866,
+		// 	"native_currency_name":     "Plume",
+		// 	"native_currency_symbol":   "PLUME",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/plume-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.plume.org",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.plume.org"]`,
+		// 	"block_explorer_urls":      `["https://explorer.plumenetwork.xyz"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "core-mainnet",
+		// 	"display_name":             "Core",
+		// 	"chain_id":                 1116,
+		// 	"native_currency_name":     "Core",
+		// 	"native_currency_symbol":   "CORE",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/core-mainnet.png",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.ankr.com/core",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.ankr.com/core", "https://core.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://scan.coredao.org"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "hemi-mainnet",
+		// 	"display_name":             "Hemi",
+		// 	"chain_id":                 43111,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/hemi-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.hemi.network/rpc",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.hemi.network/rpc", "https://hemi.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://explorer.hemi.xyz"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "goat-mainnet",
+		// 	"display_name":             "GOAT",
+		// 	"chain_id":                 2345,
+		// 	"native_currency_name":     "BTC",
+		// 	"native_currency_symbol":   "BTC",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/goat-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.ankr.com/goat_mainnet",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.ankr.com/goat_mainnet", "https://rpc.goat.network"]`,
+		// 	"block_explorer_urls":      `["https://explorer.goat.network"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "b2-mainnet",
+		// 	"display_name":             "B2",
+		// 	"chain_id":                 223,
+		// 	"native_currency_name":     "BTC",
+		// 	"native_currency_symbol":   "BTC",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/b2-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.ankr.com/b2",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.bsquared.network", "https://rpc.ankr.com/b2"]`,
+		// 	"block_explorer_urls":      `["https://explorer.bsquared.network"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "ailayer-mainnet",
+		// 	"display_name":             "AILayer",
+		// 	"chain_id":                 2649,
+		// 	"native_currency_name":     "BTC",
+		// 	"native_currency_symbol":   "BTC",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/ailayer-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://mainnet-rpc.ailayer.xyz",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://mainnet-rpc.ailayer.xyz"]`,
+		// 	"block_explorer_urls":      `["https://mainnet-explorer.ailayer.xyz"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "zklink-mainnet",
+		// 	"display_name":             "zkLink",
+		// 	"chain_id":                 810180,
+		// 	"native_currency_name":     "Ether",
+		// 	"native_currency_symbol":   "ETH",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/zklink-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.zklink.io",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.zklink.io"]`,
+		// 	"block_explorer_urls":      `["https://explorer.zklink.io"]`,
+		// 	"rpc_enabled":              true,
+		// },
+		// {
+		// 	"chain_name":               "merlin-mainnet",
+		// 	"display_name":             "Merlin",
+		// 	"chain_id":                 4200,
+		// 	"native_currency_name":     "BTC",
+		// 	"native_currency_symbol":   "BTC",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/merlin-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://rpc.merlinchain.io",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://rpc.merlinchain.io", "https://merlin.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://scan.merlinchain.io"]`,
+		// 	"rpc_enabled":              true,
+		// },
 		// {
 		// 	"chain_name":               "exsat-mainnet",
 		// 	"display_name":             "exSat",
@@ -1071,22 +1021,22 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 		// 	"block_explorer_urls":      `["https://scan.exsat.network"]`,
 		// 	"rpc_enabled":              true,
 		// },
-		{
-			"chain_name":               "hashkey-mainnet",
-			"display_name":             "HashKey",
-			"chain_id":                 177,
-			"native_currency_name":     "HSK",
-			"native_currency_symbol":   "HSK",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/hashkey-mainnet.jpg",
-			"is_testnet":               false,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://mainnet.hsk.xyz",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://mainnet.hsk.xyz", "https://hashkey.drpc.org"]`,
-			"block_explorer_urls":      `["https://hashkey.blockscout.com"]`,
-			"rpc_enabled":              true,
-		},
+		// {
+		// 	"chain_name":               "hashkey-mainnet",
+		// 	"display_name":             "HashKey",
+		// 	"chain_id":                 177,
+		// 	"native_currency_name":     "HSK",
+		// 	"native_currency_symbol":   "HSK",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/hashkey-mainnet.jpg",
+		// 	"is_testnet":               false,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://mainnet.hsk.xyz",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://mainnet.hsk.xyz", "https://hashkey.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://hashkey.blockscout.com"]`,
+		// 	"rpc_enabled":              true,
+		// },
 	}
 
 	// 测试网数据
@@ -1101,28 +1051,29 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/eth-sepolia.png",
 			"is_testnet":               true,
 			"is_active":                true,
-			"alchemy_rpc_template":     "https://rpc.sepolia.ethpandaops.io",
+			"alchemy_rpc_template":     "https://sepolia.infura.io/v3/",
 			"infura_rpc_template":      "",
 			"official_rpc_urls":        `["https://ethereum-sepolia-rpc.publicnode.com","https://1rpc.io/sepolia"]`,
 			"block_explorer_urls":      `["https://sepolia.etherscan.io"]`,
 			"rpc_enabled":              true,
+			"subgraph_url":             "https://api.goldsky.com/api/public/project_cmisnqs37gdlo01y7f60oa25h/subgraphs/timelock-eth-sepolia/1.0.0/gn",
 		},
-		{
-			"chain_name":               "bsc-testnet",
-			"display_name":             "BNB Testnet",
-			"chain_id":                 97,
-			"native_currency_name":     "Test BNB",
-			"native_currency_symbol":   "BNB",
-			"native_currency_decimals": 18,
-			"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bsc-testnet.png",
-			"is_testnet":               true,
-			"is_active":                true,
-			"alchemy_rpc_template":     "https://api.zan.top/bsc-testnet",
-			"infura_rpc_template":      "",
-			"official_rpc_urls":        `["https://bsc-testnet-rpc.publicnode.com","https://bsc-testnet.drpc.org"]`,
-			"block_explorer_urls":      `["https://testnet.bscscan.com"]`,
-			"rpc_enabled":              true,
-		},
+		// {
+		// 	"chain_name":               "bsc-testnet",
+		// 	"display_name":             "BNB Testnet",
+		// 	"chain_id":                 97,
+		// 	"native_currency_name":     "Test BNB",
+		// 	"native_currency_symbol":   "BNB",
+		// 	"native_currency_decimals": 18,
+		// 	"logo_url":                 "https://raw.githubusercontent.com/timelock-labs/assets/main/chains/bsc-testnet.png",
+		// 	"is_testnet":               true,
+		// 	"is_active":                true,
+		// 	"alchemy_rpc_template":     "https://api.zan.top/bsc-testnet",
+		// 	"infura_rpc_template":      "",
+		// 	"official_rpc_urls":        `["https://bsc-testnet-rpc.publicnode.com","https://bsc-testnet.drpc.org"]`,
+		// 	"block_explorer_urls":      `["https://testnet.bscscan.com"]`,
+		// 	"rpc_enabled":              true,
+		// },
 	}
 
 	// 插入主网数据
@@ -1197,149 +1148,4 @@ func GetMigrationStatus(db *gorm.DB) ([]Migration, error) {
 	var migrations []Migration
 	err := db.Order("created_at ASC").Find(&migrations).Error
 	return migrations, err
-}
-
-// ResetDangerous 危险的重置函数 - 仅用于开发环境
-// 此函数会删除所有数据，请谨慎使用
-func ResetDangerous(db *gorm.DB) error {
-	ctx := context.Background()
-	logger.Warn("DANGEROUS: Starting database reset - ALL DATA WILL BE LOST!")
-
-	// 删除所有表（逆序删除以避免外键约束问题）
-	tables := []string{
-		"notification_logs",
-		"feishu_configs",
-		"lark_configs",
-		"telegram_configs",
-		"email_send_logs",
-		"email_verification_codes",
-		"user_emails",
-		"emails",
-		"safe_wallets",
-		"auth_nonces",
-		"timelock_transaction_flows",
-		"openzeppelin_timelock_transactions",
-		"compound_timelock_transactions",
-		"block_scan_progress",
-		"sponsors",
-		"openzeppelin_timelocks",
-		"compound_timelocks",
-		"abis",
-		"support_chains",
-		"users",
-		"schema_migrations",
-	}
-
-	for _, table := range tables {
-		if err := db.WithContext(ctx).Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", table)).Error; err != nil {
-			logger.Error("Failed to drop table", err, "table", table)
-			return fmt.Errorf("failed to drop table %s: %w", table, err)
-		}
-	}
-
-	logger.Warn("Database reset completed - all tables dropped")
-	return nil
-}
-
-// insertDefaultSponsors 插入默认赞助方数据（v1.0.4）
-func (h *MigrationHandler) insertDefaultSponsors(ctx context.Context) error {
-	logger.Info("Inserting default sponsors data...")
-
-	// 检查是否已有数据
-	var count int64
-	h.db.WithContext(ctx).Table("sponsors").Count(&count)
-	if count > 0 {
-		logger.Info("Sponsors data already exists, skipping insertion")
-		return nil
-	}
-
-	// 赞助方数据
-	sponsors := []map[string]interface{}{
-		{
-			"name":        "AAVE",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/AAVE.png",
-			"link":        "https://aave.com",
-			"description": "Decentralized lending and borrowing protocol.",
-			"type":        "sponsor",
-			"sort_order":  100,
-			"is_active":   true,
-		},
-		{
-			"name":        "Lido",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/Lido.jpg",
-			"link":        "https://lido.fi",
-			"description": "Liquid staking solution for Ethereum.",
-			"type":        "sponsor",
-			"sort_order":  90,
-			"is_active":   true,
-		},
-		{
-			"name":        "EigenLayer",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/EigenLayer.jpg",
-			"link":        "https://www.eigenlayer.xyz",
-			"description": "Restaking protocol for Ethereum.",
-			"type":        "sponsor",
-			"sort_order":  80,
-			"is_active":   true,
-		},
-	}
-
-	// 生态伙伴数据
-	partners := []map[string]interface{}{
-		{
-			"name":        "Ethena",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/Ethena.png",
-			"link":        "https://ethena.fi",
-			"description": "Synthetic dollar protocol.",
-			"type":        "partner",
-			"sort_order":  100,
-			"is_active":   true,
-		},
-		{
-			"name":        "Uniswap",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/Uniswap.jpg",
-			"link":        "https://uniswap.org",
-			"description": "Decentralized exchange protocol.",
-			"type":        "partner",
-			"sort_order":  90,
-			"is_active":   true,
-		},
-		{
-			"name":        "Compound",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/Compound.png",
-			"link":        "https://compound.finance",
-			"description": "Decentralized lending protocol.",
-			"type":        "partner",
-			"sort_order":  50,
-			"is_active":   true,
-		},
-		{
-			"name":        "OpenZeppelin",
-			"logo_url":    "https://raw.githubusercontent.com/timelock-labs/assets/main/sponsors/OpenZeppelin.png",
-			"link":        "https://openzeppelin.com",
-			"description": "Smart contract development platform.",
-			"type":        "partner",
-			"sort_order":  40,
-			"is_active":   true,
-		},
-	}
-
-	// 插入赞助方数据
-	for _, sponsor := range sponsors {
-		if err := h.db.WithContext(ctx).Table("sponsors").Create(sponsor).Error; err != nil {
-			logger.Error("Failed to insert sponsor", err, "name", sponsor["name"])
-			return fmt.Errorf("failed to insert sponsor %s: %w", sponsor["name"], err)
-		}
-	}
-
-	// 插入生态伙伴数据
-	for _, partner := range partners {
-		if err := h.db.WithContext(ctx).Table("sponsors").Create(partner).Error; err != nil {
-			logger.Error("Failed to insert partner", err, "name", partner["name"])
-			return fmt.Errorf("failed to insert partner %s: %w", partner["name"], err)
-		}
-	}
-
-	logger.Info("Inserted all sponsors and partners successfully")
-	return nil
 }
