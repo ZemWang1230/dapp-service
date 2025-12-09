@@ -214,7 +214,8 @@ func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAd
 	var responses []types.CompoundFlowResponse
 	var total int64
 
-	if *standard == "compound" {
+	// 只处理 compound 类型的请求
+	if standard != nil && *standard == "compound" {
 		// 查询 Compound Flows
 		compoundFlows, compoundTotal, err := r.queryCompoundFlowsWithPermission(ctx, normalizedUserAddress, status, offset, limit)
 		if err != nil {
@@ -331,7 +332,7 @@ func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, u
 	count := &types.FlowStatusCount{}
 
 	// 统计 Compound Flows
-	if *standard == "compound" {
+	if standard != nil && *standard == "compound" {
 		compoundCount, err := r.countCompoundFlowsWithPermission(ctx, normalizedUserAddress)
 		if err != nil {
 			return nil, err
