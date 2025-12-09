@@ -214,16 +214,13 @@ func (r *flowRepository) GetUserRelatedCompoundFlows(ctx context.Context, userAd
 	var responses []types.CompoundFlowResponse
 	var total int64
 
-	// 只处理 compound 类型的请求
-	if standard != nil && *standard == "compound" {
-		// 查询 Compound Flows
-		compoundFlows, compoundTotal, err := r.queryCompoundFlowsWithPermission(ctx, normalizedUserAddress, status, offset, limit)
-		if err != nil {
-			return nil, 0, err
-		}
-		responses = append(responses, compoundFlows...)
-		total += compoundTotal
+	// 查询 Compound Flows
+	compoundFlows, compoundTotal, err := r.queryCompoundFlowsWithPermission(ctx, normalizedUserAddress, status, offset, limit)
+	if err != nil {
+		return nil, 0, err
 	}
+	responses = append(responses, compoundFlows...)
+	total += compoundTotal
 
 	return responses, total, nil
 }
@@ -332,18 +329,16 @@ func (r *flowRepository) GetUserRelatedCompoundFlowsCount(ctx context.Context, u
 	count := &types.FlowStatusCount{}
 
 	// 统计 Compound Flows
-	if standard != nil && *standard == "compound" {
-		compoundCount, err := r.countCompoundFlowsWithPermission(ctx, normalizedUserAddress)
-		if err != nil {
-			return nil, err
-		}
-		count.Count += compoundCount.Count
-		count.Waiting += compoundCount.Waiting
-		count.Ready += compoundCount.Ready
-		count.Executed += compoundCount.Executed
-		count.Cancelled += compoundCount.Cancelled
-		count.Expired += compoundCount.Expired
+	compoundCount, err := r.countCompoundFlowsWithPermission(ctx, normalizedUserAddress)
+	if err != nil {
+		return nil, err
 	}
+	count.Count += compoundCount.Count
+	count.Waiting += compoundCount.Waiting
+	count.Ready += compoundCount.Ready
+	count.Executed += compoundCount.Executed
+	count.Cancelled += compoundCount.Cancelled
+	count.Expired += compoundCount.Expired
 
 	return count, nil
 }

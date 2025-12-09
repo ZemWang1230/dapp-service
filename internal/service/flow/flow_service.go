@@ -58,21 +58,6 @@ func (s *flowService) GetCompoundFlowList(ctx context.Context, userAddress strin
 		}
 	}
 
-	// 验证标准参数
-	if req.Standard != nil {
-		validStandards := []string{"compound", "openzeppelin"}
-		isValidStandard := false
-		for _, validStandard := range validStandards {
-			if *req.Standard == validStandard {
-				isValidStandard = true
-				break
-			}
-		}
-		if !isValidStandard {
-			return nil, fmt.Errorf("invalid standard: %s", *req.Standard)
-		}
-	}
-
 	// 计算分页
 	page := req.Page
 	pageSize := req.PageSize
@@ -101,20 +86,6 @@ func (s *flowService) GetCompoundFlowList(ctx context.Context, userAddress strin
 
 // GetCompoundFlowListCount 获取与用户相关的流程数量统计
 func (s *flowService) GetCompoundFlowListCount(ctx context.Context, userAddress string, req *types.GetCompoundFlowListCountRequest) (*types.GetCompoundFlowListCountResponse, error) {
-	// 验证标准参数
-	if req.Standard != nil {
-		validStandards := []string{"compound", "openzeppelin"}
-		isValidStandard := false
-		for _, validStandard := range validStandards {
-			if *req.Standard == validStandard {
-				isValidStandard = true
-				break
-			}
-		}
-		if !isValidStandard {
-			return nil, fmt.Errorf("invalid standard: %s", *req.Standard)
-		}
-	}
 
 	// 调用repository层获取数量统计
 	flowCount, err := s.flowRepo.GetUserRelatedCompoundFlowsCount(ctx, userAddress, req.Standard)
