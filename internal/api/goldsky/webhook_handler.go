@@ -1,6 +1,8 @@
 package goldsky
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 
 	chainRepo "timelocker-backend/internal/repository/chain"
@@ -36,44 +38,15 @@ func (h *WebhookHandler) RegisterRoutes(router *gin.RouterGroup) {
 // @Tags Goldsky
 // @Accept json
 // @Produce json
-// @Param goldsky-webhook-secret header string true "Webhook Secret"
-// @Param payload body types.GoldskyWebhookPayload true "Webhook Payload"
+// @Param payload body types.GraphQLWebhookPayload true "Webhook Payload"
 // @Success 200 {object} types.APIResponse
-// @Failure 401 {object} types.APIResponse "Invalid webhook secret"
+// @Failure 401 {object} types.APIResponse "Invalid webhook"
 // @Failure 400 {object} types.APIResponse "Invalid payload"
 // @Failure 500 {object} types.APIResponse "Internal error"
 // @Router /api/v1/goldsky/webhook [post]
 func (h *WebhookHandler) HandleWebhook(c *gin.Context) {
-	// 1. 获取 Webhook Secret
-	secret := c.GetHeader("goldsky-webhook-secret")
-	if secret == "" {
-		logger.Warn("Webhook request missing secret header")
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "MISSING_SECRET",
-				Message: "Missing goldsky-webhook-secret header",
-			},
-		})
-		return
-	}
-
-	// 2. 通过 secret 查找对应的链和类型（compound/openzeppelin）
-	chain, standard, err := h.chainRepo.GetChainByWebhookSecret(c.Request.Context(), secret)
-	if err != nil {
-		logger.Warn("Invalid webhook secret", "secret", secret, "error", err)
-		c.JSON(http.StatusUnauthorized, types.APIResponse{
-			Success: false,
-			Error: &types.APIError{
-				Code:    "INVALID_SECRET",
-				Message: "Invalid webhook secret",
-			},
-		})
-		return
-	}
-
-	// 3. 解析 Payload
-	var payload types.GoldskyWebhookPayload
+	// 1. 解析 Payload
+	var payload types.GraphQLWebhookPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		logger.Error("Failed to parse webhook payload", err)
 		c.JSON(http.StatusBadRequest, types.APIResponse{
@@ -87,71 +60,160 @@ func (h *WebhookHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	chainID := int(chain.ChainID)
-
-	// 4. 根据标准类型处理对应的交易
-	if standard == "compound" {
-		// 处理 Compound Transactions
-		txCount := len(payload.Event.Data.CompoundTimelockTransactions)
-		logger.Info("Processing Compound webhook", "chain_id", chainID, "tx_count", txCount)
-
-		for _, tx := range payload.Event.Data.CompoundTimelockTransactions {
-			// 异步处理，不阻塞 Webhook 响应
-			go func(transaction types.GoldskyCompoundTransactionWebhook, cid int) {
-				ctx := c.Request.Context()
-				if err := h.processor.ProcessCompoundTransaction(ctx, transaction, cid); err != nil {
-					logger.Error("Failed to process Compound transaction",
-						err,
-						"chain_id", cid,
-						"tx_hash", transaction.TxHash,
-						"event_type", transaction.EventType)
-				}
-			}(tx, chainID)
-		}
-
-		c.JSON(http.StatusOK, types.APIResponse{
-			Success: true,
-			Data: gin.H{
-				"message":  "Webhook received and processing",
-				"chain_id": chainID,
-				"standard": "compound",
-				"tx_count": txCount,
-			},
-		})
-	} else if standard == "openzeppelin" {
-		// 处理 OpenZeppelin Transactions
-		txCount := len(payload.Event.Data.OpenzeppelinTimelockTransactions)
-		logger.Info("Processing OpenZeppelin webhook", "chain_id", chainID, "tx_count", txCount)
-
-		for _, tx := range payload.Event.Data.OpenzeppelinTimelockTransactions {
-			go func(transaction types.GoldskyOpenzeppelinTransactionWebhook, cid int) {
-				ctx := c.Request.Context()
-				if err := h.processor.ProcessOpenzeppelinTransaction(ctx, transaction, cid); err != nil {
-					logger.Error("Failed to process OpenZeppelin transaction",
-						err,
-						"chain_id", cid,
-						"tx_hash", transaction.TxHash,
-						"event_type", transaction.EventType)
-				}
-			}(tx, chainID)
-		}
-
-		c.JSON(http.StatusOK, types.APIResponse{
-			Success: true,
-			Data: gin.H{
-				"message":  "Webhook received and processing",
-				"chain_id": chainID,
-				"standard": "openzeppelin",
-				"tx_count": txCount,
-			},
-		})
-	} else {
-		c.JSON(http.StatusBadRequest, types.APIResponse{
+	// 2. 通过 webhook_id 查找对应的链和类型
+	chain, standard, err := h.chainRepo.GetChainByWebhookSecret(c.Request.Context(), payload.WebhookID)
+	if err != nil {
+		logger.Warn("Invalid webhook_id", "webhook_id", payload.WebhookID, "error", err)
+		c.JSON(http.StatusUnauthorized, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
-				Code:    "INVALID_STANDARD",
-				Message: "Invalid timelock standard",
+				Code:    "INVALID_WEBHOOK",
+				Message: "Invalid webhook_id",
 			},
 		})
+		return
+	}
+
+	// 3. 检查是否有新数据
+	if payload.Data.New == nil {
+		logger.Info("No new data in webhook payload", "webhook_id", payload.WebhookID)
+		c.JSON(http.StatusOK, types.APIResponse{
+			Success: true,
+			Data: gin.H{
+				"message":    "No new data to process",
+				"webhook_id": payload.WebhookID,
+			},
+		})
+		return
+	}
+
+	chainID := int(chain.ChainID)
+	txData := payload.Data.New
+
+	// 4. 创建独立的context用于异步处理
+	// 不能使用 c.Request.Context()，因为HTTP响应后该context会被取消
+	bgCtx := context.Background()
+
+	// 5. 根据事件类型处理交易
+	var processErr error
+	switch txData.EventType {
+	case "QueueTransaction":
+		processErr = h.processQueueTransaction(bgCtx, txData, chainID, standard)
+	case "ExecuteTransaction":
+		processErr = h.processExecuteTransaction(bgCtx, txData, chainID, standard)
+	case "CancelTransaction":
+		processErr = h.processCancelTransaction(bgCtx, txData, chainID, standard)
+	default:
+		logger.Warn("Unknown event type", "event_type", txData.EventType)
+		processErr = fmt.Errorf("unknown event type: %s", txData.EventType)
+	}
+
+	if processErr != nil {
+		logger.Error("Failed to process transaction", processErr,
+			"chain_id", chainID,
+			"event_type", txData.EventType,
+			"tx_hash", txData.TxHash)
+		c.JSON(http.StatusInternalServerError, types.APIResponse{
+			Success: false,
+			Error: &types.APIError{
+				Code:    "PROCESS_ERROR",
+				Message: "Failed to process transaction",
+				Details: processErr.Error(),
+			},
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, types.APIResponse{
+		Success: true,
+		Data: gin.H{
+			"message":    "Webhook received and processed",
+			"chain_id":   chainID,
+			"standard":   standard,
+			"webhook_id": payload.WebhookID,
+			"event_type": txData.EventType,
+			"tx_hash":    txData.TxHash,
+		},
+	})
+}
+
+// processQueueTransaction 处理排队交易
+func (h *WebhookHandler) processQueueTransaction(ctx context.Context, txData *types.GraphQLTransactionData, chainID int, standard string) error {
+	// 转换为对应的webhook交易格式并处理
+	if standard == "compound" {
+		compoundTx := h.convertToCompoundTransaction(txData)
+		return h.processor.ProcessCompoundTransaction(ctx, compoundTx, chainID)
+	} else if standard == "openzeppelin" {
+		ozTx := h.convertToOpenzeppelinTransaction(txData)
+		return h.processor.ProcessOpenzeppelinTransaction(ctx, ozTx, chainID)
+	}
+
+	return fmt.Errorf("unsupported standard: %s", standard)
+}
+
+// processExecuteTransaction 处理执行交易
+func (h *WebhookHandler) processExecuteTransaction(ctx context.Context, txData *types.GraphQLTransactionData, chainID int, standard string) error {
+	// 转换为对应的webhook交易格式并处理
+	if standard == "compound" {
+		compoundTx := h.convertToCompoundTransaction(txData)
+		return h.processor.ProcessCompoundTransaction(ctx, compoundTx, chainID)
+	} else if standard == "openzeppelin" {
+		ozTx := h.convertToOpenzeppelinTransaction(txData)
+		return h.processor.ProcessOpenzeppelinTransaction(ctx, ozTx, chainID)
+	}
+
+	return fmt.Errorf("unsupported standard: %s", standard)
+}
+
+// processCancelTransaction 处理取消交易
+func (h *WebhookHandler) processCancelTransaction(ctx context.Context, txData *types.GraphQLTransactionData, chainID int, standard string) error {
+	// 转换为对应的webhook交易格式并处理
+	if standard == "compound" {
+		compoundTx := h.convertToCompoundTransaction(txData)
+		return h.processor.ProcessCompoundTransaction(ctx, compoundTx, chainID)
+	} else if standard == "openzeppelin" {
+		ozTx := h.convertToOpenzeppelinTransaction(txData)
+		return h.processor.ProcessOpenzeppelinTransaction(ctx, ozTx, chainID)
+	}
+
+	return fmt.Errorf("unsupported standard: %s", standard)
+}
+
+// convertToCompoundTransaction 将GraphQL数据转换为Compound格式
+func (h *WebhookHandler) convertToCompoundTransaction(txData *types.GraphQLTransactionData) types.GoldskyCompoundTransactionWebhook {
+	return types.GoldskyCompoundTransactionWebhook{
+		ID:              txData.ID,
+		TxHash:          txData.TxHash,
+		LogIndex:        txData.LogIndex,
+		BlockNumber:     txData.BlockNumber,
+		BlockTimestamp:  txData.BlockTimestamp,
+		ContractAddress: txData.ContractAddress,
+		FromAddress:     txData.FromAddress,
+		EventType:       txData.EventType,
+		EventTxHash:     &txData.Flow, // Compound使用flow作为eventTxHash
+		EventTarget:     &txData.EventTarget,
+		EventValue:      txData.EventValue,
+		EventSignature:  &txData.EventSignature,
+		EventData:       &txData.EventData,
+		EventEta:        &txData.EventEta,
+	}
+}
+
+// convertToOpenzeppelinTransaction 将GraphQL数据转换为OpenZeppelin格式
+func (h *WebhookHandler) convertToOpenzeppelinTransaction(txData *types.GraphQLTransactionData) types.GoldskyOpenzeppelinTransactionWebhook {
+	return types.GoldskyOpenzeppelinTransactionWebhook{
+		ID:              txData.ID,
+		TxHash:          txData.TxHash,
+		LogIndex:        txData.LogIndex,
+		BlockNumber:     txData.BlockNumber,
+		BlockTimestamp:  txData.BlockTimestamp,
+		ContractAddress: txData.ContractAddress,
+		FromAddress:     txData.FromAddress,
+		EventType:       txData.EventType,
+		EventId:         &txData.Flow, // OpenZeppelin使用flow作为eventId
+		EventTarget:     &txData.EventTarget,
+		EventValue:      txData.EventValue,
+		EventData:       &txData.EventData,
+		// EventDelay需要从其他地方获取，这里暂时为空
 	}
 }

@@ -41,12 +41,6 @@ func NewWebhookProcessor(
 
 // ProcessCompoundTransaction 处理 Compound Transaction Webhook
 func (p *WebhookProcessor) ProcessCompoundTransaction(ctx context.Context, tx types.GoldskyCompoundTransactionWebhook, chainID int) error {
-	logger.Info("Processing Compound transaction webhook",
-		"chain_id", chainID,
-		"tx_hash", tx.TxHash,
-		"event_type", tx.EventType,
-		"contract", tx.ContractAddress)
-
 	// 1. 检查是否为平台合约
 	isPlatformContract, err := p.isPlatformContract(ctx, "compound", chainID, tx.ContractAddress)
 	if err != nil {

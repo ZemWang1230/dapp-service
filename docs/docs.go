@@ -2428,59 +2428,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/goldsky/sync": {
-            "post": {
-                "description": "手动触发所有链的flows同步，与定时任务执行相同的逻辑",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Goldsky"
-                ],
-                "summary": "手动同步所有Goldsky flows",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/types.SyncFlowsResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "同步过程中发生错误",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/types.APIResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "error": {
-                                            "$ref": "#/definitions/types.APIError"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        },
         "/api/v1/goldsky/webhook": {
             "post": {
                 "description": "接收 Goldsky 推送的 Timelock 交易事件",
@@ -2496,19 +2443,12 @@ const docTemplate = `{
                 "summary": "Goldsky Webhook 接收端点",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Webhook Secret",
-                        "name": "goldsky-webhook-secret",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "description": "Webhook Payload",
                         "name": "payload",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/types.GoldskyWebhookPayload"
+                            "$ref": "#/definitions/types.GraphQLWebhookPayload"
                         }
                     }
                 ],
@@ -2526,7 +2466,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Invalid webhook secret",
+                        "description": "Invalid webhook",
                         "schema": {
                             "$ref": "#/definitions/types.APIResponse"
                         }
@@ -4705,144 +4645,95 @@ const docTemplate = `{
                 }
             }
         },
-        "types.GoldskyCompoundTransactionWebhook": {
+        "types.GraphQLTransactionData": {
             "type": "object",
             "properties": {
-                "blockNumber": {
+                "block_number": {
                     "type": "string"
                 },
-                "blockTimestamp": {
+                "block_range": {
                     "type": "string"
                 },
-                "contractAddress": {
+                "block_timestamp": {
                     "type": "string"
                 },
-                "eventData": {
-                    "description": "调用数据",
+                "contract_address": {
                     "type": "string"
                 },
-                "eventEta": {
-                    "description": "ETA 时间戳",
+                "event_data": {
                     "type": "string"
                 },
-                "eventSignature": {
-                    "description": "函数签名",
+                "event_eta": {
                     "type": "string"
                 },
-                "eventTarget": {
-                    "description": "目标地址",
+                "event_signature": {
                     "type": "string"
                 },
-                "eventTxHash": {
-                    "description": "Event 数据",
+                "event_target": {
                     "type": "string"
                 },
-                "eventType": {
-                    "description": "QueueTransaction, ExecuteTransaction, CancelTransaction",
+                "event_tx_hash": {
                     "type": "string"
                 },
-                "eventValue": {
-                    "description": "金额",
+                "event_type": {
                     "type": "string"
                 },
-                "fromAddress": {
+                "event_value": {
+                    "type": "string"
+                },
+                "flow": {
+                    "type": "string"
+                },
+                "from_address": {
                     "type": "string"
                 },
                 "id": {
                     "type": "string"
                 },
-                "logIndex": {
+                "log_index": {
                     "type": "string"
                 },
-                "txHash": {
+                "tx_hash": {
+                    "type": "string"
+                },
+                "vid": {
                     "type": "string"
                 }
             }
         },
-        "types.GoldskyOpenzeppelinTransactionWebhook": {
+        "types.GraphQLWebhookPayload": {
             "type": "object",
             "properties": {
-                "blockNumber": {
-                    "type": "string"
-                },
-                "blockTimestamp": {
-                    "type": "string"
-                },
-                "contractAddress": {
-                    "type": "string"
-                },
-                "eventData": {
-                    "description": "调用数据",
-                    "type": "string"
-                },
-                "eventDelay": {
-                    "description": "延迟时间",
-                    "type": "string"
-                },
-                "eventId": {
-                    "description": "Event 数据",
-                    "type": "string"
-                },
-                "eventIndex": {
-                    "description": "索引",
-                    "type": "string"
-                },
-                "eventPredecessor": {
-                    "description": "前驱",
-                    "type": "string"
-                },
-                "eventTarget": {
-                    "description": "目标地址",
-                    "type": "string"
-                },
-                "eventType": {
-                    "description": "CallScheduled, CallExecuted, Cancelled",
-                    "type": "string"
-                },
-                "eventValue": {
-                    "description": "金额",
-                    "type": "string"
-                },
-                "fromAddress": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "logIndex": {
-                    "type": "string"
-                },
-                "txHash": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.GoldskyWebhookPayload": {
-            "type": "object",
-            "properties": {
-                "event": {
+                "data": {
                     "type": "object",
                     "properties": {
-                        "data": {
-                            "type": "object",
-                            "properties": {
-                                "compoundTimelockTransactions": {
-                                    "description": "Compound Transaction 事件",
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/definitions/types.GoldskyCompoundTransactionWebhook"
-                                    }
-                                },
-                                "openzeppelinTimelockTransactions": {
-                                    "description": "OpenZeppelin Transaction 事件",
-                                    "type": "array",
-                                    "items": {
-                                        "$ref": "#/definitions/types.GoldskyOpenzeppelinTransactionWebhook"
-                                    }
-                                }
-                            }
+                        "new": {
+                            "$ref": "#/definitions/types.GraphQLTransactionData"
+                        },
+                        "old": {
+                            "$ref": "#/definitions/types.GraphQLTransactionData"
                         }
                     }
+                },
+                "data_source": {
+                    "type": "string"
+                },
+                "entity": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "op": {
+                    "type": "string"
+                },
+                "session_variables": {},
+                "trace_context": {},
+                "webhook_id": {
+                    "type": "string"
+                },
+                "webhook_name": {
+                    "type": "string"
                 }
             }
         },
@@ -5060,17 +4951,6 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "subgraph_url": {
-                    "type": "string"
-                }
-            }
-        },
-        "types.SyncFlowsResponse": {
-            "type": "object",
-            "properties": {
-                "duration": {
-                    "type": "string"
-                },
-                "message": {
                     "type": "string"
                 }
             }

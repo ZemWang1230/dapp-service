@@ -232,8 +232,8 @@ func main() {
 	goldskyHdl := goldskyHandler.NewWebhookHandler(goldskyProcessor, chainRepository)
 	goldskyHdl.RegisterRoutes(v1)
 
-	goldskySyncHdl := goldskyHandler.NewSyncHandler(goldskySvc)
-	goldskySyncHdl.RegisterRoutes(v1)
+	// goldskySyncHdl := goldskyHandler.NewSyncHandler(goldskySvc)
+	// goldskySyncHdl.RegisterRoutes(v1)
 
 	// 15. 启动定时任务
 	wg.Add(1)

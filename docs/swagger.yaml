@@ -595,103 +595,66 @@ definitions:
     required:
     - chain_id
     type: object
-  types.GoldskyCompoundTransactionWebhook:
+  types.GraphQLTransactionData:
     properties:
-      blockNumber:
+      block_number:
         type: string
-      blockTimestamp:
+      block_range:
         type: string
-      contractAddress:
+      block_timestamp:
         type: string
-      eventData:
-        description: 调用数据
+      contract_address:
         type: string
-      eventEta:
-        description: ETA 时间戳
+      event_data:
         type: string
-      eventSignature:
-        description: 函数签名
+      event_eta:
         type: string
-      eventTarget:
-        description: 目标地址
+      event_signature:
         type: string
-      eventTxHash:
-        description: Event 数据
+      event_target:
         type: string
-      eventType:
-        description: QueueTransaction, ExecuteTransaction, CancelTransaction
+      event_tx_hash:
         type: string
-      eventValue:
-        description: 金额
+      event_type:
         type: string
-      fromAddress:
+      event_value:
+        type: string
+      flow:
+        type: string
+      from_address:
         type: string
       id:
         type: string
-      logIndex:
+      log_index:
         type: string
-      txHash:
+      tx_hash:
         type: string
-    type: object
-  types.GoldskyOpenzeppelinTransactionWebhook:
-    properties:
-      blockNumber:
-        type: string
-      blockTimestamp:
-        type: string
-      contractAddress:
-        type: string
-      eventData:
-        description: 调用数据
-        type: string
-      eventDelay:
-        description: 延迟时间
-        type: string
-      eventId:
-        description: Event 数据
-        type: string
-      eventIndex:
-        description: 索引
-        type: string
-      eventPredecessor:
-        description: 前驱
-        type: string
-      eventTarget:
-        description: 目标地址
-        type: string
-      eventType:
-        description: CallScheduled, CallExecuted, Cancelled
-        type: string
-      eventValue:
-        description: 金额
-        type: string
-      fromAddress:
-        type: string
-      id:
-        type: string
-      logIndex:
-        type: string
-      txHash:
+      vid:
         type: string
     type: object
-  types.GoldskyWebhookPayload:
+  types.GraphQLWebhookPayload:
     properties:
-      event:
+      data:
         properties:
-          data:
-            properties:
-              compoundTimelockTransactions:
-                description: Compound Transaction 事件
-                items:
-                  $ref: '#/definitions/types.GoldskyCompoundTransactionWebhook'
-                type: array
-              openzeppelinTimelockTransactions:
-                description: OpenZeppelin Transaction 事件
-                items:
-                  $ref: '#/definitions/types.GoldskyOpenzeppelinTransactionWebhook'
-                type: array
-            type: object
+          new:
+            $ref: '#/definitions/types.GraphQLTransactionData'
+          old:
+            $ref: '#/definitions/types.GraphQLTransactionData'
         type: object
+      data_source:
+        type: string
+      entity:
+        type: string
+      id:
+        type: string
+      op:
+        type: string
+      session_variables: {}
+      trace_context: {}
+      webhook_id:
+        type: string
+      webhook_name:
+        type: string
     type: object
   types.LarkConfig:
     properties:
@@ -841,13 +804,6 @@ definitions:
       rpc_enabled:
         type: boolean
       subgraph_url:
-        type: string
-    type: object
-  types.SyncFlowsResponse:
-    properties:
-      duration:
-        type: string
-      message:
         type: string
     type: object
   types.TelegramConfig:
@@ -2350,52 +2306,18 @@ paths:
       summary: 获取交易详情
       tags:
       - Flow
-  /api/v1/goldsky/sync:
-    post:
-      consumes:
-      - application/json
-      description: 手动触发所有链的flows同步，与定时任务执行相同的逻辑
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/types.SyncFlowsResponse'
-              type: object
-        "500":
-          description: 同步过程中发生错误
-          schema:
-            allOf:
-            - $ref: '#/definitions/types.APIResponse'
-            - properties:
-                error:
-                  $ref: '#/definitions/types.APIError'
-              type: object
-      summary: 手动同步所有Goldsky flows
-      tags:
-      - Goldsky
   /api/v1/goldsky/webhook:
     post:
       consumes:
       - application/json
       description: 接收 Goldsky 推送的 Timelock 交易事件
       parameters:
-      - description: Webhook Secret
-        in: header
-        name: goldsky-webhook-secret
-        required: true
-        type: string
       - description: Webhook Payload
         in: body
         name: payload
         required: true
         schema:
-          $ref: '#/definitions/types.GoldskyWebhookPayload'
+          $ref: '#/definitions/types.GraphQLWebhookPayload'
       produces:
       - application/json
       responses:
@@ -2408,7 +2330,7 @@ paths:
           schema:
             $ref: '#/definitions/types.APIResponse'
         "401":
-          description: Invalid webhook secret
+          description: Invalid webhook
           schema:
             $ref: '#/definitions/types.APIResponse'
         "500":
