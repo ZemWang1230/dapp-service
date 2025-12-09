@@ -178,3 +178,9 @@ type GoldskyOpenzeppelinTransactionResponse struct {
 		OpenzeppelinTimelockTransactions []GoldskyOpenzeppelinTransaction `json:"openzeppelinTimelockTransactions"`
 	} `json:"data"`
 }
+
+// SyncFlowsResponse 同步flows响应
+type SyncFlowsResponse struct {
+	Message  string `json:"message"`
+	Duration string `json:"duration"`
+}

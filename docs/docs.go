@@ -2428,6 +2428,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/goldsky/sync": {
+            "post": {
+                "description": "手动触发所有链的flows同步，与定时任务执行相同的逻辑",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Goldsky"
+                ],
+                "summary": "手动同步所有Goldsky flows",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/types.SyncFlowsResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "同步过程中发生错误",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/types.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "$ref": "#/definitions/types.APIError"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/goldsky/webhook": {
             "post": {
                 "description": "接收 Goldsky 推送的 Timelock 交易事件",
@@ -5007,6 +5060,17 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "subgraph_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.SyncFlowsResponse": {
+            "type": "object",
+            "properties": {
+                "duration": {
+                    "type": "string"
+                },
+                "message": {
                     "type": "string"
                 }
             }

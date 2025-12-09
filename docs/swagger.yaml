@@ -843,6 +843,13 @@ definitions:
       subgraph_url:
         type: string
     type: object
+  types.SyncFlowsResponse:
+    properties:
+      duration:
+        type: string
+      message:
+        type: string
+    type: object
   types.TelegramConfig:
     properties:
       bot_token:
@@ -2343,6 +2350,35 @@ paths:
       summary: 获取交易详情
       tags:
       - Flow
+  /api/v1/goldsky/sync:
+    post:
+      consumes:
+      - application/json
+      description: 手动触发所有链的flows同步，与定时任务执行相同的逻辑
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/types.SyncFlowsResponse'
+              type: object
+        "500":
+          description: 同步过程中发生错误
+          schema:
+            allOf:
+            - $ref: '#/definitions/types.APIResponse'
+            - properties:
+                error:
+                  $ref: '#/definitions/types.APIError'
+              type: object
+      summary: 手动同步所有Goldsky flows
+      tags:
+      - Goldsky
   /api/v1/goldsky/webhook:
     post:
       consumes:
