@@ -656,14 +656,14 @@ func (s *GoldskyService) GetGlobalContractCount(ctx context.Context) (int64, err
 		}
 
 		// 解析总数
-		totalContracts, err := strconv.ParseInt(stats.TotalContracts, 10, 64)
+		contracts, err := strconv.ParseInt(stats.TotalContracts, 10, 64)
 		if err != nil {
 			logger.Warn("Failed to parse total contracts", "value", stats.TotalContracts, "error", err)
 			continue
 		}
 
 		logger.Info("Got global contract count from Goldsky", "chain_id", chain.ChainID, "chain_name", chain.ChainName, "total_contracts", totalContracts)
-		totalContracts += totalContracts
+		totalContracts += contracts
 	}
 
 	return totalContracts, nil
@@ -691,14 +691,14 @@ func (s *GoldskyService) GetGlobalTransactionCount(ctx context.Context) (int64, 
 		}
 
 		// 使用TotalTransactions作为交易数量
-		totalTransactions, err := strconv.ParseInt(stats.TotalTransactions, 10, 64)
+		transactions, err := strconv.ParseInt(stats.TotalTransactions, 10, 64)
 		if err != nil {
 			logger.Warn("Failed to parse total transactions", "value", stats.TotalTransactions, "error", err)
 			continue
 		}
 
 		logger.Info("Got global transaction count from Goldsky", "chain_id", chain.ChainID, "chain_name", chain.ChainName, "total_transactions", totalTransactions)
-		totalTransactions += totalTransactions
+		totalTransactions += transactions
 	}
 
 	return totalTransactions, nil
