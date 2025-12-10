@@ -636,6 +636,7 @@ func (s *GoldskyService) convertCompoundTransactionToDetail(tx *types.GoldskyCom
 
 // GetGlobalContractCount 获取全局合约数量（从Goldsky GlobalStatistics获取）
 func (s *GoldskyService) GetGlobalContractCount(ctx context.Context) (int64, error) {
+	totalContracts := int64(0)
 	chains, err := s.chainRepo.GetAllActiveChains()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get active chains: %w", err)
@@ -662,14 +663,15 @@ func (s *GoldskyService) GetGlobalContractCount(ctx context.Context) (int64, err
 		}
 
 		logger.Info("Got global contract count from Goldsky", "chain_id", chain.ChainID, "chain_name", chain.ChainName, "total_contracts", totalContracts)
-		return totalContracts, nil
+		totalContracts += totalContracts
 	}
 
-	return 0, fmt.Errorf("no chains returned valid global statistics")
+	return totalContracts, nil
 }
 
 // GetGlobalTransactionCount 获取全局交易数量（从Goldsky GlobalStatistics获取）
 func (s *GoldskyService) GetGlobalTransactionCount(ctx context.Context) (int64, error) {
+	totalTransactions := int64(0)
 	chains, err := s.chainRepo.GetAllActiveChains()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get active chains: %w", err)
@@ -696,10 +698,10 @@ func (s *GoldskyService) GetGlobalTransactionCount(ctx context.Context) (int64, 
 		}
 
 		logger.Info("Got global transaction count from Goldsky", "chain_id", chain.ChainID, "chain_name", chain.ChainName, "total_transactions", totalTransactions)
-		return totalTransactions, nil
+		totalTransactions += totalTransactions
 	}
 
-	return 0, fmt.Errorf("no chains returned valid global statistics")
+	return totalTransactions, nil
 }
 
 // SyncAllFlowsNow 手动同步所有链的Flows（用于API调用）
