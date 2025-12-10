@@ -107,13 +107,12 @@ func (r *repository) GetSupportChains(ctx context.Context, req *types.GetSupport
 
 	query := r.db.WithContext(ctx).Model(&types.SupportChain{})
 
-	// 根据筛选条件构建查询
-	if req.IsTestnet != nil {
-		query = query.Where("is_testnet = ?", *req.IsTestnet)
-	}
+	// 默认只返回激活的链
+	isActiveFilter := true
 	if req.IsActive != nil {
-		query = query.Where("is_active = ?", *req.IsActive)
+		isActiveFilter = *req.IsActive
 	}
+	query = query.Where("is_active = ?", isActiveFilter)
 
 	// 获取总数
 	if err := query.Count(&total).Error; err != nil {

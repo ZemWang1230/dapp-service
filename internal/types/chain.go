@@ -72,8 +72,7 @@ type NativeCurrencyConfig struct {
 
 // GetSupportChainsRequest 获取支持链列表请求
 type GetSupportChainsRequest struct {
-	IsTestnet *bool `json:"is_testnet" form:"is_testnet"` // 筛选测试网/主网
-	IsActive  *bool `json:"is_active" form:"is_active"`   // 筛选激活状态
+	IsActive *bool `json:"is_active" form:"is_active"` // 筛选激活状态（默认只返回激活的链）
 }
 
 // GetSupportChainsResponse 获取支持链列表响应

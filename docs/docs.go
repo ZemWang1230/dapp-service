@@ -1303,7 +1303,7 @@ const docTemplate = `{
         },
         "/api/v1/chain/list": {
             "post": {
-                "description": "获取所有支持的区块链列表，可根据是否测试网和是否激活状态进行筛选。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。",
+                "description": "获取所有激活的区块链列表，可根据是否激活状态进行筛选。默认只返回激活状态的链。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。",
                 "consumes": [
                     "application/json"
                 ],
@@ -4504,11 +4504,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "is_active": {
-                    "description": "筛选激活状态",
-                    "type": "boolean"
-                },
-                "is_testnet": {
-                    "description": "筛选测试网/主网",
+                    "description": "筛选激活状态（默认只返回激活的链）",
                     "type": "boolean"
                 }
             }

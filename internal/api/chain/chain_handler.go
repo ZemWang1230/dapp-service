@@ -46,7 +46,7 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 
 // GetSupportChains 获取支持链列表
 // @Summary 获取支持的区块链列表
-// @Description 获取所有支持的区块链列表，可根据是否测试网和是否激活状态进行筛选。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。
+// @Description 获取所有激活的区块链列表，可根据是否激活状态进行筛选。默认只返回激活状态的链。返回链的详细信息包括名称、链ID、原生代币、Logo等信息。
 // @Tags Chain
 // @Accept json
 // @Produce json

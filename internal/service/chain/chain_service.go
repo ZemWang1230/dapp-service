@@ -31,7 +31,7 @@ func NewService(chainRepo chain.Repository) Service {
 
 // GetSupportChains 获取支持链列表
 func (s *service) GetSupportChains(ctx context.Context, req *types.GetSupportChainsRequest) (*types.GetSupportChainsResponse, error) {
-	logger.Info("GetSupportChains: ", "is_testnet", req.IsTestnet, "is_active", req.IsActive)
+	logger.Info("GetSupportChains: ", "is_active", req.IsActive)
 
 	// 调用repository获取数据
 	chains, total, err := s.chainRepo.GetSupportChains(ctx, req)
