@@ -134,12 +134,13 @@ func main() {
 		chainRepository,
 		timelockRepository,
 		goldskyFlowRepository,
+		publicRepository,
 		emailSvc,
 		notificationSvc,
 	)
 
-	// 初始化公共服务（需要 Goldsky 服务）
-	publicSvc := publicService.NewService(publicRepository, goldskyFlowRepository, goldskySvc)
+	// 初始化公共服务
+	publicSvc := publicService.NewService(publicRepository)
 
 	// 初始化 Goldsky Webhook Processor
 	goldskyProcessor := goldskyService.NewWebhookProcessor(

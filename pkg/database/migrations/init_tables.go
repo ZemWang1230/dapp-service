@@ -588,6 +588,24 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: openzeppelin_timelock_flows")
 	}
 
+	// 19. chain_statistics 表 - 存储各链的统计数据
+	if !h.db.Migrator().HasTable("chain_statistics") {
+		sql := `
+        CREATE TABLE chain_statistics (
+            id BIGSERIAL PRIMARY KEY,
+            chain_id INTEGER NOT NULL UNIQUE,
+            chain_name VARCHAR(100) NOT NULL,
+            contract_count BIGINT NOT NULL DEFAULT 0,
+            transaction_count BIGINT NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create chain_statistics table: %w", err)
+		}
+		logger.Info("Created table: chain_statistics")
+	}
+
 	logger.Info("All tables created successfully")
 	return nil
 }

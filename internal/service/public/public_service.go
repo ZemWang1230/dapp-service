@@ -3,9 +3,7 @@ package public
 import (
 	"context"
 	"fmt"
-	goldskyRepo "timelocker-backend/internal/repository/goldsky"
 	"timelocker-backend/internal/repository/public"
-	goldskySvc "timelocker-backend/internal/service/goldsky"
 	"timelocker-backend/internal/types"
 	"timelocker-backend/pkg/logger"
 )
@@ -17,17 +15,13 @@ type Service interface {
 
 // service 公共数据服务实现
 type service struct {
-	publicRepo  public.Repository
-	goldskyRepo goldskyRepo.FlowRepository
-	goldskySvc  *goldskySvc.GoldskyService
+	publicRepo public.Repository
 }
 
 // NewService 创建新的公共数据服务
-func NewService(publicRepo public.Repository, goldskyRepo goldskyRepo.FlowRepository, goldskySvc *goldskySvc.GoldskyService) Service {
+func NewService(publicRepo public.Repository) Service {
 	return &service{
-		publicRepo:  publicRepo,
-		goldskyRepo: goldskyRepo,
-		goldskySvc:  goldskySvc,
+		publicRepo: publicRepo,
 	}
 }
 
@@ -42,18 +36,17 @@ func (s *service) GetStats(ctx context.Context, req *types.GetStatsRequest) (*ty
 		return nil, fmt.Errorf("failed to get chain count: %w", err)
 	}
 
-	// 获取合约数量（Compound+OZ，每个链上的，从goldsky中获取）
-	contractCount, err := s.goldskySvc.GetGlobalContractCount(ctx)
+	// 从数据库获取总合约数量和总交易数量
+	contractCount, err := s.publicRepo.GetTotalContractCount(ctx)
 	if err != nil {
-		logger.Error("GetStats: failed to get contract count", err)
-		return nil, fmt.Errorf("failed to get contract count: %w", err)
+		logger.Error("GetStats: failed to get total contract count", err)
+		return nil, fmt.Errorf("failed to get total contract count: %w", err)
 	}
 
-	// 获取交易数量（compound+OZ的，每个链上的，从goldsky中获取）
-	transactionCount, err := s.goldskySvc.GetGlobalTransactionCount(ctx)
+	transactionCount, err := s.publicRepo.GetTotalTransactionCount(ctx)
 	if err != nil {
-		logger.Error("GetStats: failed to get transaction count", err)
-		return nil, fmt.Errorf("failed to get transaction count: %w", err)
+		logger.Error("GetStats: failed to get total transaction count", err)
+		return nil, fmt.Errorf("failed to get total transaction count: %w", err)
 	}
 
 	response := &types.GetStatsResponse{

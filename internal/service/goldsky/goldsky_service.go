@@ -10,6 +10,7 @@ import (
 	"time"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	goldskyRepo "timelocker-backend/internal/repository/goldsky"
+	publicRepo "timelocker-backend/internal/repository/public"
 	timelockRepo "timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/service/email"
 	"timelocker-backend/internal/service/notification"
@@ -22,6 +23,7 @@ type GoldskyService struct {
 	chainRepo           chainRepo.Repository
 	timelockRepo        timelockRepo.Repository
 	flowRepo            goldskyRepo.FlowRepository
+	publicRepo          publicRepo.Repository
 	emailSvc            email.EmailService
 	notificationSvc     notification.NotificationService
 	clients             map[int]*GoldskyClient // chainID -> client
@@ -38,6 +40,7 @@ func NewGoldskyService(
 	chainRepo chainRepo.Repository,
 	timelockRepo timelockRepo.Repository,
 	flowRepo goldskyRepo.FlowRepository,
+	publicRepo publicRepo.Repository,
 	emailSvc email.EmailService,
 	notificationSvc notification.NotificationService,
 ) *GoldskyService {
@@ -46,6 +49,7 @@ func NewGoldskyService(
 		chainRepo:           chainRepo,
 		timelockRepo:        timelockRepo,
 		flowRepo:            flowRepo,
+		publicRepo:          publicRepo,
 		emailSvc:            emailSvc,
 		notificationSvc:     notificationSvc,
 		clients:             make(map[int]*GoldskyClient),
@@ -154,7 +158,7 @@ func (s *GoldskyService) syncAllFlows() {
 	logger.Info("Finished syncing flows from Goldsky")
 }
 
-// syncFlowsForChain 同步指定链的 Flows
+// syncFlowsForChain 同步指定链的 Flows 和统计数据
 func (s *GoldskyService) syncFlowsForChain(chainID int, client *GoldskyClient) error {
 	// 获取该链上所有激活的合约地址
 	compoundContracts, err := s.timelockRepo.GetAllActiveCompoundTimelocks(s.ctx, chainID)
@@ -172,6 +176,11 @@ func (s *GoldskyService) syncFlowsForChain(chainID int, client *GoldskyClient) e
 		if err := s.syncCompoundFlows(chainID, client, compoundAddresses); err != nil {
 			logger.Error("Failed to sync compound flows", err, "chain_id", chainID)
 		}
+	}
+
+	// 同步该链的统计数据
+	if err := s.syncChainStatistics(chainID, client); err != nil {
+		logger.Error("Failed to sync chain statistics", err, "chain_id", chainID)
 	}
 
 	return nil
@@ -741,5 +750,44 @@ func (s *GoldskyService) SyncAllFlowsNow(ctx context.Context) error {
 	}
 
 	logger.Info("Manually synced all flows from Goldsky successfully")
+	return nil
+}
+
+// syncChainStatistics 同步指定链的统计数据
+func (s *GoldskyService) syncChainStatistics(chainID int, client *GoldskyClient) error {
+	// 获取该链的信息
+	chain, err := s.chainRepo.GetChainByChainID(s.ctx, int64(chainID))
+	if err != nil {
+		return fmt.Errorf("failed to get chain info: %w", err)
+	}
+
+	// 从 Goldsky 获取统计数据
+	stats, err := client.QueryGlobalStatistics(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to query global statistics for chain %d: %w", chainID, err)
+	}
+
+	// 解析统计数据
+	contractCount, err := strconv.ParseInt(stats.TotalContracts, 10, 64)
+	if err != nil {
+		logger.Warn("Failed to parse total contracts", "chain_id", chainID, "value", stats.TotalContracts, "error", err)
+		contractCount = 0
+	}
+
+	transactionCount, err := strconv.ParseInt(stats.TotalTransactions, 10, 64)
+	if err != nil {
+		logger.Warn("Failed to parse total transactions", "chain_id", chainID, "value", stats.TotalTransactions, "error", err)
+		transactionCount = 0
+	}
+
+	// 更新数据库中的统计数据
+	if s.publicRepo != nil {
+		err = s.publicRepo.UpdateChainStatistics(s.ctx, chainID, chain.ChainName, contractCount, transactionCount)
+		if err != nil {
+			return fmt.Errorf("failed to update chain statistics: %w", err)
+		}
+	}
+
+	logger.Info("Synced chain statistics", "chain_id", chainID, "chain_name", chain.ChainName, "contracts", contractCount, "transactions", transactionCount)
 	return nil
 }
