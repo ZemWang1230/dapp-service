@@ -120,13 +120,30 @@ func (r *repository) GetSupportChains(ctx context.Context, req *types.GetSupport
 		return nil, 0, err
 	}
 
-	// 获取数据，按创建时间倒序排列
-	if err := query.Order("created_at DESC").Find(&chains).Error; err != nil {
-		logger.Error("GetSupportChains Find Error: ", err)
+	// 先获取非测试链（正式链），按ID升序排列
+	var mainnetChains []types.SupportChain
+	if err := r.db.WithContext(ctx).Model(&types.SupportChain{}).
+		Where("is_active = ? AND is_testnet = ?", isActiveFilter, false).
+		Order("id ASC").
+		Find(&mainnetChains).Error; err != nil {
+		logger.Error("GetSupportChains Find Mainnet Error: ", err)
 		return nil, 0, err
 	}
 
-	logger.Info("GetSupportChains: ", "count", len(chains), "total", total)
+	// 再获取测试链，按ID升序排列
+	var testnetChains []types.SupportChain
+	if err := r.db.WithContext(ctx).Model(&types.SupportChain{}).
+		Where("is_active = ? AND is_testnet = ?", isActiveFilter, true).
+		Order("id ASC").
+		Find(&testnetChains).Error; err != nil {
+		logger.Error("GetSupportChains Find Testnet Error: ", err)
+		return nil, 0, err
+	}
+
+	// 合并结果：正式链在前，测试链在后
+	chains = append(mainnetChains, testnetChains...)
+
+	logger.Info("GetSupportChains: ", "count", len(chains), "total", total, "mainnet_count", len(mainnetChains), "testnet_count", len(testnetChains))
 	return chains, total, nil
 }
 
