@@ -77,6 +77,10 @@
         width: 100% !important;
       }
       
+      .main-wrapper {
+        padding: 0 !important;
+      }
+      
       .mobile-padding {
         padding: 20px !important;
       }
@@ -120,16 +124,16 @@
 
 <body style="word-spacing:normal;background-color:#f3f4f6;">
   <!-- Main Container -->
-  <div style="background-color:#f3f4f6; padding: 40px 0;">
+  <div class="main-wrapper" style="background-color:#f3f4f6; padding: 40px 0;">
     
     <!-- Card Wrapper -->
-    <div style="margin:0px auto;max-width:600px;background:#ffffff;border-radius:6px;border:1px solid #e5e7eb;overflow:hidden;">
+    <div class="mobile-container" style="margin:0px auto;max-width:600px;background:#ffffff;border-radius:6px;border:1px solid #e5e7eb;overflow:hidden;">
       <table align="center" border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
         <tbody>
           
             <!-- Header -->
             <tr>
-              <td style="padding: 32px 32px 24px 32px; border-bottom: 1px solid #f3f4f6; text-align:center;">
+              <td class="mobile-padding" style="padding: 32px 32px 24px 32px; border-bottom: 1px solid #f3f4f6; text-align:center;">
                  <div style="font-family:Inter, Helvetica, Arial, sans-serif;font-size:24px;font-weight:700;color:#111827;letter-spacing:-0.5px;">Timelock</div>
                  <div style="font-family:Inter, Helvetica, Arial, sans-serif;font-size:15px;color:#6b7280;margin-top:4px;">Flow Status Update</div>
               </td>
@@ -137,7 +141,7 @@
 
             <!-- Content -->
             <tr>
-              <td style="padding: 32px;">
+              <td class="mobile-padding" style="padding: 32px;">
                 
                 <!-- Status Transition -->
                 <div style="margin-bottom: 32px;">
