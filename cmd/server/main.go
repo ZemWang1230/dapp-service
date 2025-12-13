@@ -146,6 +146,7 @@ func main() {
 	goldskyProcessor := goldskyService.NewWebhookProcessor(
 		timelockRepository,
 		goldskyFlowRepository,
+		goldskySvc,
 		emailSvc,
 		notificationSvc,
 	)

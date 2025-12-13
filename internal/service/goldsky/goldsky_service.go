@@ -56,7 +56,7 @@ func NewGoldskyService(
 		ctx:                 ctx,
 		cancel:              cancel,
 		syncInterval:        10 * time.Minute, // 每10分钟同步一次
-		statusCheckInterval: 1 * time.Minute, // 每1分钟检查一次状态
+		statusCheckInterval: 1 * time.Minute,  // 每1分钟检查一次状态
 	}
 }
 
@@ -415,6 +415,24 @@ func (s *GoldskyService) checkAndUpdateFlowStatusForContract(ctx context.Context
 			}
 		}
 	}
+}
+
+// GetCompoundFlowDetail 获取 Compound Flow 详情（用于 Webhook 优化）
+func (s *GoldskyService) GetCompoundFlowDetail(ctx context.Context, chainID int, flowID string) (*types.GoldskyCompoundFlow, error) {
+	s.mu.RLock()
+	client, exists := s.clients[chainID]
+	s.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("no Goldsky client for chain %d", chainID)
+	}
+
+	flow, err := client.QueryCompoundFlowByFlowID(ctx, flowID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query compound flow: %w", err)
+	}
+
+	return flow, nil
 }
 
 // GetTransactionDetail 获取交易详情（用于 API）

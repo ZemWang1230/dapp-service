@@ -186,6 +186,89 @@ func (c *GoldskyClient) QueryOpenzeppelinFlows(ctx context.Context, contractAddr
 	return response.Data.OpenzeppelinTimelockFlows, nil
 }
 
+// QueryCompoundFlowByFlowID 根据 FlowID 查询单个 Compound Flow
+func (c *GoldskyClient) QueryCompoundFlowByFlowID(ctx context.Context, flowID string) (*types.GoldskyCompoundFlow, error) {
+	query := `
+		query($flowID: String!) {
+			compoundTimelockFlows(
+				where: { flowId: $flowID }
+				first: 1
+			) {
+				id
+				flowId
+				timelockStandard
+				contractAddress
+				status
+				queueTransaction {
+					id
+					txHash
+					logIndex
+					blockNumber
+					blockTimestamp
+					contractAddress
+					fromAddress
+					eventType
+					eventTxHash
+					eventTarget
+					eventValue
+					eventSignature
+					eventData
+					eventEta
+				}
+				executeTransaction {
+					id
+					txHash
+					blockNumber
+					blockTimestamp
+					fromAddress
+					eventType
+				}
+				cancelTransaction {
+					id
+					txHash
+					blockNumber
+					blockTimestamp
+					fromAddress
+					eventType
+				}
+				initiatorAddress
+				targetAddress
+				value
+				callData
+				functionSignature
+				queuedAt
+				eta
+				gracePeriod
+				expiredAt
+				executedAt
+				cancelledAt
+				createdAt
+				updatedAt
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"flowID": flowID,
+	}
+
+	var response struct {
+		Data struct {
+			CompoundTimelockFlows []types.GoldskyCompoundFlow `json:"compoundTimelockFlows"`
+		} `json:"data"`
+	}
+
+	if err := c.executeQuery(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if len(response.Data.CompoundTimelockFlows) == 0 {
+		return nil, nil
+	}
+
+	return &response.Data.CompoundTimelockFlows[0], nil
+}
+
 // QueryCompoundTransactionByTxHash 根据交易哈希查询 Compound Transaction
 func (c *GoldskyClient) QueryCompoundTransactionByTxHash(ctx context.Context, txHash string) (*types.GoldskyCompoundTransaction, error) {
 	query := `

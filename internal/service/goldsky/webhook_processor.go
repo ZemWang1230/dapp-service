@@ -20,6 +20,7 @@ import (
 type WebhookProcessor struct {
 	timelockRepo    timelockRepo.Repository
 	flowRepo        goldskyRepo.FlowRepository
+	goldskySvc      *GoldskyService
 	emailSvc        email.EmailService
 	notificationSvc notification.NotificationService
 }
@@ -28,12 +29,14 @@ type WebhookProcessor struct {
 func NewWebhookProcessor(
 	timelockRepo timelockRepo.Repository,
 	flowRepo goldskyRepo.FlowRepository,
+	goldskySvc *GoldskyService,
 	emailSvc email.EmailService,
 	notificationSvc notification.NotificationService,
 ) *WebhookProcessor {
 	return &WebhookProcessor{
 		timelockRepo:    timelockRepo,
 		flowRepo:        flowRepo,
+		goldskySvc:      goldskySvc,
 		emailSvc:        emailSvc,
 		notificationSvc: notificationSvc,
 	}
@@ -120,45 +123,64 @@ func (p *WebhookProcessor) handleCompoundQueue(ctx context.Context, tx types.Gol
 		return nil // 已存在，跳过（幂等性）
 	}
 
-	// 创建新的 Flow
-	flow := &types.CompoundTimelockFlowDB{
-		FlowID:           flowID,
-		TimelockStandard: "compound",
-		ChainID:          chainID,
-		ContractAddress:  tx.ContractAddress,
-		Status:           "waiting", // 默认 waiting 状态
-		QueueTxHash:      &tx.TxHash,
-		InitiatorAddress: &tx.FromAddress,
-		Value:            tx.EventValue,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+	// 从 Goldsky 查询完整的 Flow 数据，以获取完整的字段信息（如 expired_at）
+	goldskyFlow, err := p.goldskySvc.GetCompoundFlowDetail(ctx, chainID, flowID)
+	if err != nil {
+		logger.Warn("Failed to query complete flow data from Goldsky, falling back to webhook data", "flow_id", flowID, "error", err)
 	}
 
-	// 填充详细信息
-	if tx.EventTarget != nil {
-		flow.TargetAddress = tx.EventTarget
-	}
-	if tx.EventSignature != nil {
-		flow.FunctionSignature = tx.EventSignature
-	}
-	if tx.EventData != nil && *tx.EventData != "" {
-		callDataStr := strings.TrimPrefix(*tx.EventData, "0x")
-		callDataBytes, err := hex.DecodeString(callDataStr)
-		if err == nil {
-			flow.CallData = callDataBytes
-		}
-	}
-	if tx.EventEta != nil {
-		if eta, err := strconv.ParseInt(*tx.EventEta, 10, 64); err == nil {
-			etaTime := time.Unix(eta, 0)
-			flow.Eta = &etaTime
+	var flow *types.CompoundTimelockFlowDB
+	if goldskyFlow != nil {
+		// 使用 Goldsky 的完整数据创建 Flow
+		flow, err = ConvertGoldskyCompoundFlowToDB(*goldskyFlow, chainID)
+		if err != nil {
+			logger.Error("Failed to convert Goldsky flow data", err, "flow_id", flowID)
+			// 继续使用 webhook 数据作为备用方案
 		}
 	}
 
-	// 解析 queuedAt
-	if blockTs, err := strconv.ParseInt(tx.BlockTimestamp, 10, 64); err == nil {
-		queuedAt := time.Unix(blockTs, 0)
-		flow.QueuedAt = &queuedAt
+	// 如果 Goldsky 数据不可用或转换失败，使用 webhook 数据
+	if flow == nil {
+		// 创建新的 Flow（使用 webhook 数据）
+		flow = &types.CompoundTimelockFlowDB{
+			FlowID:           flowID,
+			TimelockStandard: "compound",
+			ChainID:          chainID,
+			ContractAddress:  tx.ContractAddress,
+			Status:           "waiting", // 默认 waiting 状态
+			QueueTxHash:      &tx.TxHash,
+			InitiatorAddress: &tx.FromAddress,
+			Value:            tx.EventValue,
+			CreatedAt:        time.Now(),
+			UpdatedAt:        time.Now(),
+		}
+
+		// 填充详细信息
+		if tx.EventTarget != nil {
+			flow.TargetAddress = tx.EventTarget
+		}
+		if tx.EventSignature != nil {
+			flow.FunctionSignature = tx.EventSignature
+		}
+		if tx.EventData != nil && *tx.EventData != "" {
+			callDataStr := strings.TrimPrefix(*tx.EventData, "0x")
+			callDataBytes, err := hex.DecodeString(callDataStr)
+			if err == nil {
+				flow.CallData = callDataBytes
+			}
+		}
+		if tx.EventEta != nil {
+			if eta, err := strconv.ParseInt(*tx.EventEta, 10, 64); err == nil {
+				etaTime := time.Unix(eta, 0)
+				flow.Eta = &etaTime
+			}
+		}
+
+		// 解析 queuedAt
+		if blockTs, err := strconv.ParseInt(tx.BlockTimestamp, 10, 64); err == nil {
+			queuedAt := time.Unix(blockTs, 0)
+			flow.QueuedAt = &queuedAt
+		}
 	}
 
 	// 创建 Flow
@@ -166,7 +188,7 @@ func (p *WebhookProcessor) handleCompoundQueue(ctx context.Context, tx types.Gol
 		return fmt.Errorf("failed to create flow: %w", err)
 	}
 
-	logger.Info("Created new Compound flow", "flow_id", flowID, "status", "waiting")
+	logger.Info("Created new Compound flow", "flow_id", flowID, "status", "waiting", "used_goldsky_data", goldskyFlow != nil)
 
 	// 异步发送通知
 	go p.sendFlowNotification(chainID, tx.ContractAddress, flowID, "compound", "", "waiting", &tx.TxHash, tx.FromAddress)
