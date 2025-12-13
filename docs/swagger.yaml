@@ -273,7 +273,7 @@ definitions:
         description: telegram
         type: string
       channel:
-        description: 渠道,telegram,lark,feishu
+        description: 渠道,telegram,lark,feishu,discord,slack
         type: string
       chat_id:
         description: 聊天ID
@@ -285,7 +285,7 @@ definitions:
         description: 签名验证时的密钥
         type: string
       webhook_url:
-        description: lark feishu
+        description: lark feishu discord slack
         type: string
     required:
     - channel
@@ -329,7 +329,7 @@ definitions:
   types.DeleteNotificationRequest:
     properties:
       channel:
-        description: 渠道,telegram,lark,feishu
+        description: 渠道,telegram,lark,feishu,discord,slack
         type: string
       name:
         description: 通用
@@ -353,6 +353,30 @@ definitions:
     - chain_id
     - contract_address
     - standard
+    type: object
+  types.DiscordConfig:
+    properties:
+      created_at:
+        description: 创建时间
+        type: string
+      id:
+        description: ID
+        type: integer
+      is_active:
+        description: 是否激活
+        type: boolean
+      name:
+        description: 名称
+        type: string
+      updated_at:
+        description: 更新时间
+        type: string
+      user_address:
+        description: 用户地址
+        type: string
+      webhook_url:
+        description: 网络钩子URL
+        type: string
     type: object
   types.EmailListResponse:
     properties:
@@ -691,6 +715,10 @@ definitions:
     type: object
   types.NotificationConfigListResponse:
     properties:
+      discord_configs:
+        items:
+          $ref: '#/definitions/types.DiscordConfig'
+        type: array
       feishu_configs:
         items:
           $ref: '#/definitions/types.FeishuConfig'
@@ -698,6 +726,10 @@ definitions:
       lark_configs:
         items:
           $ref: '#/definitions/types.LarkConfig'
+        type: array
+      slack_configs:
+        items:
+          $ref: '#/definitions/types.SlackConfig'
         type: array
       telegram_configs:
         items:
@@ -763,6 +795,30 @@ definitions:
       email:
         type: string
       remark:
+        type: string
+    type: object
+  types.SlackConfig:
+    properties:
+      created_at:
+        description: 创建时间
+        type: string
+      id:
+        description: ID
+        type: integer
+      is_active:
+        description: 是否激活
+        type: boolean
+      name:
+        description: 名称
+        type: string
+      updated_at:
+        description: 更新时间
+        type: string
+      user_address:
+        description: 用户地址
+        type: string
+      webhook_url:
+        description: 网络钩子URL
         type: string
     type: object
   types.SupportChainResponse:
@@ -863,7 +919,7 @@ definitions:
         description: telegram
         type: string
       channel:
-        description: 渠道,telegram,lark,feishu
+        description: 渠道,telegram,lark,feishu,discord,slack
         type: string
       chat_id:
         description: 聊天ID
@@ -878,7 +934,7 @@ definitions:
         description: 签名验证时的密钥
         type: string
       webhook_url:
-        description: lark feishu
+        description: lark feishu discord slack
         type: string
     required:
     - channel

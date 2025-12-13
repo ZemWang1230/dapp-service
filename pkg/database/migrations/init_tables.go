@@ -480,7 +480,45 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: feishu_configs")
 	}
 
-	// 16. notification_logs 表
+	// 16. discord_configs 表
+	if !h.db.Migrator().HasTable("discord_configs") {
+		sql := `
+        CREATE TABLE discord_configs (
+            id BIGSERIAL PRIMARY KEY,
+            user_address VARCHAR(42) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+            webhook_url VARCHAR(1000) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(user_address, name)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create discord_configs table: %w", err)
+		}
+		logger.Info("Created table: discord_configs")
+	}
+
+	// 17. slack_configs 表
+	if !h.db.Migrator().HasTable("slack_configs") {
+		sql := `
+        CREATE TABLE slack_configs (
+            id BIGSERIAL PRIMARY KEY,
+            user_address VARCHAR(42) NOT NULL,
+			name VARCHAR(100) NOT NULL,
+            webhook_url VARCHAR(1000) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(user_address, name)
+        )`
+		if err := h.db.WithContext(ctx).Exec(sql).Error; err != nil {
+			return fmt.Errorf("failed to create slack_configs table: %w", err)
+		}
+		logger.Info("Created table: slack_configs")
+	}
+
+	// 18. notification_logs 表
 	if !h.db.Migrator().HasTable("notification_logs") {
 		sql := `
         CREATE TABLE notification_logs (
@@ -506,7 +544,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: notification_logs")
 	}
 
-	// 17. compound_timelock_flows 表
+	// 19. compound_timelock_flows 表
 	if !h.db.Migrator().HasTable("compound_timelock_flows") {
 		sql := `
         CREATE TABLE compound_timelock_flows (
@@ -548,7 +586,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: compound_timelock_flows")
 	}
 
-	// 18. openzeppelin_timelock_flows 表
+	// 20. openzeppelin_timelock_flows 表
 	if !h.db.Migrator().HasTable("openzeppelin_timelock_flows") {
 		sql := `
         CREATE TABLE openzeppelin_timelock_flows (
@@ -588,7 +626,7 @@ func (h *MigrationHandler) createInitialTables(ctx context.Context) error {
 		logger.Info("Created table: openzeppelin_timelock_flows")
 	}
 
-	// 19. chain_statistics 表 - 存储各链的统计数据
+	// 21. chain_statistics 表 - 存储各链的统计数据
 	if !h.db.Migrator().HasTable("chain_statistics") {
 		sql := `
         CREATE TABLE chain_statistics (
@@ -679,6 +717,12 @@ func (h *MigrationHandler) createIndexes(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_feishu_configs_user ON feishu_configs(user_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_feishu_configs_active ON feishu_configs(is_active)`,
 		`CREATE INDEX IF NOT EXISTS idx_feishu_configs_user_name ON feishu_configs(user_address, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_discord_configs_user ON discord_configs(user_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_discord_configs_active ON discord_configs(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_discord_configs_user_name ON discord_configs(user_address, name)`,
+		`CREATE INDEX IF NOT EXISTS idx_slack_configs_user ON slack_configs(user_address)`,
+		`CREATE INDEX IF NOT EXISTS idx_slack_configs_active ON slack_configs(is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_slack_configs_user_name ON slack_configs(user_address, name)`,
 		`CREATE INDEX IF NOT EXISTS idx_notification_logs_user ON notification_logs(user_address)`,
 		`CREATE INDEX IF NOT EXISTS idx_notification_logs_flow ON notification_logs(flow_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_notification_logs_channel ON notification_logs(channel)`,
@@ -1074,7 +1118,7 @@ func (h *MigrationHandler) insertSupportedChains(ctx context.Context) error {
 			"official_rpc_urls":        `["https://ethereum-sepolia-rpc.publicnode.com","https://1rpc.io/sepolia"]`,
 			"block_explorer_urls":      `["https://sepolia.etherscan.io"]`,
 			"rpc_enabled":              true,
-			"subgraph_url":             "https://api.goldsky.com/api/public/project_cmisnqs37gdlo01y7f60oa25h/subgraphs/timelock-eth-sepolia/1.0.0/gn",
+			"subgraph_url":             "https://api.goldsky.com/api/public/project_cmiyh3ovf0vqz01u22izd1cp4/subgraphs/timelock-eth-sepolia/1.0.0/gn",
 		},
 		// {
 		// 	"chain_name":               "bsc-testnet",

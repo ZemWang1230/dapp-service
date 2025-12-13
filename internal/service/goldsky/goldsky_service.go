@@ -56,7 +56,7 @@ func NewGoldskyService(
 		ctx:                 ctx,
 		cancel:              cancel,
 		syncInterval:        10 * time.Minute, // 每10分钟同步一次
-		statusCheckInterval: 1 * time.Minute,  // 每1分钟检查一次状态
+		statusCheckInterval: 1 * time.Minute, // 每1分钟检查一次状态
 	}
 }
 
@@ -232,51 +232,6 @@ func (s *GoldskyService) syncCompoundFlows(chainID int, client *GoldskyClient, c
 	return nil
 }
 
-// syncOpenzeppelinFlows 同步 OpenZeppelin Flows
-// func (s *GoldskyService) syncOpenzeppelinFlows(chainID int, client *GoldskyClient, contractAddresses []string) error {
-// 	flows, err := client.QueryOpenzeppelinFlows(s.ctx, contractAddresses, 1000)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to query openzeppelin flows: %w", err)
-// 	}
-
-// 	logger.Info("Queried openzeppelin flows from Goldsky", "chain_id", chainID, "count", len(flows))
-
-// 	for _, goldskyFlow := range flows {
-// 		// 转换为数据库模型
-// 		dbFlow, err := ConvertGoldskyOpenzeppelinFlowToDB(goldskyFlow, chainID)
-// 		if err != nil {
-// 			logger.Error("Failed to convert openzeppelin flow", err, "flow_id", goldskyFlow.FlowID)
-// 			continue
-// 		}
-
-// 		// 获取旧的 Flow 状态（用于检测状态变化）
-// 		oldFlow, err := s.flowRepo.GetOpenzeppelinFlowByID(s.ctx, dbFlow.FlowID, chainID, dbFlow.ContractAddress)
-// 		if err != nil {
-// 			logger.Error("Failed to get old openzeppelin flow", err, "flow_id", dbFlow.FlowID)
-// 		}
-
-// 		// 【重要】保护本地状态：ready 状态不能被 Goldsky 的 waiting 覆盖
-// 		// OpenZeppelin 没有 expired 状态
-// 		if oldFlow != nil {
-// 			if oldFlow.Status == "ready" && dbFlow.Status == "waiting" {
-// 				logger.Debug("Preserving local status",
-// 					"flow_id", dbFlow.FlowID,
-// 					"local_status", oldFlow.Status,
-// 					"goldsky_status", dbFlow.Status)
-// 				dbFlow.Status = oldFlow.Status
-// 			}
-// 		}
-
-// 		// 创建或更新
-// 		if err := s.flowRepo.CreateOrUpdateOpenzeppelinFlow(s.ctx, dbFlow); err != nil {
-// 			logger.Error("Failed to create or update openzeppelin flow", err, "flow_id", dbFlow.FlowID)
-// 			continue
-// 		}
-// 	}
-
-// 	return nil
-// }
-
 // checkFlowStatusLoop 检查 Flow 状态的循环任务（每30秒）
 func (s *GoldskyService) checkFlowStatusLoop() {
 	defer s.wg.Done()
@@ -317,25 +272,6 @@ func (s *GoldskyService) checkAndUpdateFlowStatus() {
 			}
 		}
 	}
-
-	// 检查 OpenZeppelin Flows
-	ozFlows, err := s.flowRepo.GetOpenzeppelinFlowsNeedStatusUpdate(s.ctx, now, 100)
-	if err != nil {
-		logger.Error("Failed to get openzeppelin flows need status update", err)
-	} else {
-		for _, flow := range ozFlows {
-			newStatus := s.calculateNewStatus(flow.Status, flow.Eta, nil, now)
-			if newStatus != flow.Status {
-				if err := s.flowRepo.UpdateOpenzeppelinFlowStatus(s.ctx, flow.FlowID, flow.ChainID, flow.ContractAddress, newStatus); err != nil {
-					logger.Error("Failed to update openzeppelin flow status", err, "flow_id", flow.FlowID, "new_status", newStatus)
-					continue
-				}
-
-				logger.Info("Updated openzeppelin flow status", "flow_id", flow.FlowID, "old_status", flow.Status, "new_status", newStatus)
-				s.sendFlowStatusChangeNotification(flow.ChainID, flow.ContractAddress, flow.FlowID, "openzeppelin", flow.Status, newStatus)
-			}
-		}
-	}
 }
 
 // calculateNewStatus 计算新的状态
@@ -373,7 +309,7 @@ func (s *GoldskyService) sendFlowStatusChangeNotification(chainID int, contractA
 		logger.Info("Email notification sent successfully", "flow_id", flowID, "status", newStatus)
 	}
 
-	// 2. 发送渠道通知（Telegram/Lark/Feishu 等）
+	// 2. 发送渠道通知（Telegram/Lark/Feishu/Discord/Slack 等）
 	if err := s.notificationSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, oldStatus, newStatus, nil, ""); err != nil {
 		logger.Error("Failed to send channel notification", err,
 			"chain_id", chainID,
@@ -394,8 +330,6 @@ func (s *GoldskyService) SyncFlowsForContract(ctx context.Context, chainID int, 
 	switch standard {
 	case "compound":
 		return s.syncCompoundFlowsForContract(ctx, chainID, client, contractAddress)
-	case "openzeppelin":
-		return s.syncOpenzeppelinFlowsForContract(ctx, chainID, client, contractAddress)
 	default:
 		return fmt.Errorf("unsupported timelock standard: %s", standard)
 	}
@@ -452,57 +386,6 @@ func (s *GoldskyService) syncCompoundFlowsForContract(ctx context.Context, chain
 	return nil
 }
 
-// syncOpenzeppelinFlowsForContract 同步特定OpenZeppelin合约的flows
-func (s *GoldskyService) syncOpenzeppelinFlowsForContract(ctx context.Context, chainID int, client *GoldskyClient, contractAddress string) error {
-	flows, err := client.QueryOpenzeppelinFlows(ctx, []string{contractAddress}, 1000)
-	if err != nil {
-		return fmt.Errorf("failed to query openzeppelin flows for contract %s: %w", contractAddress, err)
-	}
-
-	logger.Info("Queried openzeppelin flows from Goldsky for contract", "chain_id", chainID, "contract_address", contractAddress, "count", len(flows))
-
-	for _, goldskyFlow := range flows {
-		// 转换为数据库模型
-		dbFlow, err := ConvertGoldskyOpenzeppelinFlowToDB(goldskyFlow, chainID)
-		if err != nil {
-			logger.Error("Failed to convert openzeppelin flow", err, "flow_id", goldskyFlow.FlowID, "contract_address", contractAddress)
-			continue
-		}
-
-		// 获取旧的 Flow 状态（用于检测状态变化）
-		oldFlow, err := s.flowRepo.GetOpenzeppelinFlowByID(ctx, dbFlow.FlowID, chainID, contractAddress)
-		if err != nil && err.Error() != "record not found" {
-			logger.Error("Failed to get old openzeppelin flow", err, "flow_id", dbFlow.FlowID, "contract_address", contractAddress)
-		}
-
-		// 【重要】保护本地状态：ready 和 expired 状态不能被 Goldsky 的 waiting 覆盖
-		if oldFlow != nil {
-			// 如果本地是 ready 或 expired，而 Goldsky 是 waiting，保持本地状态
-			if (oldFlow.Status == "ready" || oldFlow.Status == "expired") && dbFlow.Status == "waiting" {
-				logger.Debug("Preserving local status",
-					"flow_id", dbFlow.FlowID,
-					"local_status", oldFlow.Status,
-					"goldsky_status", dbFlow.Status)
-				dbFlow.Status = oldFlow.Status // 保持本地状态
-			}
-		}
-
-		// 创建或更新
-		if err := s.flowRepo.CreateOrUpdateOpenzeppelinFlow(ctx, dbFlow); err != nil {
-			logger.Error("Failed to create or update openzeppelin flow", err, "flow_id", dbFlow.FlowID, "contract_address", contractAddress)
-			continue
-		}
-
-		logger.Debug("Synced openzeppelin flow", "flow_id", dbFlow.FlowID, "status", dbFlow.Status, "contract_address", contractAddress)
-	}
-
-	// 【优化】同步完成后立即检查并更新状态，确保处理已过期或已就绪的flows
-	logger.Info("Running immediate status check for openzeppelin contract", "contract_address", contractAddress, "chain_id", chainID)
-	s.checkAndUpdateFlowStatusForContract(ctx, chainID, "openzeppelin", contractAddress)
-
-	return nil
-}
-
 // checkAndUpdateFlowStatusForContract 检查并更新特定合约的flow状态
 func (s *GoldskyService) checkAndUpdateFlowStatusForContract(ctx context.Context, chainID int, standard, contractAddress string) {
 	now := time.Now()
@@ -531,25 +414,6 @@ func (s *GoldskyService) checkAndUpdateFlowStatusForContract(ctx context.Context
 				logger.Info("Updated compound flow status during sync", "flow_id", flow.FlowID, "old_status", flow.Status, "new_status", newStatus, "contract_address", contractAddress)
 			}
 		}
-
-	case "openzeppelin":
-		// 获取该合约的所有flows
-		flows, err := s.flowRepo.GetOpenzeppelinFlowsByContract(ctx, chainID, contractAddress)
-		if err != nil {
-			logger.Error("Failed to get openzeppelin flows for status check", err, "contract_address", contractAddress, "chain_id", chainID)
-			return
-		}
-
-		for _, flow := range flows {
-			newStatus := s.calculateNewStatus(flow.Status, flow.Eta, nil, now)
-			if newStatus != flow.Status {
-				if err := s.flowRepo.UpdateOpenzeppelinFlowStatus(ctx, flow.FlowID, flow.ChainID, flow.ContractAddress, newStatus); err != nil {
-					logger.Error("Failed to update openzeppelin flow status", err, "flow_id", flow.FlowID, "new_status", newStatus)
-					continue
-				}
-				logger.Info("Updated openzeppelin flow status during sync", "flow_id", flow.FlowID, "old_status", flow.Status, "new_status", newStatus, "contract_address", contractAddress)
-			}
-		}
 	}
 }
 
@@ -574,9 +438,6 @@ func (s *GoldskyService) GetTransactionDetail(ctx context.Context, chainID int, 
 
 		// 转换为响应格式
 		return s.convertCompoundTransactionToDetail(tx, chainID)
-	} else if standard == "openzeppelin" {
-		// TODO: 实现 OpenZeppelin 交易详情转换
-		return nil, fmt.Errorf("openzeppelin transaction detail not implemented yet")
 	}
 
 	return nil, fmt.Errorf("invalid standard: %s", standard)
@@ -711,46 +572,6 @@ func (s *GoldskyService) GetGlobalTransactionCount(ctx context.Context) (int64, 
 	}
 
 	return totalTransactions, nil
-}
-
-// SyncAllFlowsNow 手动同步所有链的Flows（用于API调用）
-func (s *GoldskyService) SyncAllFlowsNow(ctx context.Context) error {
-	logger.Info("Manually syncing all flows from Goldsky...")
-
-	s.mu.RLock()
-	clients := make(map[int]*GoldskyClient)
-	for chainID, client := range s.clients {
-		clients[chainID] = client
-	}
-	s.mu.RUnlock()
-
-	var wg sync.WaitGroup
-	var firstError error
-	var mu sync.Mutex
-
-	for chainID, client := range clients {
-		wg.Add(1)
-		go func(cid int, c *GoldskyClient) {
-			defer wg.Done()
-			if err := s.syncFlowsForChain(cid, c); err != nil {
-				mu.Lock()
-				if firstError == nil {
-					firstError = fmt.Errorf("failed to sync flows for chain %d: %w", cid, err)
-				}
-				mu.Unlock()
-				logger.Error("Failed to sync flows for chain", err, "chain_id", cid)
-			}
-		}(chainID, client)
-	}
-
-	wg.Wait()
-
-	if firstError != nil {
-		return firstError
-	}
-
-	logger.Info("Manually synced all flows from Goldsky successfully")
-	return nil
 }
 
 // syncChainStatistics 同步指定链的统计数据

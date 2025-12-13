@@ -12,6 +12,8 @@ const (
 	ChannelTelegram NotificationChannel = "telegram"
 	ChannelLark     NotificationChannel = "lark"
 	ChannelFeishu   NotificationChannel = "feishu"
+	ChannelDiscord  NotificationChannel = "discord"
+	ChannelSlack    NotificationChannel = "slack"
 )
 
 // TelegramConfig Telegram通知配置
@@ -62,6 +64,36 @@ func (FeishuConfig) TableName() string {
 	return "feishu_configs"
 }
 
+// DiscordConfig Discord通知配置
+type DiscordConfig struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`                       // ID
+	UserAddress string    `json:"user_address" gorm:"not null;index;size:42"` // 用户地址
+	Name        string    `json:"name" gorm:"size:100"`                       // 名称
+	WebhookURL  string    `json:"webhook_url" gorm:"not null;size:1000"`      // 网络钩子URL
+	IsActive    bool      `json:"is_active" gorm:"default:true"`              // 是否激活
+	CreatedAt   time.Time `json:"created_at"`                                 // 创建时间
+	UpdatedAt   time.Time `json:"updated_at"`                                 // 更新时间
+}
+
+func (DiscordConfig) TableName() string {
+	return "discord_configs"
+}
+
+// SlackConfig Slack通知配置
+type SlackConfig struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`                       // ID
+	UserAddress string    `json:"user_address" gorm:"not null;index;size:42"` // 用户地址
+	Name        string    `json:"name" gorm:"size:100"`                       // 名称
+	WebhookURL  string    `json:"webhook_url" gorm:"not null;size:1000"`      // 网络钩子URL
+	IsActive    bool      `json:"is_active" gorm:"default:true"`              // 是否激活
+	CreatedAt   time.Time `json:"created_at"`                                 // 创建时间
+	UpdatedAt   time.Time `json:"updated_at"`                                 // 更新时间
+}
+
+func (SlackConfig) TableName() string {
+	return "slack_configs"
+}
+
 // NotificationLog 通知发送日志
 type NotificationLog struct {
 	ID               uint                `json:"id" gorm:"primaryKey"`
@@ -90,7 +122,7 @@ type NotificationConfig struct {
 	ID          uint      `json:"id"`
 	UserAddress string    `json:"user_address"`
 	Name        string    `json:"name"`
-	Channel     string    `json:"channel"` // telegram / lark / feishu
+	Channel     string    `json:"channel"` // telegram / lark / feishu / discord / slack
 	IsActive    bool      `json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -105,11 +137,11 @@ type NotificationConfig struct {
 type CreateNotificationRequest struct {
 	// 通用
 	Name    string `json:"name" binding:"required"`    // 名称
-	Channel string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu
+	Channel string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu,discord,slack
 	// telegram
 	BotToken string `json:"bot_token"` // 机器人token
 	ChatID   string `json:"chat_id"`   // 聊天ID
-	// lark feishu
+	// lark feishu discord slack
 	WebhookURL string `json:"webhook_url"` // 网络钩子URL
 	Secret     string `json:"secret"`      // 签名验证时的密钥
 }
@@ -118,12 +150,12 @@ type CreateNotificationRequest struct {
 type UpdateNotificationRequest struct {
 	// 通用
 	Name     *string `json:"name" binding:"required"`    // 名称
-	Channel  *string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu
+	Channel  *string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu,discord,slack
 	IsActive *bool   `json:"is_active"`                  // 是否激活
 	// telegram
 	BotToken *string `json:"bot_token"` // 机器人token
 	ChatID   *string `json:"chat_id"`   // 聊天ID
-	// lark feishu
+	// lark feishu discord slack
 	WebhookURL *string `json:"webhook_url"` // 网络钩子URL
 	Secret     *string `json:"secret"`      // 签名验证时的密钥
 }
@@ -132,7 +164,7 @@ type UpdateNotificationRequest struct {
 type DeleteNotificationRequest struct {
 	// 通用
 	Name    string `json:"name" binding:"required"`    // 名称
-	Channel string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu
+	Channel string `json:"channel" binding:"required"` // 渠道,telegram,lark,feishu,discord,slack
 }
 
 // UserNotificationConfigs 用户通知配置集合
@@ -140,6 +172,8 @@ type UserNotificationConfigs struct {
 	TelegramConfigs []*TelegramConfig `json:"telegram_configs"`
 	LarkConfigs     []*LarkConfig     `json:"lark_configs"`
 	FeishuConfigs   []*FeishuConfig   `json:"feishu_configs"`
+	DiscordConfigs  []*DiscordConfig  `json:"discord_configs"`
+	SlackConfigs    []*SlackConfig    `json:"slack_configs"`
 }
 
 // NotificationConfigListResponse 通知配置列表响应
@@ -147,6 +181,8 @@ type NotificationConfigListResponse struct {
 	TelegramConfigs []*TelegramConfig `json:"telegram_configs"`
 	LarkConfigs     []*LarkConfig     `json:"lark_configs"`
 	FeishuConfigs   []*FeishuConfig   `json:"feishu_configs"`
+	DiscordConfigs  []*DiscordConfig  `json:"discord_configs"`
+	SlackConfigs    []*SlackConfig    `json:"slack_configs"`
 }
 
 type CalldataParam struct {

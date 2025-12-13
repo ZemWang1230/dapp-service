@@ -4173,7 +4173,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "channel": {
-                    "description": "渠道,telegram,lark,feishu",
+                    "description": "渠道,telegram,lark,feishu,discord,slack",
                     "type": "string"
                 },
                 "chat_id": {
@@ -4189,7 +4189,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "webhook_url": {
-                    "description": "lark feishu",
+                    "description": "lark feishu discord slack",
                     "type": "string"
                 }
             }
@@ -4254,7 +4254,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "channel": {
-                    "description": "渠道,telegram,lark,feishu",
+                    "description": "渠道,telegram,lark,feishu,discord,slack",
                     "type": "string"
                 },
                 "name": {
@@ -4283,6 +4283,39 @@ const docTemplate = `{
                         "compound",
                         "openzeppelin"
                     ]
+                }
+            }
+        },
+        "types.DiscordConfig": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID",
+                    "type": "integer"
+                },
+                "is_active": {
+                    "description": "是否激活",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "更新时间",
+                    "type": "string"
+                },
+                "user_address": {
+                    "description": "用户地址",
+                    "type": "string"
+                },
+                "webhook_url": {
+                    "description": "网络钩子URL",
+                    "type": "string"
                 }
             }
         },
@@ -4787,6 +4820,12 @@ const docTemplate = `{
         "types.NotificationConfigListResponse": {
             "type": "object",
             "properties": {
+                "discord_configs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.DiscordConfig"
+                    }
+                },
                 "feishu_configs": {
                     "type": "array",
                     "items": {
@@ -4797,6 +4836,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/types.LarkConfig"
+                    }
+                },
+                "slack_configs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.SlackConfig"
                     }
                 },
                 "telegram_configs": {
@@ -4890,6 +4935,39 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "remark": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.SlackConfig": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "创建时间",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID",
+                    "type": "integer"
+                },
+                "is_active": {
+                    "description": "是否激活",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "名称",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "description": "更新时间",
+                    "type": "string"
+                },
+                "user_address": {
+                    "description": "用户地址",
+                    "type": "string"
+                },
+                "webhook_url": {
+                    "description": "网络钩子URL",
                     "type": "string"
                 }
             }
@@ -5039,7 +5117,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "channel": {
-                    "description": "渠道,telegram,lark,feishu",
+                    "description": "渠道,telegram,lark,feishu,discord,slack",
                     "type": "string"
                 },
                 "chat_id": {
@@ -5059,7 +5137,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "webhook_url": {
-                    "description": "lark feishu",
+                    "description": "lark feishu discord slack",
                     "type": "string"
                 }
             }

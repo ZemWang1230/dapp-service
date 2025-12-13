@@ -33,6 +33,20 @@ type NotificationRepository interface {
 	UpdateFeishuConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error
 	DeleteFeishuConfig(ctx context.Context, userAddress, name string) error
 
+	// Discord配置管理
+	CreateDiscordConfig(ctx context.Context, config *types.DiscordConfig) error
+	GetDiscordConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.DiscordConfig, error)
+	GetDiscordConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.DiscordConfig, error)
+	UpdateDiscordConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error
+	DeleteDiscordConfig(ctx context.Context, userAddress, name string) error
+
+	// Slack配置管理
+	CreateSlackConfig(ctx context.Context, config *types.SlackConfig) error
+	GetSlackConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.SlackConfig, error)
+	GetSlackConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.SlackConfig, error)
+	UpdateSlackConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error
+	DeleteSlackConfig(ctx context.Context, userAddress, name string) error
+
 	// 通知日志管理
 	CreateNotificationLog(ctx context.Context, log *types.NotificationLog) error
 	CheckNotificationLogExists(ctx context.Context, channel types.NotificationChannel, userAddress string, configID uint, flowID, statusTo string) (bool, error)
@@ -255,6 +269,140 @@ func (r *notificationRepository) DeleteFeishuConfig(ctx context.Context, userAdd
 	return nil
 }
 
+// ===== Discord配置管理 =====
+// CreateDiscordConfig 创建Discord配置
+func (r *notificationRepository) CreateDiscordConfig(ctx context.Context, config *types.DiscordConfig) error {
+	if err := r.db.WithContext(ctx).Create(config).Error; err != nil {
+		logger.Error("CreateDiscordConfig error", err, "user_address", config.UserAddress, "name", config.Name)
+		return err
+	}
+	logger.Info("CreateDiscordConfig success", "user_address", config.UserAddress, "name", config.Name)
+	return nil
+}
+
+// GetDiscordConfigsByUserAddress 根据用户地址获取Discord配置
+func (r *notificationRepository) GetDiscordConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.DiscordConfig, error) {
+	var configs []*types.DiscordConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ?", normalizedUserAddress).
+		Order("created_at DESC").
+		Find(&configs).Error; err != nil {
+		logger.Error("GetDiscordConfigsByUserAddress error", err, "user_address", userAddress)
+		return nil, err
+	}
+	logger.Info("GetDiscordConfigsByUserAddress success", "user_address", userAddress)
+	return configs, nil
+}
+
+// GetDiscordConfigByUserAddressAndName 根据用户地址和名称获取Discord配置
+func (r *notificationRepository) GetDiscordConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.DiscordConfig, error) {
+	var config types.DiscordConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
+		First(&config).Error; err != nil {
+		logger.Error("GetDiscordConfigByUserAddressAndName error", err, "user_address", userAddress, "name", name)
+		return nil, err
+	}
+	logger.Info("GetDiscordConfigByUserAddressAndName success", "user_address", userAddress, "name", name)
+	return &config, nil
+}
+
+// UpdateDiscordConfig 更新Discord配置
+func (r *notificationRepository) UpdateDiscordConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Model(&types.DiscordConfig{}).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
+		Updates(updates).Error; err != nil {
+		logger.Error("UpdateDiscordConfig error", err, "user_address", userAddress, "name", name)
+		return err
+	}
+	logger.Info("UpdateDiscordConfig success", "user_address", userAddress, "name", name)
+	return nil
+}
+
+// DeleteDiscordConfig 删除Discord配置
+func (r *notificationRepository) DeleteDiscordConfig(ctx context.Context, userAddress, name string) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
+		Delete(&types.DiscordConfig{}).Error; err != nil {
+		logger.Error("DeleteDiscordConfig error", err, "user_address", userAddress, "name", name)
+		return err
+	}
+	logger.Info("DeleteDiscordConfig success", "user_address", userAddress, "name", name)
+	return nil
+}
+
+// ===== Slack配置管理 =====
+// CreateSlackConfig 创建Slack配置
+func (r *notificationRepository) CreateSlackConfig(ctx context.Context, config *types.SlackConfig) error {
+	if err := r.db.WithContext(ctx).Create(config).Error; err != nil {
+		logger.Error("CreateSlackConfig error", err, "user_address", config.UserAddress, "name", config.Name)
+		return err
+	}
+	logger.Info("CreateSlackConfig success", "user_address", config.UserAddress, "name", config.Name)
+	return nil
+}
+
+// GetSlackConfigsByUserAddress 根据用户地址获取Slack配置
+func (r *notificationRepository) GetSlackConfigsByUserAddress(ctx context.Context, userAddress string) ([]*types.SlackConfig, error) {
+	var configs []*types.SlackConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ?", normalizedUserAddress).
+		Order("created_at DESC").
+		Find(&configs).Error; err != nil {
+		logger.Error("GetSlackConfigsByUserAddress error", err, "user_address", userAddress)
+		return nil, err
+	}
+	logger.Info("GetSlackConfigsByUserAddress success", "user_address", userAddress)
+	return configs, nil
+}
+
+// GetSlackConfigByUserAddressAndName 根据用户地址和名称获取Slack配置
+func (r *notificationRepository) GetSlackConfigByUserAddressAndName(ctx context.Context, userAddress, name string) (*types.SlackConfig, error) {
+	var config types.SlackConfig
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
+		First(&config).Error; err != nil {
+		logger.Error("GetSlackConfigByUserAddressAndName error", err, "user_address", userAddress, "name", name)
+		return nil, err
+	}
+	logger.Info("GetSlackConfigByUserAddressAndName success", "user_address", userAddress, "name", name)
+	return &config, nil
+}
+
+// UpdateSlackConfig 更新Slack配置
+func (r *notificationRepository) UpdateSlackConfig(ctx context.Context, userAddress, name string, updates map[string]interface{}) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Model(&types.SlackConfig{}).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
+		Updates(updates).Error; err != nil {
+		logger.Error("UpdateSlackConfig error", err, "user_address", userAddress, "name", name)
+		return err
+	}
+	logger.Info("UpdateSlackConfig success", "user_address", userAddress, "name", name)
+	return nil
+}
+
+// DeleteSlackConfig 删除Slack配置
+func (r *notificationRepository) DeleteSlackConfig(ctx context.Context, userAddress, name string) error {
+	normalizedUserAddress := strings.ToLower(userAddress)
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ? AND name = ?", normalizedUserAddress, name).
+		Delete(&types.SlackConfig{}).Error; err != nil {
+		logger.Error("DeleteSlackConfig error", err, "user_address", userAddress, "name", name)
+		return err
+	}
+	logger.Info("DeleteSlackConfig success", "user_address", userAddress, "name", name)
+	return nil
+}
+
 // ===== 通知日志管理 =====
 // CreateNotificationLog 创建通知日志
 func (r *notificationRepository) CreateNotificationLog(ctx context.Context, log *types.NotificationLog) error {
@@ -306,6 +454,22 @@ func (r *notificationRepository) GetUserActiveNotificationConfigs(ctx context.Co
 	if err := r.db.WithContext(ctx).
 		Where("LOWER(user_address) = ? AND is_active = ?", normalizedUserAddress, true).
 		Find(&configs.FeishuConfigs).Error; err != nil {
+		logger.Error("GetUserActiveNotificationConfigs error", err, "user_address", userAddress, "is_active", true)
+		return nil, err
+	}
+
+	// 获取激活的Discord配置
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ? AND is_active = ?", normalizedUserAddress, true).
+		Find(&configs.DiscordConfigs).Error; err != nil {
+		logger.Error("GetUserActiveNotificationConfigs error", err, "user_address", userAddress, "is_active", true)
+		return nil, err
+	}
+
+	// 获取激活的Slack配置
+	if err := r.db.WithContext(ctx).
+		Where("LOWER(user_address) = ? AND is_active = ?", normalizedUserAddress, true).
+		Find(&configs.SlackConfigs).Error; err != nil {
 		logger.Error("GetUserActiveNotificationConfigs error", err, "user_address", userAddress, "is_active", true)
 		return nil, err
 	}

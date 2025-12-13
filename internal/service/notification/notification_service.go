@@ -43,6 +43,8 @@ type notificationService struct {
 	telegramSender *notificationPkg.TelegramSender
 	larkSender     *notificationPkg.LarkSender
 	feishuSender   *notificationPkg.FeishuSender
+	discordSender  *notificationPkg.DiscordSender
+	slackSender    *notificationPkg.SlackSender
 }
 
 // NewNotificationService 创建通知服务实例
@@ -56,6 +58,8 @@ func NewNotificationService(repo notification.NotificationRepository, chainRepo 
 		telegramSender: notificationPkg.NewTelegramSender(),
 		larkSender:     notificationPkg.NewLarkSender(),
 		feishuSender:   notificationPkg.NewFeishuSender(),
+		discordSender:  notificationPkg.NewDiscordSender(),
+		slackSender:    notificationPkg.NewSlackSender(),
 	}
 }
 
@@ -92,6 +96,24 @@ func (s *notificationService) CreateNotificationConfig(ctx context.Context, user
 			return err
 		}
 		return nil
+	case "discord":
+		if req.WebhookURL == "" {
+			return fmt.Errorf("webhook_url are required")
+		}
+		err := s.createDiscordConfig(ctx, userAddress, req.Name, req.WebhookURL)
+		if err != nil {
+			return err
+		}
+		return nil
+	case "slack":
+		if req.WebhookURL == "" {
+			return fmt.Errorf("webhook_url are required")
+		}
+		err := s.createSlackConfig(ctx, userAddress, req.Name, req.WebhookURL)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 	return fmt.Errorf("invalid channel: %s", req.Channel)
 }
@@ -115,6 +137,16 @@ func (s *notificationService) UpdateNotificationConfig(ctx context.Context, user
 			return fmt.Errorf("at least one field must be provided")
 		}
 		return s.updateFeishuConfig(ctx, userAddress, req.Name, req.WebhookURL, req.Secret, req.IsActive)
+	case "discord":
+		if req.WebhookURL == nil && req.IsActive == nil {
+			return fmt.Errorf("at least one field must be provided")
+		}
+		return s.updateDiscordConfig(ctx, userAddress, req.Name, req.WebhookURL, req.IsActive)
+	case "slack":
+		if req.WebhookURL == nil && req.IsActive == nil {
+			return fmt.Errorf("at least one field must be provided")
+		}
+		return s.updateSlackConfig(ctx, userAddress, req.Name, req.WebhookURL, req.IsActive)
 	}
 	return fmt.Errorf("invalid channel: %s", *req.Channel)
 }
@@ -128,6 +160,10 @@ func (s *notificationService) DeleteNotificationConfig(ctx context.Context, user
 		return s.deleteLarkConfig(ctx, userAddress, req.Name)
 	case "feishu":
 		return s.deleteFeishuConfig(ctx, userAddress, req.Name)
+	case "discord":
+		return s.deleteDiscordConfig(ctx, userAddress, req.Name)
+	case "slack":
+		return s.deleteSlackConfig(ctx, userAddress, req.Name)
 	}
 	return fmt.Errorf("invalid channel: %s", req.Channel)
 }
@@ -206,6 +242,56 @@ func (s *notificationService) createFeishuConfig(ctx context.Context, userAddres
 
 	if err := s.repo.CreateFeishuConfig(ctx, config); err != nil {
 		return fmt.Errorf("failed to create feishu config: %w", err)
+	}
+
+	return nil
+}
+
+// createDiscordConfig 创建Discord配置
+func (s *notificationService) createDiscordConfig(ctx context.Context, userAddress string, name string, webhookURL string) error {
+	// 检查是否已存在同名配置
+	existing, err := s.repo.GetDiscordConfigByUserAddressAndName(ctx, userAddress, name)
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("failed to check existing discord config: %w", err)
+	}
+	if existing != nil {
+		return fmt.Errorf("discord config with name '%s' already exists", name)
+	}
+
+	config := &types.DiscordConfig{
+		UserAddress: userAddress,
+		Name:        name,
+		WebhookURL:  webhookURL,
+		IsActive:    true,
+	}
+
+	if err := s.repo.CreateDiscordConfig(ctx, config); err != nil {
+		return fmt.Errorf("failed to create discord config: %w", err)
+	}
+
+	return nil
+}
+
+// createSlackConfig 创建Slack配置
+func (s *notificationService) createSlackConfig(ctx context.Context, userAddress string, name string, webhookURL string) error {
+	// 检查是否已存在同名配置
+	existing, err := s.repo.GetSlackConfigByUserAddressAndName(ctx, userAddress, name)
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("failed to check existing slack config: %w", err)
+	}
+	if existing != nil {
+		return fmt.Errorf("slack config with name '%s' already exists", name)
+	}
+
+	config := &types.SlackConfig{
+		UserAddress: userAddress,
+		Name:        name,
+		WebhookURL:  webhookURL,
+		IsActive:    true,
+	}
+
+	if err := s.repo.CreateSlackConfig(ctx, config); err != nil {
+		return fmt.Errorf("failed to create slack config: %w", err)
 	}
 
 	return nil
@@ -302,6 +388,60 @@ func (s *notificationService) updateFeishuConfig(ctx context.Context, userAddres
 	return s.repo.UpdateFeishuConfig(ctx, userAddress, *name, updates)
 }
 
+// updateDiscordConfig 更新Discord配置
+func (s *notificationService) updateDiscordConfig(ctx context.Context, userAddress string, name *string, webhookURL *string, isActive *bool) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetDiscordConfigByUserAddressAndName(ctx, userAddress, *name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("discord config not found")
+		}
+		return fmt.Errorf("failed to get discord config: %w", err)
+	}
+
+	// 构建更新字段
+	updates := make(map[string]interface{})
+	if webhookURL != nil {
+		updates["webhook_url"] = *webhookURL
+	}
+	if isActive != nil {
+		updates["is_active"] = *isActive
+	}
+
+	if len(updates) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	return s.repo.UpdateDiscordConfig(ctx, userAddress, *name, updates)
+}
+
+// updateSlackConfig 更新Slack配置
+func (s *notificationService) updateSlackConfig(ctx context.Context, userAddress string, name *string, webhookURL *string, isActive *bool) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetSlackConfigByUserAddressAndName(ctx, userAddress, *name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("slack config not found")
+		}
+		return fmt.Errorf("failed to get slack config: %w", err)
+	}
+
+	// 构建更新字段
+	updates := make(map[string]interface{})
+	if webhookURL != nil {
+		updates["webhook_url"] = *webhookURL
+	}
+	if isActive != nil {
+		updates["is_active"] = *isActive
+	}
+
+	if len(updates) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	return s.repo.UpdateSlackConfig(ctx, userAddress, *name, updates)
+}
+
 // ===== 删除配置 =====
 // deleteTelegramConfig 删除Telegram配置
 func (s *notificationService) deleteTelegramConfig(ctx context.Context, userAddress string, name string) error {
@@ -345,6 +485,34 @@ func (s *notificationService) deleteFeishuConfig(ctx context.Context, userAddres
 	return s.repo.DeleteFeishuConfig(ctx, userAddress, name)
 }
 
+// deleteDiscordConfig 删除Discord配置
+func (s *notificationService) deleteDiscordConfig(ctx context.Context, userAddress string, name string) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetDiscordConfigByUserAddressAndName(ctx, userAddress, name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("discord config not found")
+		}
+		return fmt.Errorf("failed to get discord config: %w", err)
+	}
+
+	return s.repo.DeleteDiscordConfig(ctx, userAddress, name)
+}
+
+// deleteSlackConfig 删除Slack配置
+func (s *notificationService) deleteSlackConfig(ctx context.Context, userAddress string, name string) error {
+	// 检查配置是否存在
+	_, err := s.repo.GetSlackConfigByUserAddressAndName(ctx, userAddress, name)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("slack config not found")
+		}
+		return fmt.Errorf("failed to get slack config: %w", err)
+	}
+
+	return s.repo.DeleteSlackConfig(ctx, userAddress, name)
+}
+
 // ===== 获取所有通知配置 =====
 // GetAllNotificationConfigs 获取所有通知配置
 func (s *notificationService) GetAllNotificationConfigs(ctx context.Context, userAddress string) (*types.NotificationConfigListResponse, error) {
@@ -370,6 +538,20 @@ func (s *notificationService) GetAllNotificationConfigs(ctx context.Context, use
 		return nil, fmt.Errorf("failed to get feishu configs: %w", err)
 	}
 	response.FeishuConfigs = feishuConfigs
+
+	// 获取Discord配置
+	discordConfigs, err := s.repo.GetDiscordConfigsByUserAddress(ctx, userAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get discord configs: %w", err)
+	}
+	response.DiscordConfigs = discordConfigs
+
+	// 获取Slack配置
+	slackConfigs, err := s.repo.GetSlackConfigsByUserAddress(ctx, userAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get slack configs: %w", err)
+	}
+	response.SlackConfigs = slackConfigs
 
 	return response, nil
 }
@@ -533,7 +715,7 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 		}
 
 		// 检查是否有激活的配置
-		totalConfigs := len(configs.TelegramConfigs) + len(configs.LarkConfigs) + len(configs.FeishuConfigs)
+		totalConfigs := len(configs.TelegramConfigs) + len(configs.LarkConfigs) + len(configs.FeishuConfigs) + len(configs.DiscordConfigs) + len(configs.SlackConfigs)
 		if totalConfigs == 0 {
 			logger.Debug("No active notification configs found", "userAddress", userAddress)
 			continue
@@ -556,6 +738,18 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 		// 发送Feishu通知
 		for _, config := range configs.FeishuConfigs {
 			s.sendFeishuNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			totalSent++
+		}
+
+		// 发送Discord通知
+		for _, config := range configs.DiscordConfigs {
+			s.sendDiscordNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			totalSent++
+		}
+
+		// 发送Slack通知
+		for _, config := range configs.SlackConfigs {
+			s.sendSlackNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
 			totalSent++
 		}
 	}
@@ -785,5 +979,125 @@ func (s *notificationService) sendFeishuNotification(ctx context.Context, config
 
 	if sendStatus == "success" {
 		logger.Info("Feishu notification sent", "configID", config.ID, "flowID", flowID, "status", statusTo)
+	}
+}
+
+// sendDiscordNotification 发送Discord通知
+func (s *notificationService) sendDiscordNotification(ctx context.Context, config *types.DiscordConfig, message, flowID, standard string, chainID int, contractAddress, statusFrom, statusTo string, txHash *string) {
+	// 检查是否已发送过此通知
+	exists, err := s.repo.CheckNotificationLogExists(ctx, types.ChannelDiscord, config.UserAddress, config.ID, flowID, statusTo)
+	if err != nil {
+		logger.Error("Failed to check discord notification log", err, "configID", config.ID, "flowID", flowID)
+		return
+	}
+	if exists {
+		logger.Info("Discord notification already sent", "configID", config.ID, "flowID", flowID, "status", statusTo)
+		return
+	}
+
+	// 发送消息
+	err = s.discordSender.SendMessage(config.WebhookURL, message)
+	sendStatus := "success"
+	var errorMessage *string
+	if err != nil {
+		sendStatus = "failed"
+		errMsg := err.Error()
+		errorMessage = &errMsg
+		logger.Error("Failed to send discord notification", err, "configID", config.ID, "flowID", flowID)
+	}
+
+	// 记录发送日志
+	log := &types.NotificationLog{
+		UserAddress:      config.UserAddress,
+		Channel:          types.ChannelDiscord,
+		ConfigID:         config.ID,
+		FlowID:           flowID,
+		TimelockStandard: standard,
+		ChainID:          chainID,
+		ContractAddress:  contractAddress,
+		StatusFrom:       statusFrom,
+		StatusTo:         statusTo,
+		TxHash: func() string {
+			if txHash != nil {
+				return *txHash
+			}
+			return ""
+		}(),
+		SendStatus: sendStatus,
+		ErrorMessage: func() string {
+			if errorMessage != nil {
+				return *errorMessage
+			}
+			return ""
+		}(),
+		SentAt: time.Now(),
+	}
+
+	if err := s.repo.CreateNotificationLog(ctx, log); err != nil {
+		logger.Error("Failed to create discord notification log", err, "configID", config.ID, "flowID", flowID)
+	}
+
+	if sendStatus == "success" {
+		logger.Info("Discord notification sent", "configID", config.ID, "flowID", flowID, "status", statusTo)
+	}
+}
+
+// sendSlackNotification 发送Slack通知
+func (s *notificationService) sendSlackNotification(ctx context.Context, config *types.SlackConfig, message, flowID, standard string, chainID int, contractAddress, statusFrom, statusTo string, txHash *string) {
+	// 检查是否已发送过此通知
+	exists, err := s.repo.CheckNotificationLogExists(ctx, types.ChannelSlack, config.UserAddress, config.ID, flowID, statusTo)
+	if err != nil {
+		logger.Error("Failed to check slack notification log", err, "configID", config.ID, "flowID", flowID)
+		return
+	}
+	if exists {
+		logger.Info("Slack notification already sent", "configID", config.ID, "flowID", flowID, "status", statusTo)
+		return
+	}
+
+	// 发送消息
+	err = s.slackSender.SendMessage(config.WebhookURL, message)
+	sendStatus := "success"
+	var errorMessage *string
+	if err != nil {
+		sendStatus = "failed"
+		errMsg := err.Error()
+		errorMessage = &errMsg
+		logger.Error("Failed to send slack notification", err, "configID", config.ID, "flowID", flowID)
+	}
+
+	// 记录发送日志
+	log := &types.NotificationLog{
+		UserAddress:      config.UserAddress,
+		Channel:          types.ChannelSlack,
+		ConfigID:         config.ID,
+		FlowID:           flowID,
+		TimelockStandard: standard,
+		ChainID:          chainID,
+		ContractAddress:  contractAddress,
+		StatusFrom:       statusFrom,
+		StatusTo:         statusTo,
+		TxHash: func() string {
+			if txHash != nil {
+				return *txHash
+			}
+			return ""
+		}(),
+		SendStatus: sendStatus,
+		ErrorMessage: func() string {
+			if errorMessage != nil {
+				return *errorMessage
+			}
+			return ""
+		}(),
+		SentAt: time.Now(),
+	}
+
+	if err := s.repo.CreateNotificationLog(ctx, log); err != nil {
+		logger.Error("Failed to create slack notification log", err, "configID", config.ID, "flowID", flowID)
+	}
+
+	if sendStatus == "success" {
+		logger.Info("Slack notification sent", "configID", config.ID, "flowID", flowID, "status", statusTo)
 	}
 }

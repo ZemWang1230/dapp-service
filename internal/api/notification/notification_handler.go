@@ -92,6 +92,8 @@ func (h *NotificationHandler) GetAllNotificationConfigs(c *gin.Context) {
 				TelegramConfigs: []*types.TelegramConfig{},
 				LarkConfigs:     []*types.LarkConfig{},
 				FeishuConfigs:   []*types.FeishuConfig{},
+				DiscordConfigs:  []*types.DiscordConfig{},
+				SlackConfigs:    []*types.SlackConfig{},
 			}
 			c.JSON(http.StatusOK, types.APIResponse{
 				Success: true,
@@ -191,13 +193,13 @@ func (h *NotificationHandler) CreateNotificationConfig(c *gin.Context) {
 
 	// 验证渠道类型
 	req.Channel = strings.ToLower(req.Channel)
-	if req.Channel != "telegram" && req.Channel != "lark" && req.Channel != "feishu" {
+	if req.Channel != "telegram" && req.Channel != "lark" && req.Channel != "feishu" && req.Channel != "discord" && req.Channel != "slack" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_CHANNEL",
-				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu",
-				Details: "channel must be one of: telegram, lark, feishu",
+				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu, discord, slack",
+				Details: "channel must be one of: telegram, lark, feishu, discord, slack",
 			},
 		})
 		return
@@ -217,6 +219,30 @@ func (h *NotificationHandler) CreateNotificationConfig(c *gin.Context) {
 			return
 		}
 	} else if req.Channel == "lark" || req.Channel == "feishu" {
+		if req.WebhookURL == "" {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "MISSING_WEBHOOK_URL",
+					Message: "webhook_url is required for " + req.Channel + " channel",
+					Details: "Please provide webhook_url",
+				},
+			})
+			return
+		}
+	} else if req.Channel == "discord" {
+		if req.WebhookURL == "" {
+			c.JSON(http.StatusBadRequest, types.APIResponse{
+				Success: false,
+				Error: &types.APIError{
+					Code:    "MISSING_WEBHOOK_URL",
+					Message: "webhook_url is required for " + req.Channel + " channel",
+					Details: "Please provide webhook_url",
+				},
+			})
+			return
+		}
+	} else if req.Channel == "slack" {
 		if req.WebhookURL == "" {
 			c.JSON(http.StatusBadRequest, types.APIResponse{
 				Success: false,
@@ -365,13 +391,13 @@ func (h *NotificationHandler) UpdateNotificationConfig(c *gin.Context) {
 	}
 
 	*req.Channel = strings.ToLower(*req.Channel)
-	if *req.Channel != "telegram" && *req.Channel != "lark" && *req.Channel != "feishu" {
+	if *req.Channel != "telegram" && *req.Channel != "lark" && *req.Channel != "feishu" && *req.Channel != "discord" && *req.Channel != "slack" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_CHANNEL",
-				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu",
-				Details: "channel must be one of: telegram, lark, feishu",
+				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu, discord, slack",
+				Details: "channel must be one of: telegram, lark, feishu, discord, slack",
 			},
 		})
 		return
@@ -383,6 +409,10 @@ func (h *NotificationHandler) UpdateNotificationConfig(c *gin.Context) {
 		hasUpdate = req.BotToken != nil || req.ChatID != nil || req.IsActive != nil
 	} else if *req.Channel == "lark" || *req.Channel == "feishu" {
 		hasUpdate = req.WebhookURL != nil || req.Secret != nil || req.IsActive != nil
+	} else if *req.Channel == "discord" {
+		hasUpdate = req.WebhookURL != nil || req.IsActive != nil
+	} else if *req.Channel == "slack" {
+		hasUpdate = req.WebhookURL != nil || req.IsActive != nil
 	}
 
 	if !hasUpdate {
@@ -519,13 +549,13 @@ func (h *NotificationHandler) DeleteNotificationConfig(c *gin.Context) {
 
 	// 验证渠道类型
 	req.Channel = strings.ToLower(req.Channel)
-	if req.Channel != "telegram" && req.Channel != "lark" && req.Channel != "feishu" {
+	if req.Channel != "telegram" && req.Channel != "lark" && req.Channel != "feishu" && req.Channel != "discord" && req.Channel != "slack" {
 		c.JSON(http.StatusBadRequest, types.APIResponse{
 			Success: false,
 			Error: &types.APIError{
 				Code:    "INVALID_CHANNEL",
-				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu",
-				Details: "channel must be one of: telegram, lark, feishu",
+				Message: "Invalid notification channel. Supported channels: telegram, lark, feishu, discord, slack",
+				Details: "channel must be one of: telegram, lark, feishu, discord, slack",
 			},
 		})
 		return
