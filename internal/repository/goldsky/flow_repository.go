@@ -252,6 +252,9 @@ func (r *flowRepository) queryCompoundFlowsWithPermission(ctx context.Context, n
 	// 组合所有条件
 	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
 
+	// 添加过滤条件：确保对应的合约记录仍然存在于compound_timelocks表中
+	finalWhere += " AND EXISTS (SELECT 1 FROM compound_timelocks WHERE chain_id = compound_timelock_flows.chain_id AND LOWER(contract_address) = LOWER(compound_timelock_flows.contract_address))"
+
 	// 添加状态过滤
 	if status != nil && *status != "" && *status != "all" {
 		finalWhere += " AND status = ?"
@@ -383,6 +386,9 @@ func (r *flowRepository) countCompoundFlowsWithPermission(ctx context.Context, n
 	args = append(args, normalizedUserAddress, normalizedUserAddress, normalizedUserAddress, "active")
 
 	finalWhere := "(" + strings.Join(whereConditions, " OR ") + ")"
+
+	// 添加过滤条件：确保对应的合约记录仍然存在于compound_timelocks表中
+	finalWhere += " AND EXISTS (SELECT 1 FROM compound_timelocks WHERE chain_id = compound_timelock_flows.chain_id AND LOWER(contract_address) = LOWER(compound_timelock_flows.contract_address))"
 
 	// 总数
 	if err := r.db.WithContext(ctx).Model(&types.CompoundTimelockFlowDB{}).
