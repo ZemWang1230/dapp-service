@@ -56,7 +56,7 @@ func NewGoldskyService(
 		ctx:                 ctx,
 		cancel:              cancel,
 		syncInterval:        10 * time.Minute, // 每10分钟同步一次
-		statusCheckInterval: 1 * time.Minute,  // 每1分钟检查一次状态
+		statusCheckInterval: 10 * time.Second, // 每10秒检查一次状态
 	}
 }
 
