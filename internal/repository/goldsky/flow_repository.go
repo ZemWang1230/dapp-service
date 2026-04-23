@@ -19,6 +19,8 @@ type FlowRepository interface {
 	UpdateCompoundFlowStatus(ctx context.Context, flowID string, chainID int, contractAddress string, status string) error
 	GetCompoundFlowsNeedStatusUpdate(ctx context.Context, now time.Time, limit int) ([]types.CompoundTimelockFlowDB, error)
 	GetCompoundFlowsByContract(ctx context.Context, chainID int, contractAddress string) ([]types.CompoundTimelockFlowDB, error)
+	// 批量按 (chainID, contractAddresses) 拉现有 flow，返回 flowID -> flow 映射，避免 N+1
+	GetCompoundFlowsMapByContracts(ctx context.Context, chainID int, contractAddresses []string) (map[string]*types.CompoundTimelockFlowDB, error)
 
 	// OpenZeppelin Flow 操作
 	CreateOrUpdateOpenzeppelinFlow(ctx context.Context, flow *types.OpenzeppelinTimelockFlowDB) error
@@ -353,6 +355,44 @@ func (r *flowRepository) GetCompoundFlowsByContract(ctx context.Context, chainID
 		Order("eta ASC"). // 按执行时间排序
 		Find(&flows).Error
 	return flows, err
+}
+
+// GetCompoundFlowsMapByContracts 一次性拉取一批合约下的所有 flow，返回 flowID -> 指针 的 map。
+// 适用于同步流程中批量比对状态，避免逐条 SELECT。
+func (r *flowRepository) GetCompoundFlowsMapByContracts(ctx context.Context, chainID int, contractAddresses []string) (map[string]*types.CompoundTimelockFlowDB, error) {
+	result := make(map[string]*types.CompoundTimelockFlowDB)
+	if len(contractAddresses) == 0 {
+		return result, nil
+	}
+	lowered := make([]string, len(contractAddresses))
+	for i, a := range contractAddresses {
+		lowered[i] = strings.ToLower(a)
+	}
+
+	var flows []types.CompoundTimelockFlowDB
+	if err := r.db.WithContext(ctx).
+		Where("chain_id = ? AND LOWER(contract_address) IN ?", chainID, lowered).
+		Find(&flows).Error; err != nil {
+		logger.Error("Failed to batch get compound flows", err, "chain_id", chainID, "contracts", len(contractAddresses))
+		return nil, err
+	}
+
+	for i := range flows {
+		f := &flows[i]
+		key := compoundFlowKey(f.FlowID, f.ContractAddress)
+		result[key] = f
+	}
+	return result, nil
+}
+
+// compoundFlowKey 生成批量 map 的 key（flow_id 在同一合约下唯一，所以带上合约地址更稳妥）
+func compoundFlowKey(flowID, contractAddress string) string {
+	return strings.ToLower(contractAddress) + "|" + flowID
+}
+
+// CompoundFlowKey 对外暴露的 key 构造器，供 service 层使用
+func CompoundFlowKey(flowID, contractAddress string) string {
+	return compoundFlowKey(flowID, contractAddress)
 }
 
 // GetOpenzeppelinFlowsByContract 获取特定合约的所有OpenZeppelin Flows

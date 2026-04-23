@@ -21,6 +21,7 @@ import (
 	"timelocker-backend/pkg/logger"
 	"timelocker-backend/pkg/utils"
 
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"gorm.io/gorm"
@@ -305,7 +306,10 @@ func (s *emailService) VerifyEmail(ctx context.Context, userEmailID int64, userI
 
 // ===== 通知发送方法 =====
 // SendFlowNotification 发送流程通知
+// 【优化】把链/合约/flow 查询 + 模板上下文提到收件人循环外，并对邮箱并发发送
 func (s *emailService) SendFlowNotification(ctx context.Context, standard string, chainID int, contractAddress string, flowID string, statusFrom, statusTo string, txHash *string, initiatorAddress string) error {
+	start := time.Now()
+
 	// 获取与合约相关用户的已验证邮箱列表
 	emailIDs, err := s.repo.GetContractRelatedVerifiedEmailIDs(ctx, standard, chainID, contractAddress)
 	if err != nil {
@@ -326,174 +330,176 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 		"count", len(emailIDs), "standard", standard, "chainID", chainID,
 		"contract", contractAddress, "statusTo", statusTo, "initiator", initiatorAddress)
 
-	// 对每个邮箱发送通知
-	for _, emailID := range emailIDs {
-		// 检查是否已发送过此通知
-		exists, err := s.repo.CheckSendLogExists(ctx, emailID, flowID, statusTo)
-		if err != nil {
-			logger.Error("Failed to check send log", err, "emailID", emailID, "flowID", flowID)
-			continue
-		}
-		if exists {
-			logger.Info("Notification already sent", "emailID", emailID, "flowID", flowID, "status", statusTo)
-			continue
-		}
+	// 一次性构建模板上下文（跨收件人不变）
+	chainInfo, err := s.chainRepo.GetChainByChainID(ctx, int64(chainID))
+	if err != nil {
+		logger.Error("Failed to get chain info", err, "chainID", chainID)
+		return fmt.Errorf("failed to get chain info: %w", err)
+	}
 
-		var emailData *types.NotificationData
+	var explorerURLs []string
+	if err := json.Unmarshal([]byte(chainInfo.BlockExplorerUrls), &explorerURLs); err != nil {
+		logger.Error("Failed to parse block explorer URLs", err, "chainID", chainID)
+		explorerURLs = []string{}
+	}
 
-		// 获取链信息
-		chainInfo, err := s.chainRepo.GetChainByChainID(ctx, int64(chainID))
-		if err != nil {
-			logger.Error("Failed to get chain info", err, "chainID", chainID)
-			return fmt.Errorf("failed to get chain info: %w", err)
-		}
-
-		// 解析区块浏览器URLs
-		var explorerURLs []string
-		if err := json.Unmarshal([]byte(chainInfo.BlockExplorerUrls), &explorerURLs); err != nil {
-			logger.Error("Failed to parse block explorer URLs", err, "chainID", chainID)
-			explorerURLs = []string{}
-		}
-
-		// 构建交易链接
-		var txLink string
-		var txDisplay string
-		if txHash != nil && len(explorerURLs) > 0 {
-			txLink = fmt.Sprintf("%s/tx/%s", explorerURLs[0], *txHash)
-			// 简化显示的交易哈希（前10位...后6位）
-			if len(*txHash) > 10 {
-				txDisplay = fmt.Sprintf("%s...%s", (*txHash)[:10], (*txHash)[len(*txHash)-6:])
-			} else {
-				txDisplay = *txHash
-			}
+	var txLink, txDisplay string
+	if txHash != nil && len(explorerURLs) > 0 {
+		txLink = fmt.Sprintf("%s/tx/%s", explorerURLs[0], *txHash)
+		if len(*txHash) > 10 {
+			txDisplay = fmt.Sprintf("%s...%s", (*txHash)[:10], (*txHash)[len(*txHash)-6:])
 		} else {
-			txDisplay = "Pending"
-			txLink = ""
+			txDisplay = *txHash
+		}
+	} else {
+		txDisplay = "Pending"
+	}
+
+	getStatusColor := func(status string) (bgColor, textColor string) {
+		switch strings.ToLower(status) {
+		case "waiting":
+			return "rgba(251, 146, 60, 0.15)", "#fb923c"
+		case "ready":
+			return "rgba(34, 197, 94, 0.15)", "#22c55e"
+		case "executed":
+			return "rgba(99, 102, 241, 0.15)", "#6366f1"
+		case "cancelled":
+			return "rgba(239, 68, 68, 0.15)", "#ef4444"
+		case "expired":
+			return "rgba(107, 114, 128, 0.15)", "#6b7280"
+		default:
+			return "rgba(148, 163, 184, 0.15)", "#94a3b8"
+		}
+	}
+
+	fromBg, fromText := getStatusColor(statusFrom)
+	toBg, toText := getStatusColor(statusTo)
+
+	var baseData *types.NotificationData
+	switch standard {
+	case "compound":
+		compoundTimeLock, err := s.timeLockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
+		if err != nil {
+			logger.Error("Failed to get compound time lock", err, "chainID", chainID, "contractAddress", contractAddress)
+			return fmt.Errorf("failed to get compound timelock: %w", err)
+		}
+		flow, err := s.flowRepo.GetCompoundFlowByID(ctx, flowID, chainID, contractAddress)
+		if err != nil {
+			logger.Error("Failed to get compound flow", err, "flowID", flowID)
+			return fmt.Errorf("failed to get compound flow: %w", err)
+		}
+		if flow == nil {
+			logger.Warn("No compound flow found", "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
+			return nil
 		}
 
-		// 根据状态获取颜色
-		getStatusColor := func(status string) (bgColor, textColor string) {
-			switch strings.ToLower(status) {
-			case "waiting":
-				return "rgba(251, 146, 60, 0.15)", "#fb923c"
-			case "ready":
-				return "rgba(34, 197, 94, 0.15)", "#22c55e"
-			case "executed":
-				return "rgba(99, 102, 241, 0.15)", "#6366f1"
-			case "cancelled":
-				return "rgba(239, 68, 68, 0.15)", "#ef4444"
-			case "expired":
-				return "rgba(107, 114, 128, 0.15)", "#6b7280"
-			default:
-				return "rgba(148, 163, 184, 0.15)", "#94a3b8"
-			}
+		var functionName string
+		var calldataParams []types.CalldataParam
+		caller := "Unknown"
+		if flow.InitiatorAddress != nil {
+			caller = *flow.InitiatorAddress
+		} else if initiatorAddress != "" {
+			caller = initiatorAddress
 		}
-
-		fromBg, fromText := getStatusColor(statusFrom)
-		toBg, toText := getStatusColor(statusTo)
-
-		if standard == "compound" {
-			// 获取合约信息
-			compoundTimeLock, err := s.timeLockRepo.GetCompoundTimeLockByChainAndAddress(ctx, chainID, contractAddress)
+		target := "Unknown"
+		if flow.TargetAddress != nil {
+			target = *flow.TargetAddress
+		}
+		if flow.CallData != nil && flow.FunctionSignature != nil {
+			functionName = *flow.FunctionSignature
+			calldataParams, err = utils.ParseCalldataNoSelector(*flow.FunctionSignature, flow.CallData)
 			if err != nil {
-				logger.Error("Failed to get compound time lock", err, "chainID", chainID, "contractAddress", contractAddress)
-				continue
-			}
-
-			// 从 Goldsky Flow 表中获取 Flow 信息
-			flow, err := s.flowRepo.GetCompoundFlowByID(ctx, flowID, chainID, contractAddress)
-			if err != nil {
-				logger.Error("Failed to get compound flow", err, "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
-				continue
-			}
-			if flow == nil {
-				logger.Warn("No compound flow found", "flowID", flowID, "chainID", chainID, "contractAddress", contractAddress)
-				continue
-			}
-
-			var functionName string
-			var calldataParams []types.CalldataParam
-			var caller string
-			var target string
-
-			// 获取 caller
-			if flow.InitiatorAddress != nil {
-				caller = *flow.InitiatorAddress
-			} else if initiatorAddress != "" {
-				caller = initiatorAddress
-			} else {
-				caller = "Unknown"
-			}
-
-			// 获取 target
-			if flow.TargetAddress != nil {
-				target = *flow.TargetAddress
-			} else {
-				target = "Unknown"
-			}
-
-			// 解析calldata
-			if flow.CallData != nil && flow.FunctionSignature != nil {
-				functionName = *flow.FunctionSignature
-				calldataParams, err = utils.ParseCalldataNoSelector(*flow.FunctionSignature, flow.CallData)
-				if err != nil {
-					calldataParams = []types.CalldataParam{
-						{
-							Name:  "param[0]",
-							Type:  "CallData Does Not Match Function Signature",
-							Value: "Please Check Your Call Data",
-						},
-					}
-					logger.Error("Failed to parse calldata", err, "functionSignature", *flow.FunctionSignature, "callData", flow.CallData)
+				calldataParams = []types.CalldataParam{
+					{Name: "param[0]", Type: "CallData Does Not Match Function Signature", Value: "Please Check Your Call Data"},
 				}
-			} else {
-				functionName = "No Function Call"
-				calldataParams = []types.CalldataParam{}
+				logger.Error("Failed to parse calldata", err, "functionSignature", *flow.FunctionSignature)
 			}
-
-			nativeToken := chainInfo.NativeCurrencySymbol
-			value, err := utils.WeiToEth(flow.Value, nativeToken)
-			if err != nil {
-				logger.Error("Failed to convert wei to eth", err, "eventValue", flow.Value)
-				value = fmt.Sprintf("0 %s", nativeToken)
-			}
-
-			emailData = &types.NotificationData{
-				Standard:       strings.ToUpper(standard),
-				Contract:       contractAddress,
-				Remark:         compoundTimeLock.Remark,
-				Caller:         caller,
-				Target:         target,
-				Function:       functionName,
-				Value:          value,
-				CalldataParams: calldataParams,
-			}
-		} else if standard == "openzeppelin" {
-			// 拿合约信息
-			// 通过flowID去交易表中拿到交易信息
-			// 解析calldata(由于OZevent中直接是calldata带函数选择器，需要先识别functionSig，然后解析calldata)
-			// （functionSig可以新建一个functionSig表，用于存储functionSig和functionName的映射，计算用户导入的abi里的函数，然后存储到functionSig表中）
-			// 构建emailData
 		} else {
-			return fmt.Errorf("invalid standard")
+			functionName = "No Function Call"
+			calldataParams = []types.CalldataParam{}
 		}
 
-		emailData.BgColorFrom = template.CSS(fromBg)
-		emailData.TextColorFrom = template.CSS(fromText)
-		emailData.BgColorTo = template.CSS(toBg)
-		emailData.TextColorTo = template.CSS(toText)
-		emailData.StatusFrom = strings.ToUpper(statusFrom)
-		emailData.StatusTo = strings.ToUpper(statusTo)
-		emailData.Network = chainInfo.DisplayName
-		emailData.TxHash = txDisplay
-		emailData.TxUrl = txLink
-		emailData.DashboardUrl = s.config.Email.EmailURL
+		value, convErr := utils.WeiToEth(flow.Value, chainInfo.NativeCurrencySymbol)
+		if convErr != nil {
+			logger.Error("Failed to convert wei to eth", convErr, "eventValue", flow.Value)
+			value = fmt.Sprintf("0 %s", chainInfo.NativeCurrencySymbol)
+		}
 
-		// 发送通知邮件
-		if err := s.sendFlowNotificationEmail(ctx, emailID, emailData); err != nil {
-			logger.Error("Failed to send notification email", err, "emailID", emailID, "flowID", flowID)
+		baseData = &types.NotificationData{
+			Standard:       strings.ToUpper(standard),
+			Contract:       contractAddress,
+			Remark:         compoundTimeLock.Remark,
+			Caller:         caller,
+			Target:         target,
+			Function:       functionName,
+			Value:          value,
+			CalldataParams: calldataParams,
+		}
+	case "openzeppelin":
+		// OZ 分支暂未实现，按原逻辑保留
+		return nil
+	default:
+		return fmt.Errorf("invalid standard")
+	}
 
-			// 记录发送失败日志
+	baseData.BgColorFrom = template.CSS(fromBg)
+	baseData.TextColorFrom = template.CSS(fromText)
+	baseData.BgColorTo = template.CSS(toBg)
+	baseData.TextColorTo = template.CSS(toText)
+	baseData.StatusFrom = strings.ToUpper(statusFrom)
+	baseData.StatusTo = strings.ToUpper(statusTo)
+	baseData.Network = chainInfo.DisplayName
+	baseData.TxHash = txDisplay
+	baseData.TxUrl = txLink
+	baseData.DashboardUrl = s.config.Email.EmailURL
+
+	// 模板也预解析一次
+	tmpl, err := template.ParseFiles("email_templates/FlowNotificationEmail.html")
+	if err != nil {
+		return fmt.Errorf("parse template: %w", err)
+	}
+	subject := fmt.Sprintf("Timelock Status Update: %s → %s",
+		cases.Title(language.English).String(baseData.StatusFrom),
+		cases.Title(language.English).String(baseData.StatusTo))
+
+	// 渲染正文（对同一次事件所有收件人相同），一次渲染多次发送
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, baseData); err != nil {
+		return fmt.Errorf("execute template: %w", err)
+	}
+	body := buf.String()
+
+	// 并发对每个邮箱发信
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+	for _, id := range emailIDs {
+		emailID := id
+		g.Go(func() error {
+			exists, err := s.repo.CheckSendLogExists(gctx, emailID, flowID, statusTo)
+			if err != nil {
+				logger.Error("Failed to check send log", err, "emailID", emailID, "flowID", flowID)
+				return nil
+			}
+			if exists {
+				return nil
+			}
+
+			emailRecord, err := s.repo.GetEmailByID(gctx, emailID)
+			if err != nil {
+				logger.Error("Failed to get email by id", err, "emailID", emailID)
+				return nil
+			}
+
+			sendErr := s.sender.SendHTMLEmail(emailRecord.Email, subject, body)
+			sendStatus := "success"
+			var errMsg *string
+			if sendErr != nil {
+				sendStatus = "failed"
+				m := sendErr.Error()
+				errMsg = &m
+				logger.Error("Failed to send notification email", sendErr, "emailID", emailID, "flowID", flowID)
+			}
+
 			sendLog := &types.EmailSendLog{
 				EmailID:          emailID,
 				FlowID:           flowID,
@@ -503,34 +509,28 @@ func (s *emailService) SendFlowNotification(ctx context.Context, standard string
 				StatusFrom:       &statusFrom,
 				StatusTo:         statusTo,
 				TxHash:           txHash,
-				SendStatus:       "failed",
-				ErrorMessage:     func() *string { s := err.Error(); return &s }(),
+				SendStatus:       sendStatus,
+				ErrorMessage:     errMsg,
 				RetryCount:       0,
 			}
-			s.repo.CreateSendLog(ctx, sendLog)
-			continue
-		}
+			if err := s.repo.CreateSendLog(gctx, sendLog); err != nil {
+				logger.Error("Failed to create send log", err, "emailID", emailID, "flowID", flowID)
+			}
 
-		// 记录发送成功日志
-		sendLog := &types.EmailSendLog{
-			EmailID:          emailID,
-			FlowID:           flowID,
-			TimelockStandard: standard,
-			ChainID:          chainID,
-			ContractAddress:  contractAddress,
-			StatusFrom:       &statusFrom,
-			StatusTo:         statusTo,
-			TxHash:           txHash,
-			SendStatus:       "success",
-			RetryCount:       0,
-		}
-		if err := s.repo.CreateSendLog(ctx, sendLog); err != nil {
-			logger.Error("Failed to create send log", err, "emailID", emailID, "flowID", flowID)
-		}
-
-		logger.Info("Flow notification sent", "emailID", emailID, "flowID", flowID, "status", statusTo)
+			if sendStatus == "success" {
+				logger.Info("Flow notification sent", "emailID", emailID, "flowID", flowID, "status", statusTo)
+			}
+			return nil
+		})
 	}
+	_ = g.Wait()
 
+	logger.Info("Email flow notification completed",
+		"totalEmails", len(emailIDs),
+		"flowID", flowID,
+		"status", statusTo,
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
 	return nil
 }
 

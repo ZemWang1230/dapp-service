@@ -129,7 +129,7 @@ func main() {
 	emailSvc := emailService.NewEmailService(emailRepository, chainRepository, timelockRepository, goldskyFlowRepository, cfg)
 	notificationSvc := notificationService.NewNotificationService(notificationRepository, chainRepository, timelockRepository, goldskyFlowRepository, cfg)
 
-	// 初始化 Goldsky 服务
+	// 初始化 Goldsky 服务（内部会启动通知分发 worker 池）
 	goldskySvc := goldskyService.NewGoldskyService(
 		chainRepository,
 		timelockRepository,
@@ -137,6 +137,7 @@ func main() {
 		publicRepository,
 		emailSvc,
 		notificationSvc,
+		cfg,
 	)
 
 	// 初始化公共服务
@@ -210,7 +211,7 @@ func main() {
 
 	// 13. 初始化需要 RPC 的服务和处理器
 	authSvc := authService.NewService(userRepository, safeRepository, rpcManager, jwtManager)
-	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, rpcManager, goldskySvc)
+	timelockSvc := timelockService.NewService(timelockRepository, chainRepository, rpcManager, goldskySvc, &cfg.Timelock)
 
 	// 14. 初始化处理器并注册路由
 	authHandler := authHandler.NewHandler(authSvc)
@@ -237,13 +238,29 @@ func main() {
 	// goldskySyncHdl := goldskyHandler.NewSyncHandler(goldskySvc)
 	// goldskySyncHdl.RegisterRoutes(v1)
 
-	// 15. 启动定时任务
+	// 15. 启动定时任务：Timelock 元数据刷新（启动后立即跑一次，再按配置间隔重复）
+	refreshInterval := cfg.Timelock.RefreshInterval
+	if refreshInterval <= 0 {
+		refreshInterval = 2 * time.Hour
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer logger.Info("Timelock refresh task stopped")
 
-		ticker := time.NewTicker(2 * time.Hour)
+		runOnce := func() {
+			logger.Info("Starting scheduled timelock data refresh", "interval", refreshInterval.String())
+			if err := timelockSvc.RefreshAllTimeLockData(ctx); err != nil {
+				logger.Error("Failed to refresh timelock data", err)
+			} else {
+				logger.Info("Scheduled timelock data refresh completed successfully")
+			}
+		}
+
+		// 启动后立即跑一次，避免首次需要等一个完整的 interval
+		runOnce()
+
+		ticker := time.NewTicker(refreshInterval)
 		defer ticker.Stop()
 
 		for {
@@ -251,12 +268,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				logger.Info("Starting scheduled timelock data refresh")
-				if err := timelockSvc.RefreshAllTimeLockData(ctx); err != nil {
-					logger.Error("Failed to refresh timelock data", err)
-				} else {
-					logger.Info("Scheduled timelock data refresh completed successfully")
-				}
+				runOnce()
 			}
 		}
 	}()

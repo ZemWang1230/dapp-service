@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"timelocker-backend/internal/config"
 	"timelocker-backend/internal/repository/chain"
 	"timelocker-backend/internal/repository/timelock"
 	"timelocker-backend/internal/service/scanner"
@@ -22,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -73,16 +75,26 @@ type service struct {
 	chainRepo    chain.Repository
 	rpcManager   *scanner.RPCManager
 	goldskySvc   GoldskyService
+	cfg          *config.TimelockConfig
 }
 
 // NewService 创建timelock服务实例
-func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, rpcManager *scanner.RPCManager, goldskySvc GoldskyService) Service {
+func NewService(timeLockRepo timelock.Repository, chainRepo chain.Repository, rpcManager *scanner.RPCManager, goldskySvc GoldskyService, cfg *config.TimelockConfig) Service {
 	return &service{
 		timeLockRepo: timeLockRepo,
 		chainRepo:    chainRepo,
 		rpcManager:   rpcManager,
 		goldskySvc:   goldskySvc,
+		cfg:          cfg,
 	}
+}
+
+// refreshConcurrency 取配置的并发度，落空兜底为 5
+func (s *service) refreshConcurrency() int {
+	if s.cfg != nil && s.cfg.RefreshConcurrency > 0 {
+		return s.cfg.RefreshConcurrency
+	}
+	return 5
 }
 
 // CreateOrImportTimeLock 创建或导入timelock合约记录
@@ -294,28 +306,43 @@ func (s *service) RefreshTimeLockPermissions(ctx context.Context, userAddress st
 		return fmt.Errorf("failed to get openzeppelin timelocks: %w", err)
 	}
 
-	// 刷新Compound合约权限
-	for _, timeLock := range compoundTimelocks {
-		if err := s.refreshCompoundTimeLockData(ctx, &timeLock); err != nil {
-			logger.Error("Failed to refresh compound timelock", err, "contract_address", timeLock.ContractAddress)
-			continue
-		}
-	}
+	concurrency := s.refreshConcurrency()
 
-	// 刷新OpenZeppelin合约权限
-	for _, timeLock := range openzeppelinTimelocks {
-		if err := s.refreshOpenzeppelinTimeLockData(ctx, &timeLock); err != nil {
-			logger.Error("Failed to refresh openzeppelin timelock", err, "contract_address", timeLock.ContractAddress)
-			continue
-		}
+	// 并发刷新Compound合约权限
+	cg, cctx := errgroup.WithContext(ctx)
+	cg.SetLimit(concurrency)
+	for i := range compoundTimelocks {
+		tl := compoundTimelocks[i]
+		cg.Go(func() error {
+			if err := s.refreshCompoundTimeLockData(cctx, &tl); err != nil {
+				logger.Error("Failed to refresh compound timelock", err, "contract_address", tl.ContractAddress)
+			}
+			return nil
+		})
 	}
+	_ = cg.Wait()
 
-	logger.Info("RefreshTimeLockPermissions success", "user_address", normalizedUser)
+	// 并发刷新OpenZeppelin合约权限
+	og, octx := errgroup.WithContext(ctx)
+	og.SetLimit(concurrency)
+	for i := range openzeppelinTimelocks {
+		tl := openzeppelinTimelocks[i]
+		og.Go(func() error {
+			if err := s.refreshOpenzeppelinTimeLockData(octx, &tl); err != nil {
+				logger.Error("Failed to refresh openzeppelin timelock", err, "contract_address", tl.ContractAddress)
+			}
+			return nil
+		})
+	}
+	_ = og.Wait()
+
+	logger.Info("RefreshTimeLockPermissions success", "user_address", normalizedUser, "concurrency", concurrency)
 	return nil
 }
 
 // RefreshAllTimeLockData 刷新所有timelock合约数据（定时任务）
 func (s *service) RefreshAllTimeLockData(ctx context.Context) error {
+	start := time.Now()
 	logger.Info("RefreshAllTimeLockData started")
 
 	// 获取所有活跃的Compound timelock合约
@@ -332,23 +359,42 @@ func (s *service) RefreshAllTimeLockData(ctx context.Context) error {
 		return fmt.Errorf("failed to get openzeppelin timelocks: %w", err)
 	}
 
-	// 刷新Compound合约数据
-	for _, timeLock := range compoundTimelocks {
-		if err := s.refreshCompoundTimeLockData(ctx, &timeLock); err != nil {
-			logger.Error("Failed to refresh compound timelock", err, "contract_address", timeLock.ContractAddress)
-			continue
-		}
-	}
+	concurrency := s.refreshConcurrency()
 
-	// 刷新OpenZeppelin合约数据
-	for _, timeLock := range openzeppelinTimelocks {
-		if err := s.refreshOpenzeppelinTimeLockData(ctx, &timeLock); err != nil {
-			logger.Error("Failed to refresh openzeppelin timelock", err, "contract_address", timeLock.ContractAddress)
-			continue
-		}
+	// 并发刷新 Compound 合约数据（每个合约 1 次 Multicall3 RPC）
+	compoundGroup, compoundCtx := errgroup.WithContext(ctx)
+	compoundGroup.SetLimit(concurrency)
+	for i := range compoundTimelocks {
+		tl := compoundTimelocks[i]
+		compoundGroup.Go(func() error {
+			if err := s.refreshCompoundTimeLockData(compoundCtx, &tl); err != nil {
+				logger.Error("Failed to refresh compound timelock", err, "contract_address", tl.ContractAddress)
+			}
+			return nil // 单个失败不中断全量
+		})
 	}
+	_ = compoundGroup.Wait()
 
-	logger.Info("RefreshAllTimeLockData completed", "compound_count", len(compoundTimelocks), "openzeppelin_count", len(openzeppelinTimelocks))
+	// 并发刷新 OpenZeppelin 合约数据
+	ozGroup, ozCtx := errgroup.WithContext(ctx)
+	ozGroup.SetLimit(concurrency)
+	for i := range openzeppelinTimelocks {
+		tl := openzeppelinTimelocks[i]
+		ozGroup.Go(func() error {
+			if err := s.refreshOpenzeppelinTimeLockData(ozCtx, &tl); err != nil {
+				logger.Error("Failed to refresh openzeppelin timelock", err, "contract_address", tl.ContractAddress)
+			}
+			return nil
+		})
+	}
+	_ = ozGroup.Wait()
+
+	logger.Info("RefreshAllTimeLockData completed",
+		"compound_count", len(compoundTimelocks),
+		"openzeppelin_count", len(openzeppelinTimelocks),
+		"concurrency", concurrency,
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
 	return nil
 }
 
@@ -384,15 +430,21 @@ func (s *service) createOrImportCompoundTimeLock(ctx context.Context, userAddres
 
 	logger.Info("CreateOrImportCompoundTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
 
-	// 【优化】创建合约后立即同步Goldsky flows，确保状态正确
+	// 【优化】创建合约后异步同步 Goldsky flows，接口立即返回。
+	// 使用独立 context 避免请求 ctx 被取消时中断后台同步。
 	if s.goldskySvc != nil {
-		logger.Info("Syncing flows from Goldsky after compound timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
-		if err := s.goldskySvc.SyncFlowsForContract(ctx, req.ChainID, "compound", contractAddress); err != nil {
-			logger.Error("Failed to sync flows after compound timelock creation", err, "contract_address", contractAddress, "chain_id", req.ChainID)
-			// 同步失败不影响合约创建，但要记录警告
-		} else {
-			logger.Info("Successfully synced flows after compound timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
-		}
+		chainID := req.ChainID
+		addr := contractAddress
+		go func() {
+			bg, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			logger.Info("Syncing flows from Goldsky after compound timelock creation", "contract_address", addr, "chain_id", chainID)
+			if err := s.goldskySvc.SyncFlowsForContract(bg, chainID, "compound", addr); err != nil {
+				logger.Error("Failed to sync flows after compound timelock creation", err, "contract_address", addr, "chain_id", chainID)
+			} else {
+				logger.Info("Successfully synced flows after compound timelock creation", "contract_address", addr, "chain_id", chainID)
+			}
+		}()
 	}
 
 	return timeLock, nil
@@ -437,15 +489,20 @@ func (s *service) createOrImportOpenzeppelinTimeLock(ctx context.Context, userAd
 
 	logger.Info("CreateOrImportOpenzeppelinTimeLock success", "timelock_id", timeLock.ID, "user_address", userAddress, "contract_address", contractAddress)
 
-	// 【优化】创建合约后立即同步Goldsky flows，确保状态正确
+	// 【优化】创建合约后异步同步 Goldsky flows，接口立即返回
 	if s.goldskySvc != nil {
-		logger.Info("Syncing flows from Goldsky after openzeppelin timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
-		if err := s.goldskySvc.SyncFlowsForContract(ctx, req.ChainID, "openzeppelin", contractAddress); err != nil {
-			logger.Error("Failed to sync flows after openzeppelin timelock creation", err, "contract_address", contractAddress, "chain_id", req.ChainID)
-			// 同步失败不影响合约创建，但要记录警告
-		} else {
-			logger.Info("Successfully synced flows after openzeppelin timelock creation", "contract_address", contractAddress, "chain_id", req.ChainID)
-		}
+		chainID := req.ChainID
+		addr := contractAddress
+		go func() {
+			bg, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			logger.Info("Syncing flows from Goldsky after openzeppelin timelock creation", "contract_address", addr, "chain_id", chainID)
+			if err := s.goldskySvc.SyncFlowsForContract(bg, chainID, "openzeppelin", addr); err != nil {
+				logger.Error("Failed to sync flows after openzeppelin timelock creation", err, "contract_address", addr, "chain_id", chainID)
+			} else {
+				logger.Info("Successfully synced flows after openzeppelin timelock creation", "contract_address", addr, "chain_id", chainID)
+			}
+		}()
 	}
 
 	return timeLock, nil
@@ -532,108 +589,126 @@ type OpenzeppelinTimeLockData struct {
 	Executors []string `json:"executors"`
 }
 
-// 私有方法 - 从链上读取Compound timelock数据
-func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int, contractAddress string) (*CompoundTimeLockData, error) {
-	client, err := s.rpcManager.GetOrCreateClient(ctx, chainID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RPC client: %w", err)
-	}
+// compoundTimelockABI Compound Timelock 的 6 个 view 方法 ABI（模块级只解析一次）
+var compoundTimelockABI abi.ABI
 
-	contractAddr := common.HexToAddress(contractAddress)
-
-	// Compound Timelock ABI (简化版，只包含需要的方法)
-	abiJSON := `[
+func init() {
+	parsed, err := abi.JSON(strings.NewReader(`[
 		{"inputs":[],"name":"delay","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
 		{"inputs":[],"name":"admin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
 		{"inputs":[],"name":"pendingAdmin","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
 		{"inputs":[],"name":"GRACE_PERIOD","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
 		{"inputs":[],"name":"MINIMUM_DELAY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
 		{"inputs":[],"name":"MAXIMUM_DELAY","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
-	]`
-
-	parsedABI, err := abi.JSON(strings.NewReader(abiJSON))
+	]`))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %w", err)
+		panic(fmt.Sprintf("failed to parse compound timelock ABI: %v", err))
+	}
+	compoundTimelockABI = parsed
+}
+
+// compoundCallOrder 索引与 aggregate3 的输入/输出一一对应
+var compoundCallOrder = []string{"delay", "admin", "pendingAdmin", "GRACE_PERIOD", "MINIMUM_DELAY", "MAXIMUM_DELAY"}
+
+// 私有方法 - 从链上读取Compound timelock数据（使用 Multicall3 合并为 1 次 eth_call，带重试）
+func (s *service) readCompoundTimeLockFromChain(ctx context.Context, chainID int, contractAddress string) (*CompoundTimeLockData, error) {
+	start := time.Now()
+	contractAddr := common.HexToAddress(contractAddress)
+
+	// 预先打包 6 个子调用
+	calls := make([]scanner.Call3, 0, len(compoundCallOrder))
+	for _, method := range compoundCallOrder {
+		callData, err := compoundTimelockABI.Pack(method)
+		if err != nil {
+			return nil, fmt.Errorf("failed to pack %s: %w", method, err)
+		}
+		calls = append(calls, scanner.Call3{
+			Target: contractAddr,
+			// pendingAdmin 可能未实现或返回零地址，允许失败
+			AllowFailure: method == "pendingAdmin",
+			CallData:     callData,
+		})
+	}
+
+	var results []scanner.Call3Result
+	if err := s.rpcManager.ExecuteWithRetry(ctx, chainID, func(client *ethclient.Client) error {
+		r, err := scanner.AggregateCall3(ctx, client, calls)
+		if err != nil {
+			return err
+		}
+		results = r
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to multicall compound timelock: %w", err)
+	}
+	if len(results) != len(calls) {
+		return nil, fmt.Errorf("unexpected multicall result length: got %d, want %d", len(results), len(calls))
 	}
 
 	data := &CompoundTimeLockData{}
-
-	// 读取delay
-	result, err := s.callContract(ctx, client, contractAddr, parsedABI, "delay")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read delay: %w", err)
-	}
-	if len(result) > 0 {
-		if delay, ok := result[0].(*big.Int); ok {
-			data.Delay = delay.Int64()
-		} else {
-			return nil, fmt.Errorf("invalid delay type")
+	for i, method := range compoundCallOrder {
+		res := results[i]
+		if !res.Success {
+			if method == "pendingAdmin" {
+				continue // 允许失败
+			}
+			return nil, fmt.Errorf("multicall sub-call %s failed", method)
+		}
+		values, err := compoundTimelockABI.Unpack(method, res.ReturnData)
+		if err != nil {
+			if method == "pendingAdmin" {
+				logger.Warn("Failed to unpack pendingAdmin", "error", err)
+				continue
+			}
+			return nil, fmt.Errorf("failed to unpack %s: %w", method, err)
+		}
+		if len(values) == 0 {
+			continue
+		}
+		switch method {
+		case "delay":
+			v, ok := values[0].(*big.Int)
+			if !ok {
+				return nil, fmt.Errorf("invalid delay type")
+			}
+			data.Delay = v.Int64()
+		case "admin":
+			v, ok := values[0].(common.Address)
+			if !ok {
+				return nil, fmt.Errorf("invalid admin type")
+			}
+			data.Admin = strings.ToLower(v.Hex())
+		case "pendingAdmin":
+			if v, ok := values[0].(common.Address); ok && v != (common.Address{}) {
+				s := strings.ToLower(v.Hex())
+				data.PendingAdmin = &s
+			}
+		case "GRACE_PERIOD":
+			v, ok := values[0].(*big.Int)
+			if !ok {
+				return nil, fmt.Errorf("invalid grace period type")
+			}
+			data.GracePeriod = v.Int64()
+		case "MINIMUM_DELAY":
+			v, ok := values[0].(*big.Int)
+			if !ok {
+				return nil, fmt.Errorf("invalid minimum delay type")
+			}
+			data.MinimumDelay = v.Int64()
+		case "MAXIMUM_DELAY":
+			v, ok := values[0].(*big.Int)
+			if !ok {
+				return nil, fmt.Errorf("invalid maximum delay type")
+			}
+			data.MaximumDelay = v.Int64()
 		}
 	}
 
-	// 读取admin
-	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "admin")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read admin: %w", err)
-	}
-	if len(result) > 0 {
-		if admin, ok := result[0].(common.Address); ok {
-			data.Admin = strings.ToLower(admin.Hex())
-		} else {
-			return nil, fmt.Errorf("invalid admin type")
-		}
-	}
-
-	// 读取pendingAdmin
-	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "pendingAdmin")
-	if err != nil {
-		// pendingAdmin 可能为空，不是错误
-		logger.Warn("Failed to read pendingAdmin", "error", err)
-	} else if len(result) > 0 {
-		if pendingAdmin, ok := result[0].(common.Address); ok && pendingAdmin != (common.Address{}) {
-			pendingAdminStr := strings.ToLower(pendingAdmin.Hex())
-			data.PendingAdmin = &pendingAdminStr
-		}
-	}
-
-	// 读取GRACE_PERIOD
-	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "GRACE_PERIOD")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read GRACE_PERIOD: %w", err)
-	}
-	if len(result) > 0 {
-		if gracePeriod, ok := result[0].(*big.Int); ok {
-			data.GracePeriod = gracePeriod.Int64()
-		} else {
-			return nil, fmt.Errorf("invalid grace period type")
-		}
-	}
-
-	// 读取MINIMUM_DELAY
-	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "MINIMUM_DELAY")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read MINIMUM_DELAY: %w", err)
-	}
-	if len(result) > 0 {
-		if minDelay, ok := result[0].(*big.Int); ok {
-			data.MinimumDelay = minDelay.Int64()
-		} else {
-			return nil, fmt.Errorf("invalid minimum delay type")
-		}
-	}
-
-	// 读取MAXIMUM_DELAY
-	result, err = s.callContract(ctx, client, contractAddr, parsedABI, "MAXIMUM_DELAY")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read MAXIMUM_DELAY: %w", err)
-	}
-	if len(result) > 0 {
-		if maxDelay, ok := result[0].(*big.Int); ok {
-			data.MaximumDelay = maxDelay.Int64()
-		} else {
-			return nil, fmt.Errorf("invalid maximum delay type")
-		}
-	}
+	logger.Info("readCompoundTimeLockFromChain via multicall",
+		"chain_id", chainID,
+		"contract_address", contractAddress,
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
 
 	return data, nil
 }

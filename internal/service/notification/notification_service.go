@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 	"timelocker-backend/internal/config"
 	chainRepo "timelocker-backend/internal/repository/chain"
@@ -16,6 +17,7 @@ import (
 	notificationPkg "timelocker-backend/pkg/notification"
 	"timelocker-backend/pkg/utils"
 
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -704,57 +706,51 @@ func (s *notificationService) SendFlowNotification(ctx context.Context, standard
 		return nil // 不阻塞流程，只记录错误
 	}
 
-	// 对每个相关用户发送通知
-	var totalSent int
-	for _, userAddress := range userAddresses {
-		// 获取用户的通知配置
-		configs, err := s.repo.GetUserActiveNotificationConfigs(ctx, userAddress)
-		if err != nil {
-			logger.Error("Failed to get user notification configs", err, "userAddress", userAddress)
-			continue // 继续处理下一个用户
-		}
+	// 对每个相关用户并发发送通知（用户间并发，同用户内各渠道顺序发送）
+	start := time.Now()
+	var totalSent int64
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+	for _, ua := range userAddresses {
+		userAddress := ua
+		g.Go(func() error {
+			configs, err := s.repo.GetUserActiveNotificationConfigs(gctx, userAddress)
+			if err != nil {
+				logger.Error("Failed to get user notification configs", err, "userAddress", userAddress)
+				return nil
+			}
+			totalConfigs := len(configs.TelegramConfigs) + len(configs.LarkConfigs) + len(configs.FeishuConfigs) + len(configs.DiscordConfigs) + len(configs.SlackConfigs)
+			if totalConfigs == 0 {
+				return nil
+			}
 
-		// 检查是否有激活的配置
-		totalConfigs := len(configs.TelegramConfigs) + len(configs.LarkConfigs) + len(configs.FeishuConfigs) + len(configs.DiscordConfigs) + len(configs.SlackConfigs)
-		if totalConfigs == 0 {
-			logger.Debug("No active notification configs found", "userAddress", userAddress)
-			continue
-		}
+			for _, config := range configs.TelegramConfigs {
+				s.sendTelegramNotification(gctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			}
+			for _, config := range configs.LarkConfigs {
+				s.sendLarkNotification(gctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			}
+			for _, config := range configs.FeishuConfigs {
+				s.sendFeishuNotification(gctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			}
+			for _, config := range configs.DiscordConfigs {
+				s.sendDiscordNotification(gctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			}
+			for _, config := range configs.SlackConfigs {
+				s.sendSlackNotification(gctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
+			}
 
-		logger.Debug("Processing user notification configs", "userAddress", userAddress, "telegram", len(configs.TelegramConfigs), "lark", len(configs.LarkConfigs), "feishu", len(configs.FeishuConfigs))
-
-		// 发送Telegram通知
-		for _, config := range configs.TelegramConfigs {
-			s.sendTelegramNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
-			totalSent++
-		}
-
-		// 发送Lark通知
-		for _, config := range configs.LarkConfigs {
-			s.sendLarkNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
-			totalSent++
-		}
-
-		// 发送Feishu通知
-		for _, config := range configs.FeishuConfigs {
-			s.sendFeishuNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
-			totalSent++
-		}
-
-		// 发送Discord通知
-		for _, config := range configs.DiscordConfigs {
-			s.sendDiscordNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
-			totalSent++
-		}
-
-		// 发送Slack通知
-		for _, config := range configs.SlackConfigs {
-			s.sendSlackNotification(ctx, config, message, flowID, standard, chainID, contractAddress, statusFrom, statusTo, txHash)
-			totalSent++
-		}
+			atomic.AddInt64(&totalSent, int64(totalConfigs))
+			return nil
+		})
 	}
+	_ = g.Wait()
 
-	logger.Info("Notification sending completed", "totalUsers", len(userAddresses), "totalNotificationsSent", totalSent)
+	logger.Info("Notification sending completed",
+		"totalUsers", len(userAddresses),
+		"totalNotificationsSent", atomic.LoadInt64(&totalSent),
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
 	return nil
 }
 

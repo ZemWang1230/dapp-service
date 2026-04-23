@@ -11,14 +11,72 @@ import (
 	"github.com/spf13/viper"
 )
 
+// bindEnvKeys 把所有支持环境变量覆盖的 key 都显式绑定一次。
+// 这样的好处：1) 不依赖 yaml 中是否出现该字段；2) 在文档/代码里集中可见。
+func bindEnvKeys() {
+	keys := []string{
+		// server
+		"server.port", "server.mode",
+		// database
+		"database.host", "database.port", "database.user", "database.password", "database.dbname", "database.sslmode",
+		// redis
+		"redis.host", "redis.port", "redis.password", "redis.db",
+		// jwt
+		"jwt.secret", "jwt.access_expiry", "jwt.refresh_expiry",
+		// rpc
+		"rpc.alchemy_api_key", "rpc.infura_api_key", "rpc.provider", "rpc.include_testnets",
+		// email
+		"email.smtp_host", "email.smtp_port", "email.smtp_username", "email.smtp_password",
+		"email.from_name", "email.from_email", "email.verification_code_expiry", "email.email_url",
+		// timelock 调度
+		"timelock.refresh_interval", "timelock.refresh_concurrency",
+		// goldsky 调度
+		"goldsky.sync_interval", "goldsky.status_check_interval", "goldsky.sync_page_size",
+		// notification worker 池
+		"notification.worker_count", "notification.queue_buffer",
+	}
+	for _, k := range keys {
+		_ = viper.BindEnv(k)
+	}
+}
+
 // Config 应用配置
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	RPC      RPCConfig      `mapstructure:"rpc"`
-	Email    EmailConfig    `mapstructure:"email"`
+	Server       ServerConfig       `mapstructure:"server"`
+	Database     DatabaseConfig     `mapstructure:"database"`
+	Redis        RedisConfig        `mapstructure:"redis"`
+	JWT          JWTConfig          `mapstructure:"jwt"`
+	RPC          RPCConfig          `mapstructure:"rpc"`
+	Email        EmailConfig        `mapstructure:"email"`
+	Timelock     TimelockConfig     `mapstructure:"timelock"`
+	Goldsky      GoldskyConfig      `mapstructure:"goldsky"`
+	Notification NotificationConfig `mapstructure:"notification"`
+}
+
+// TimelockConfig Timelock 刷新任务相关配置
+type TimelockConfig struct {
+	// 定时全量刷新链上 Timelock 元数据的间隔
+	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
+	// 刷新时每个链上最多的并发 RPC 调用数
+	RefreshConcurrency int `mapstructure:"refresh_concurrency"`
+}
+
+// GoldskyConfig Goldsky 同步 / 状态检查相关配置
+type GoldskyConfig struct {
+	// 从 Goldsky subgraph 全量拉取 flow 的轮询间隔
+	SyncInterval time.Duration `mapstructure:"sync_interval"`
+	// 本地基于 eta/expired_at 推进 flow 状态的轮询间隔
+	StatusCheckInterval time.Duration `mapstructure:"status_check_interval"`
+	// 单次同步 flow 时分页大小
+	SyncPageSize int `mapstructure:"sync_page_size"`
+}
+
+// NotificationConfig 通知发送相关配置
+type NotificationConfig struct {
+	// 状态变化通知 worker 数量
+	WorkerCount int `mapstructure:"worker_count"`
+	// 状态变化通知队列 buffer 大小
+	QueueBuffer int `mapstructure:"queue_buffer"`
 }
 
 type ServerConfig struct {
@@ -101,8 +159,27 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("email.verification_code_expiry", time.Minute*10)
 	viper.SetDefault("email.email_url", "http://localhost:8080")
 
-	// Read environment variables
+	// Timelock refresh defaults
+	viper.SetDefault("timelock.refresh_interval", 2*time.Hour)
+	viper.SetDefault("timelock.refresh_concurrency", 5)
+
+	// Goldsky defaults
+	viper.SetDefault("goldsky.sync_interval", 10*time.Minute)
+	viper.SetDefault("goldsky.status_check_interval", 30*time.Second)
+	viper.SetDefault("goldsky.sync_page_size", 500)
+
+	// Notification defaults
+	viper.SetDefault("notification.worker_count", 4)
+	viper.SetDefault("notification.queue_buffer", 1024)
+
+	// 让嵌套 key 能从环境变量读取：database.host -> DATABASE_HOST 等。
+	// 这样 .env / docker-compose 注入的环境变量会自动覆盖 config.yaml 里的同名字段。
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
+
+	// AutomaticEnv 对未在 yaml 里出现的字段不会兜底，所以对所有结构体字段
+	// 显式 BindEnv 一次，确保即使 yaml 缺这一项，env 仍然能注入进来。
+	bindEnvKeys()
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

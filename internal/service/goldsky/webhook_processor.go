@@ -434,35 +434,30 @@ func (p *WebhookProcessor) isPlatformContract(ctx context.Context, standard stri
 	return false, fmt.Errorf("unsupported standard: %s", standard)
 }
 
-// sendFlowNotification 异步发送 Flow 通知（邮件 + 渠道）
+// sendFlowNotification 入队 Flow 通知任务（邮件 + 渠道），由共享 worker 池消费
 func (p *WebhookProcessor) sendFlowNotification(chainID int, contractAddress, flowID, standard, statusFrom, statusTo string, txHash *string, initiatorAddress string) {
-	ctx := context.Background()
-
-	logger.Info("Sending flow notification (webhook)",
-		"chain_id", chainID,
-		"contract", contractAddress,
-		"flow_id", flowID,
-		"standard", standard,
-		"from", statusFrom,
-		"to", statusTo)
-
-	// 1. 发送邮件通知
-	if err := p.emailSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, statusFrom, statusTo, txHash, initiatorAddress); err != nil {
-		logger.Error("Failed to send email notification", err,
-			"chain_id", chainID,
-			"flow_id", flowID,
-			"status_to", statusTo)
-	} else {
-		logger.Info("Email notification sent successfully", "flow_id", flowID, "status", statusTo)
+	job := flowNotificationJob{
+		Standard:         standard,
+		ChainID:          chainID,
+		ContractAddress:  contractAddress,
+		FlowID:           flowID,
+		StatusFrom:       statusFrom,
+		StatusTo:         statusTo,
+		TxHash:           txHash,
+		InitiatorAddress: initiatorAddress,
+		Source:           "webhook",
 	}
-
-	// 2. 发送渠道通知（Telegram/Lark/Feishu 等）
+	if p.goldskySvc != nil && p.goldskySvc.Dispatcher() != nil {
+		p.goldskySvc.Dispatcher().Enqueue(job)
+		return
+	}
+	// fallback：dispatcher 不可用时直接执行，避免丢通知
+	ctx := context.Background()
+	logger.Warn("NotificationDispatcher unavailable, sending synchronously", "flow_id", flowID)
+	if err := p.emailSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, statusFrom, statusTo, txHash, initiatorAddress); err != nil {
+		logger.Error("Failed to send email notification", err, "flow_id", flowID)
+	}
 	if err := p.notificationSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, statusFrom, statusTo, txHash, initiatorAddress); err != nil {
-		logger.Error("Failed to send channel notification", err,
-			"chain_id", chainID,
-			"flow_id", flowID,
-			"status_to", statusTo)
-	} else {
-		logger.Info("Channel notification sent successfully", "flow_id", flowID, "status", statusTo)
+		logger.Error("Failed to send channel notification", err, "flow_id", flowID)
 	}
 }

@@ -33,13 +33,19 @@ func NewGoldskyClient(subgraphURL string, chainID int) *GoldskyClient {
 	}
 }
 
-// QueryCompoundFlows 查询 Compound Flows
+// QueryCompoundFlows 查询 Compound Flows（单页，调用方可借助 skip/分页游标拉多页）
 func (c *GoldskyClient) QueryCompoundFlows(ctx context.Context, contractAddresses []string, limit int) ([]types.GoldskyCompoundFlow, error) {
+	return c.QueryCompoundFlowsPage(ctx, contractAddresses, limit, 0)
+}
+
+// QueryCompoundFlowsPage 按 skip 偏移拉一页 Compound Flows
+func (c *GoldskyClient) QueryCompoundFlowsPage(ctx context.Context, contractAddresses []string, limit int, skip int) ([]types.GoldskyCompoundFlow, error) {
 	query := `
-		query($contractAddresses: [Bytes!], $limit: Int!) {
+		query($contractAddresses: [Bytes!], $limit: Int!, $skip: Int!) {
 			compoundTimelockFlows(
 				where: { contractAddress_in: $contractAddresses }
 				first: $limit
+				skip: $skip
 				orderBy: createdAt
 				orderDirection: asc
 			) {
@@ -100,6 +106,7 @@ func (c *GoldskyClient) QueryCompoundFlows(ctx context.Context, contractAddresse
 	variables := map[string]interface{}{
 		"contractAddresses": contractAddresses,
 		"limit":             limit,
+		"skip":              skip,
 	}
 
 	var response types.GoldskyCompoundFlowsResponse

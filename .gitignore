@@ -1,1 +1,14 @@
 .DS_Store
+
+# Local secrets / runtime config — 切勿提交
+.env
+.env.*
+!env.example
+
+# 本地日志 / 备份目录
+logs/
+backups/
+
+# Go 构建产物
+/timelocker-backend
+/tmp/

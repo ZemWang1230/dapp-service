@@ -34,6 +34,8 @@ WORKDIR /app
 COPY --from=builder /app/timelocker-backend .
 
 # 复制配置文件和其他必要文件
+# config.yaml 只提供"非敏感、跨环境基本不变"的默认值；
+# 敏感数据由 docker-compose 的 env_file (.env) 在运行时通过环境变量注入。
 COPY config.yaml ./
 COPY email_templates/ ./email_templates/
 

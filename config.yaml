@@ -1,49 +1,74 @@
+# =====================================================================
+# Timelock Backend 默认配置
+#
+# 设计原则：
+#   1. 这里只放"非敏感、跨环境基本不变"的默认值。
+#   2. 所有敏感字段（密码、密钥、API Key）一律留空，统一从环境变量
+#      （本地用 .env，docker 用 docker-compose 注入）读取。
+#   3. 同名环境变量优先级 > 本文件。命名规则：
+#         database.host          -> DATABASE_HOST
+#         jwt.access_expiry      -> JWT_ACCESS_EXPIRY
+#         rpc.alchemy_api_key    -> RPC_ALCHEMY_API_KEY
+#         goldsky.sync_interval  -> GOLDSKY_SYNC_INTERVAL
+#         ...
+#      （即"._"互转、全大写）
+#   4. 本地开发：默认 host 全部指向 localhost，只要在 .env 填上密钥即可。
+#      docker 部署：在 docker-compose 里把 *_HOST 覆盖为容器服务名。
+# =====================================================================
+
 server:
   port: "8080"
-  mode: "release"  # debug, release, test
+  mode: "release"   # debug / release / test
 
 database:
   host: "localhost"
   port: 5432
   user: "timelocker"
-  password: "timelocker"
+  password: ""      # 由 DATABASE_PASSWORD 注入（见 .env）
   dbname: "timelocker_db"
   sslmode: "disable"
 
 redis:
   host: "localhost"
   port: 6379
-  password: ""
+  password: ""      # 由 REDIS_PASSWORD 注入
   db: 0
 
 jwt:
-  secret: "timelocker-jwt-secret-v1"
-  access_expiry: "24h"   # 24小时
-  refresh_expiry: "48h" # 2天
+  secret: ""        # 由 JWT_SECRET 注入
+  access_expiry: "24h"
+  refresh_expiry: "48h"
 
-# RPC配置 - 用于监听链上事件
+# RPC 配置 - 用于读链上元数据 + Multicall3
 rpc:
-  # RPC提供商配置（用户只需要填写API key）
-  alchemy_api_key: "xxx"
-  infura_api_key: "xxx"
-  
-  # 当前使用的提供商（alchemy、infura 或 custom）
-  provider: "alchemy"
-  
-  # 是否包含测试网
+  alchemy_api_key: ""   # 由 RPC_ALCHEMY_API_KEY 注入
+  infura_api_key: ""    # 由 RPC_INFURA_API_KEY 注入
+  provider: "alchemy"   # alchemy / infura
   include_testnets: true
 
 # 邮件服务配置
 email:
   smtp_host: "smtp.zoho.com"
   smtp_port: 587
-  smtp_username: "gm@timelock.live"  # 发送邮件的邮箱地址
-  smtp_password: "xxx"     # 邮箱应用密码（不是登录密码）
-  from_name: "Timelock Notification"   # 发件人名称
-  from_email: "gm@timelock.live"     # 发件人邮箱（通常与smtp_username相同）
+  smtp_username: ""        # 由 EMAIL_SMTP_USERNAME 注入
+  smtp_password: ""        # 由 EMAIL_SMTP_PASSWORD 注入
+  from_name: "Timelock Notification"
+  from_email: ""           # 由 EMAIL_FROM_EMAIL 注入
+  verification_code_expiry: "5m"
+  email_url: "https://timelock.tech"
 
-  # 邮件通知功能配置
-  verification_code_expiry: "5m"        # 验证码过期时间
+# Timelock 元数据刷新任务
+timelock:
+  refresh_interval: "2h"      # 全量刷新间隔
+  refresh_concurrency: 5      # 并发刷新合约数
 
-  # 邮件模板配置
-  email_url: "https://timelock.tech"      # 前端基础URL，用于生成邮件中的链接
+# Goldsky subgraph 同步 / 本地状态推进
+goldsky:
+  sync_interval: "10m"
+  status_check_interval: "30s"
+  sync_page_size: 500
+
+# 通知 worker 池
+notification:
+  worker_count: 4
+  queue_buffer: 1024

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"timelocker-backend/internal/config"
 	chainRepo "timelocker-backend/internal/repository/chain"
 	goldskyRepo "timelocker-backend/internal/repository/goldsky"
 	publicRepo "timelocker-backend/internal/repository/public"
@@ -26,6 +28,7 @@ type GoldskyService struct {
 	publicRepo          publicRepo.Repository
 	emailSvc            email.EmailService
 	notificationSvc     notification.NotificationService
+	dispatcher          *NotificationDispatcher
 	clients             map[int]*GoldskyClient // chainID -> client
 	mu                  sync.RWMutex
 	ctx                 context.Context
@@ -33,6 +36,7 @@ type GoldskyService struct {
 	wg                  sync.WaitGroup
 	syncInterval        time.Duration
 	statusCheckInterval time.Duration
+	syncPageSize        int
 }
 
 // NewGoldskyService 创建新的 Goldsky 服务
@@ -43,8 +47,30 @@ func NewGoldskyService(
 	publicRepo publicRepo.Repository,
 	emailSvc email.EmailService,
 	notificationSvc notification.NotificationService,
+	cfg *config.Config,
 ) *GoldskyService {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	syncInterval := 10 * time.Minute
+	statusCheckInterval := 30 * time.Second
+	syncPageSize := 500
+	var workers, buffer int
+	if cfg != nil {
+		if cfg.Goldsky.SyncInterval > 0 {
+			syncInterval = cfg.Goldsky.SyncInterval
+		}
+		if cfg.Goldsky.StatusCheckInterval > 0 {
+			statusCheckInterval = cfg.Goldsky.StatusCheckInterval
+		}
+		if cfg.Goldsky.SyncPageSize > 0 {
+			syncPageSize = cfg.Goldsky.SyncPageSize
+		}
+		workers = cfg.Notification.WorkerCount
+		buffer = cfg.Notification.QueueBuffer
+	}
+
+	dispatcher := NewNotificationDispatcher(emailSvc, notificationSvc, workers, buffer)
+
 	return &GoldskyService{
 		chainRepo:           chainRepo,
 		timelockRepo:        timelockRepo,
@@ -52,21 +78,37 @@ func NewGoldskyService(
 		publicRepo:          publicRepo,
 		emailSvc:            emailSvc,
 		notificationSvc:     notificationSvc,
+		dispatcher:          dispatcher,
 		clients:             make(map[int]*GoldskyClient),
 		ctx:                 ctx,
 		cancel:              cancel,
-		syncInterval:        10 * time.Minute, // 每10分钟同步一次
-		statusCheckInterval: 10 * time.Second, // 每10秒检查一次状态
+		syncInterval:        syncInterval,
+		statusCheckInterval: statusCheckInterval,
+		syncPageSize:        syncPageSize,
 	}
+}
+
+// Dispatcher 对外暴露 dispatcher，方便 webhook_processor 复用 worker 池
+func (s *GoldskyService) Dispatcher() *NotificationDispatcher {
+	return s.dispatcher
 }
 
 // Start 启动 Goldsky 服务
 func (s *GoldskyService) Start() error {
-	logger.Info("Starting Goldsky service...")
+	logger.Info("Starting Goldsky service...",
+		"sync_interval", s.syncInterval.String(),
+		"status_check_interval", s.statusCheckInterval.String(),
+		"sync_page_size", s.syncPageSize,
+	)
 
 	// 初始化所有链的客户端
 	if err := s.initializeClients(); err != nil {
 		return fmt.Errorf("failed to initialize Goldsky clients: %w", err)
+	}
+
+	// 启动通知分发器 worker 池
+	if s.dispatcher != nil {
+		s.dispatcher.Start(s.ctx)
 	}
 
 	// 启动同步任务
@@ -86,6 +128,9 @@ func (s *GoldskyService) Stop() {
 	logger.Info("Stopping Goldsky service...")
 	s.cancel()
 	s.wg.Wait()
+	if s.dispatcher != nil {
+		s.dispatcher.Stop()
+	}
 	logger.Info("Goldsky service stopped")
 }
 
@@ -186,49 +231,78 @@ func (s *GoldskyService) syncFlowsForChain(chainID int, client *GoldskyClient) e
 	return nil
 }
 
-// syncCompoundFlows 同步 Compound Flows
+// syncCompoundFlows 同步 Compound Flows（游标分页 + 批量读本地 DB 避免 N+1）
 func (s *GoldskyService) syncCompoundFlows(chainID int, client *GoldskyClient, contractAddresses []string) error {
-	flows, err := client.QueryCompoundFlows(s.ctx, contractAddresses, 1000)
+	start := time.Now()
+	pageSize := s.syncPageSize
+	if pageSize <= 0 {
+		pageSize = 500
+	}
+
+	// 提前把这批合约现有的 flow 拉成 map 一次，避免每条 flow 一次 SELECT
+	localMap, err := s.flowRepo.GetCompoundFlowsMapByContracts(s.ctx, chainID, contractAddresses)
 	if err != nil {
-		return fmt.Errorf("failed to query compound flows: %w", err)
+		logger.Error("Failed to batch load local compound flows", err, "chain_id", chainID)
+		// 失败也不阻塞，让后面每条自己走 GetCompoundFlowByID 兜底
+		localMap = map[string]*types.CompoundTimelockFlowDB{}
 	}
 
-	logger.Info("Queried compound flows from Goldsky", "chain_id", chainID, "count", len(flows))
-
-	for _, goldskyFlow := range flows {
-		// 转换为数据库模型
-		dbFlow, err := ConvertGoldskyCompoundFlowToDB(goldskyFlow, chainID)
+	var totalFetched int
+	var totalUpserted int
+	skip := 0
+	for {
+		flows, err := client.QueryCompoundFlowsPage(s.ctx, contractAddresses, pageSize, skip)
 		if err != nil {
-			logger.Error("Failed to convert compound flow", err, "flow_id", goldskyFlow.FlowID)
-			continue
+			return fmt.Errorf("failed to query compound flows (skip=%d): %w", skip, err)
 		}
-
-		// 获取旧的 Flow 状态（用于检测状态变化）
-		oldFlow, err := s.flowRepo.GetCompoundFlowByID(s.ctx, dbFlow.FlowID, chainID, dbFlow.ContractAddress)
-		if err != nil {
-			logger.Error("Failed to get old compound flow", err, "flow_id", dbFlow.FlowID)
+		if len(flows) == 0 {
+			break
 		}
+		totalFetched += len(flows)
 
-		// 【重要】保护本地状态：ready 和 expired 状态不能被 Goldsky 的 waiting 覆盖
-		// 因为 ready 和 expired 是后端定时任务设置的，Goldsky 中没有这些状态
-		if oldFlow != nil {
-			// 如果本地是 ready 或 expired，而 Goldsky 是 waiting，保持本地状态
-			if (oldFlow.Status == "ready" || oldFlow.Status == "expired") && dbFlow.Status == "waiting" {
-				logger.Debug("Preserving local status",
-					"flow_id", dbFlow.FlowID,
-					"local_status", oldFlow.Status,
-					"goldsky_status", dbFlow.Status)
-				dbFlow.Status = oldFlow.Status // 保持本地状态
+		for _, goldskyFlow := range flows {
+			dbFlow, err := ConvertGoldskyCompoundFlowToDB(goldskyFlow, chainID)
+			if err != nil {
+				logger.Error("Failed to convert compound flow", err, "flow_id", goldskyFlow.FlowID)
+				continue
 			}
+
+			key := goldskyRepo.CompoundFlowKey(dbFlow.FlowID, dbFlow.ContractAddress)
+			if oldFlow, ok := localMap[key]; ok && oldFlow != nil {
+				// 保护本地状态：ready/expired 不被 goldsky 的 waiting 覆盖
+				if (oldFlow.Status == "ready" || oldFlow.Status == "expired") && dbFlow.Status == "waiting" {
+					dbFlow.Status = oldFlow.Status
+				}
+			}
+
+			if err := s.flowRepo.CreateOrUpdateCompoundFlow(s.ctx, dbFlow); err != nil {
+				logger.Error("Failed to create or update compound flow", err, "flow_id", dbFlow.FlowID)
+				continue
+			}
+			totalUpserted++
 		}
 
-		// 创建或更新
-		if err := s.flowRepo.CreateOrUpdateCompoundFlow(s.ctx, dbFlow); err != nil {
-			logger.Error("Failed to create or update compound flow", err, "flow_id", dbFlow.FlowID)
-			continue
+		// 不足一页意味着已经拉完
+		if len(flows) < pageSize {
+			break
+		}
+		skip += len(flows)
+
+		// subgraph skip 上限通常是 5000，超过后要改用 createdAt 游标；
+		// 这里安全起见做个硬阈值，避免死循环
+		if skip >= 20000 {
+			logger.Warn("syncCompoundFlows reached skip hard limit", "chain_id", chainID, "skip", skip)
+			break
 		}
 	}
 
+	logger.Info("Synced compound flows from Goldsky",
+		"chain_id", chainID,
+		"contracts", len(contractAddresses),
+		"fetched", totalFetched,
+		"upserted", totalUpserted,
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
 	return nil
 }
 
@@ -268,7 +342,7 @@ func (s *GoldskyService) checkAndUpdateFlowStatus() {
 				}
 
 				logger.Info("Updated compound flow status", "flow_id", flow.FlowID, "old_status", flow.Status, "new_status", newStatus)
-				go s.sendFlowStatusChangeNotification(flow.ChainID, flow.ContractAddress, flow.FlowID, "compound", flow.Status, newStatus)
+				s.enqueueFlowNotification(flow.ChainID, flow.ContractAddress, flow.FlowID, "compound", flow.Status, newStatus, nil, "", "status_check")
 			}
 		}
 	}
@@ -287,37 +361,34 @@ func (s *GoldskyService) calculateNewStatus(currentStatus string, eta *time.Time
 	return currentStatus
 }
 
-// sendFlowStatusChangeNotification 发送 Flow 状态变化通知
-func (s *GoldskyService) sendFlowStatusChangeNotification(chainID int, contractAddress, flowID, standard, oldStatus, newStatus string) {
-	ctx := context.Background()
-
-	logger.Info("Sending flow notification (status check)",
-		"chain_id", chainID,
-		"contract", contractAddress,
-		"flow_id", flowID,
-		"standard", standard,
-		"from", oldStatus,
-		"to", newStatus)
-
-	// 1. 发送邮件通知
-	if err := s.emailSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, oldStatus, newStatus, nil, ""); err != nil {
-		logger.Error("Failed to send email notification", err,
-			"chain_id", chainID,
-			"flow_id", flowID,
-			"status_to", newStatus)
-	} else {
-		logger.Info("Email notification sent successfully", "flow_id", flowID, "status", newStatus)
+// enqueueFlowNotification 把状态变化通知任务投递到 worker 池（dispatcher 为空时降级为同步执行）
+func (s *GoldskyService) enqueueFlowNotification(chainID int, contractAddress, flowID, standard, oldStatus, newStatus string, txHash *string, initiator string, source string) {
+	job := flowNotificationJob{
+		Standard:         standard,
+		ChainID:          chainID,
+		ContractAddress:  contractAddress,
+		FlowID:           flowID,
+		StatusFrom:       oldStatus,
+		StatusTo:         newStatus,
+		TxHash:           txHash,
+		InitiatorAddress: initiator,
+		Source:           source,
+	}
+	if s.dispatcher != nil {
+		s.dispatcher.Enqueue(job)
+		return
 	}
 
-	// 2. 发送渠道通知（Telegram/Lark/Feishu/Discord/Slack 等）
-	if err := s.notificationSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, oldStatus, newStatus, nil, ""); err != nil {
-		logger.Error("Failed to send channel notification", err,
-			"chain_id", chainID,
-			"flow_id", flowID,
-			"status_to", newStatus)
-	} else {
-		logger.Info("Channel notification sent successfully", "flow_id", flowID, "status", newStatus)
-	}
+	// 未启动 dispatcher 时退回到原先的 `go ...` 行为
+	go func() {
+		ctx := context.Background()
+		if err := s.emailSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, oldStatus, newStatus, txHash, initiator); err != nil {
+			logger.Error("Failed to send email notification", err, "chain_id", chainID, "flow_id", flowID, "status_to", newStatus)
+		}
+		if err := s.notificationSvc.SendFlowNotification(ctx, standard, chainID, contractAddress, flowID, oldStatus, newStatus, txHash, initiator); err != nil {
+			logger.Error("Failed to send channel notification", err, "chain_id", chainID, "flow_id", flowID, "status_to", newStatus)
+		}
+	}()
 }
 
 // SyncFlowsForContract 同步特定合约的flows
@@ -335,52 +406,72 @@ func (s *GoldskyService) SyncFlowsForContract(ctx context.Context, chainID int, 
 	}
 }
 
-// syncCompoundFlowsForContract 同步特定Compound合约的flows
+// syncCompoundFlowsForContract 同步特定Compound合约的flows（游标分页 + 批量读本地 DB）
 func (s *GoldskyService) syncCompoundFlowsForContract(ctx context.Context, chainID int, client *GoldskyClient, contractAddress string) error {
-	flows, err := client.QueryCompoundFlows(ctx, []string{contractAddress}, 1000)
+	start := time.Now()
+	pageSize := s.syncPageSize
+	if pageSize <= 0 {
+		pageSize = 500
+	}
+
+	localMap, err := s.flowRepo.GetCompoundFlowsMapByContracts(ctx, chainID, []string{contractAddress})
 	if err != nil {
-		return fmt.Errorf("failed to query compound flows for contract %s: %w", contractAddress, err)
+		logger.Error("Failed to batch load local compound flows", err, "chain_id", chainID, "contract_address", contractAddress)
+		localMap = map[string]*types.CompoundTimelockFlowDB{}
 	}
 
-	logger.Info("Queried compound flows from Goldsky for contract", "chain_id", chainID, "contract_address", contractAddress, "count", len(flows))
-
-	for _, goldskyFlow := range flows {
-		// 转换为数据库模型
-		dbFlow, err := ConvertGoldskyCompoundFlowToDB(goldskyFlow, chainID)
+	var totalFetched, totalUpserted int
+	skip := 0
+	for {
+		flows, err := client.QueryCompoundFlowsPage(ctx, []string{contractAddress}, pageSize, skip)
 		if err != nil {
-			logger.Error("Failed to convert compound flow", err, "flow_id", goldskyFlow.FlowID, "contract_address", contractAddress)
-			continue
+			return fmt.Errorf("failed to query compound flows for contract %s (skip=%d): %w", contractAddress, skip, err)
 		}
-
-		// 获取旧的 Flow 状态（用于检测状态变化）
-		oldFlow, err := s.flowRepo.GetCompoundFlowByID(ctx, dbFlow.FlowID, chainID, contractAddress)
-		if err != nil && err.Error() != "record not found" {
-			logger.Error("Failed to get old compound flow", err, "flow_id", dbFlow.FlowID, "contract_address", contractAddress)
+		if len(flows) == 0 {
+			break
 		}
+		totalFetched += len(flows)
 
-		// 【重要】保护本地状态：ready 和 expired 状态不能被 Goldsky 的 waiting 覆盖
-		if oldFlow != nil {
-			// 如果本地是 ready 或 expired，而 Goldsky 是 waiting，保持本地状态
-			if (oldFlow.Status == "ready" || oldFlow.Status == "expired") && dbFlow.Status == "waiting" {
-				logger.Debug("Preserving local status",
-					"flow_id", dbFlow.FlowID,
-					"local_status", oldFlow.Status,
-					"goldsky_status", dbFlow.Status)
-				dbFlow.Status = oldFlow.Status // 保持本地状态
+		for _, goldskyFlow := range flows {
+			dbFlow, err := ConvertGoldskyCompoundFlowToDB(goldskyFlow, chainID)
+			if err != nil {
+				logger.Error("Failed to convert compound flow", err, "flow_id", goldskyFlow.FlowID, "contract_address", contractAddress)
+				continue
 			}
+
+			key := goldskyRepo.CompoundFlowKey(dbFlow.FlowID, dbFlow.ContractAddress)
+			if oldFlow, ok := localMap[key]; ok && oldFlow != nil {
+				if (oldFlow.Status == "ready" || oldFlow.Status == "expired") && dbFlow.Status == "waiting" {
+					dbFlow.Status = oldFlow.Status
+				}
+			}
+
+			if err := s.flowRepo.CreateOrUpdateCompoundFlow(ctx, dbFlow); err != nil {
+				logger.Error("Failed to create or update compound flow", err, "flow_id", dbFlow.FlowID, "contract_address", contractAddress)
+				continue
+			}
+			totalUpserted++
 		}
 
-		// 创建或更新
-		if err := s.flowRepo.CreateOrUpdateCompoundFlow(ctx, dbFlow); err != nil {
-			logger.Error("Failed to create or update compound flow", err, "flow_id", dbFlow.FlowID, "contract_address", contractAddress)
-			continue
+		if len(flows) < pageSize {
+			break
 		}
-
-		logger.Debug("Synced compound flow", "flow_id", dbFlow.FlowID, "status", dbFlow.Status, "contract_address", contractAddress)
+		skip += len(flows)
+		if skip >= 20000 {
+			logger.Warn("syncCompoundFlowsForContract reached skip hard limit", "chain_id", chainID, "skip", skip)
+			break
+		}
 	}
 
-	// 【优化】同步完成后立即检查并更新状态，确保处理已过期或已就绪的flows
-	logger.Info("Running immediate status check for compound contract", "contract_address", contractAddress, "chain_id", chainID)
+	logger.Info("Synced compound flows from Goldsky for contract",
+		"chain_id", chainID,
+		"contract_address", contractAddress,
+		"fetched", totalFetched,
+		"upserted", totalUpserted,
+		"elapsed_ms", time.Since(start).Milliseconds(),
+	)
+
+	// 同步完成后立即检查并更新状态，确保处理已过期或已就绪的 flows
 	s.checkAndUpdateFlowStatusForContract(ctx, chainID, "compound", contractAddress)
 
 	return nil

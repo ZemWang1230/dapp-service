@@ -17,18 +17,20 @@ import (
 
 // RPCManager RPC管理器，只使用Alchemy RPC
 type RPCManager struct {
-	rpcConfig *config.RPCConfig
-	chainRepo chain.Repository
-	clients   map[int]*ethclient.Client // 直接使用chainID作为key
-	mutex     sync.RWMutex
+	rpcConfig  *config.RPCConfig
+	chainRepo  chain.Repository
+	clients    map[int]*ethclient.Client  // 直接使用chainID作为key
+	chainInfos map[int]types.ChainRPCInfo // chainID -> 链配置，避免每次重查 DB
+	mutex      sync.RWMutex
 }
 
 // NewRPCManager 创建RPC管理器
 func NewRPCManager(cfg *config.Config, chainRepo chain.Repository) *RPCManager {
 	return &RPCManager{
-		rpcConfig: &cfg.RPC,
-		chainRepo: chainRepo,
-		clients:   make(map[int]*ethclient.Client),
+		rpcConfig:  &cfg.RPC,
+		chainRepo:  chainRepo,
+		clients:    make(map[int]*ethclient.Client),
+		chainInfos: make(map[int]types.ChainRPCInfo),
 	}
 }
 
@@ -48,7 +50,13 @@ func (rm *RPCManager) Start(ctx context.Context) error {
 		return fmt.Errorf("alchemy API key is required")
 	}
 
-	// 初始化每条链的Alchemy RPC连接
+	// 缓存链配置 + 初始化每条链的 Alchemy RPC 连接
+	rm.mutex.Lock()
+	for _, chainInfo := range chains {
+		rm.chainInfos[chainInfo.ChainID] = chainInfo
+	}
+	rm.mutex.Unlock()
+
 	for _, chainInfo := range chains {
 		if err := rm.initChainAlchemyRPC(ctx, &chainInfo); err != nil {
 			logger.Error("Failed to init Alchemy RPC for chain", err, "chain_name", chainInfo.ChainName)
@@ -102,25 +110,38 @@ func (rm *RPCManager) GetOrCreateClient(ctx context.Context, chainID int) (*ethc
 		return client, nil
 	}
 
-	// 如果没有客户端，从RPC配置中查找并创建
-	chains, err := rm.chainRepo.GetRPCEnabledChains(ctx, rm.rpcConfig.IncludeTestnets)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RPC enabled chains: %w", err)
-	}
-
-	// 查找对应的链配置
-	for _, chainInfo := range chains {
-		if chainInfo.ChainID == chainID {
-			if chainInfo.AlchemyRPCTemplate == nil {
-				return nil, fmt.Errorf("no alchemy RPC template for chain %d", chainID)
-			}
-
-			rpcURL := strings.Replace(*chainInfo.AlchemyRPCTemplate, "{API_KEY}", rm.rpcConfig.AlchemyAPIKey, 1)
-			return rm.createClient(ctx, chainID, rpcURL)
+	// 先查内存缓存，miss 再回源 DB
+	chainInfo, ok := rm.lookupChainInfo(chainID)
+	if !ok {
+		chains, err := rm.chainRepo.GetRPCEnabledChains(ctx, rm.rpcConfig.IncludeTestnets)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get RPC enabled chains: %w", err)
+		}
+		rm.mutex.Lock()
+		for _, c := range chains {
+			rm.chainInfos[c.ChainID] = c
+		}
+		rm.mutex.Unlock()
+		chainInfo, ok = rm.lookupChainInfo(chainID)
+		if !ok {
+			return nil, fmt.Errorf("chain %d not found in RPC enabled chains", chainID)
 		}
 	}
 
-	return nil, fmt.Errorf("chain %d not found in RPC enabled chains", chainID)
+	if chainInfo.AlchemyRPCTemplate == nil {
+		return nil, fmt.Errorf("no alchemy RPC template for chain %d", chainID)
+	}
+
+	rpcURL := strings.Replace(*chainInfo.AlchemyRPCTemplate, "{API_KEY}", rm.rpcConfig.AlchemyAPIKey, 1)
+	return rm.createClient(ctx, chainID, rpcURL)
+}
+
+// lookupChainInfo 从缓存中查链配置（调用方可能重复获取，使用读锁）
+func (rm *RPCManager) lookupChainInfo(chainID int) (types.ChainRPCInfo, bool) {
+	rm.mutex.RLock()
+	defer rm.mutex.RUnlock()
+	info, ok := rm.chainInfos[chainID]
+	return info, ok
 }
 
 // initChainAlchemyRPC 初始化单链的Alchemy RPC连接
